@@ -220,6 +220,7 @@ public class NomLiquidacionesController : ControllerBase
             return BadRequest(new { error = "No se puede eliminar: ya tiene pagos asociados. Borrá los pagos primero o cambiala a 'anulada'." });
         if (await _db.NomExtras.AnyAsync(x => x.LiquidacionId == id))
             return BadRequest(new { error = "No se puede eliminar: tiene horas extras, comisiones, feriados, aguinaldo o plus cargados. Borralos primero desde su módulo." });
+        _db.NomSueldoFechas.RemoveRange(_db.NomSueldoFechas.Where(f => f.LiquidacionId == id));  // 2026-11-16
         _db.NomLiquidaciones.Remove(liq);
         await _db.SaveChangesAsync();
         return Ok(new { deleted = true });

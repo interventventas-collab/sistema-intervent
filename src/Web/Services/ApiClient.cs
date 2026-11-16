@@ -963,6 +963,17 @@ public class ApiClient
     public async Task<List<NomExtraDto>?> GetNomExtrasListaAsync(int anio, int mes)
         => await GetAsync<List<NomExtraDto>>($"/api/nominas/extras-lista?anio={anio}&mes={mes}");
     public async Task CrearNomExtraAsync(object req) => await PostAsync<object>("/api/nominas/extras", req);
+    // 2026-11-16: Sueldos centralizado (empleado → conceptos), fechas de pago del sueldo y próximos pagos.
+    public async Task<List<SueldoMesEmpleadoDto>?> GetSueldosMesAsync(int anio, int mes)
+        => await GetAsync<List<SueldoMesEmpleadoDto>>($"/api/nominas/sueldos-mes?anio={anio}&mes={mes}");
+    public async Task<List<SueldoFechaDto>?> GetSueldoFechasAsync(int liqId)
+        => await GetAsync<List<SueldoFechaDto>>($"/api/nominas/liquidaciones/{liqId}/sueldo-fechas");
+    public async Task<List<SueldoFechaDto>?> AgregarSueldoFechaAsync(int liqId, string fechaStr, decimal monto)
+        => await PostAsync<List<SueldoFechaDto>>($"/api/nominas/liquidaciones/{liqId}/sueldo-fechas", new { FechaStr = fechaStr, Monto = monto });
+    public async Task<List<SueldoFechaDto>?> BorrarSueldoFechaAsync(int id)
+        => await DeleteWithBodyAsync<List<SueldoFechaDto>>($"/api/nominas/sueldo-fechas/{id}");
+    public async Task<List<ProximoPagoDto>?> GetProximosPagosAsync(int dias = 7)
+        => await GetAsync<List<ProximoPagoDto>>($"/api/nominas/proximos-pagos?dias={dias}");
     /// <summary>2026-11-16: igual que CrearNomExtraAsync pero devuelve el id (para pagarlo enseguida desde "Nuevo pago").</summary>
     public async Task<NomExtraCreadoDto?> CrearNomExtraConIdAsync(object req) => await PostAsync<NomExtraCreadoDto>("/api/nominas/extras", req);
     public async Task EditarNomExtraAsync(int id, object req) => await PutAsync<object>($"/api/nominas/extras/{id}", req);

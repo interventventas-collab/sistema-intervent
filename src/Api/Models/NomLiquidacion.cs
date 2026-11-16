@@ -195,3 +195,21 @@ public class NomExtra
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
+
+/// <summary>
+/// 2026-11-16: fechas en que se piensa pagar el SUELDO del mes (en partes: "mañana $600.000, el
+/// sábado $600.000"). Lo pagado de sueldo se reparte por orden de fecha para saber qué parte falta.
+/// Salen en Sueldos ("cuándo se paga") y en "Pagos al equipo" del inicio.
+/// </summary>
+[Table("Nom_SueldoFechas")]
+public class NomSueldoFecha
+{
+    [Key]
+    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
+    public int Id { get; set; }
+    public int LiquidacionId { get; set; }
+    public DateTime Fecha { get; set; }
+    [Column(TypeName = "decimal(18,2)")]
+    public decimal Monto { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
