@@ -36,6 +36,12 @@
     .eqp-pill b { font-weight:700; }
     .eqp-pill.hoy { background:#fef3c7; border-color:#f59e0b; color:#92400e; }
     .eqp-pill.atr { background:#fee2e2; border-color:#ef4444; color:#991b1b; }
+    .eqp-cartel { display:inline-block; font-size:0.66rem; font-weight:800; letter-spacing:0.04em; padding:0 0.4rem; border-radius:4px; background:#1f2937; color:#fff; margin-right:0.15rem; }
+    .eqp-pill.hoy .eqp-cartel { background:#b45309; }
+    .eqp-pill.atr .eqp-cartel { background:#b91c1c; }
+    .eqp-pill.prox { background:#f0fdf4; border-color:#86efac; color:#166534; }
+    .eqp-pill.prox .eqp-cartel { background:#15803d; }
+    .eqp-prog { margin-left:0.5rem; font-size:0.72rem; font-weight:600; text-transform:none; letter-spacing:0; border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; border-radius:6px; padding:0.1rem 0.5rem; cursor:pointer; }
     .eqp-pill:hover { filter:brightness(0.96); }
     .eqp { margin:0.4rem 0 0.6rem; border:1px solid #e5e7eb; border-radius:8px; padding:0.5rem 0.75rem; }
     .eqp-tit { font-size:0.88rem; font-weight:700; margin-bottom:0.25rem; }
@@ -57,8 +63,28 @@
    horas extras, comisiones, feriados, plus, aguinaldo con fecha de pago). Reemplaza la columna "Hoy se le paga".
    Solo lo ve quien ve Sueldos. *@
 @{ var hayPagar = false; }
+@if (showProgramar)
+{
+    <div class="modal-overlay" @onclick="() => showProgramar = false">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 720px; max-height: 92vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h3>📅 Programar un pago</h3>
+                <button class="btn-close" @onclick="() => showProgramar = false">&times;</button>
+            </div>
+            <div class="modal-body">
+                <ProgramarPagoForm OnProgramado="RecargarPagos" />
+            </div>
+        </div>
+    </div>
+}
 <table class="eqt">
-    <tr><th>Quién</th><th>Estado</th><th class="col-ult">Último movimiento en el sistema</th><th>Entregas de hoy</th>@if (hayPagar) {<th>Hoy se le paga</th>}<th>Aviso</th></tr>
+    <tr><th>Quién</th><th>Estado</th><th class="col-ult">Último movimiento en el sistema</th><th>Entregas de hoy</th>@if (hayPagar) {<th>Hoy se le paga</th>}<th>Aviso
+        @if (puedeVerPagos)
+        {
+            @* 16/11: programar un pago (sueldo o concepto) para otro día → sale acá con 💰 MAÑANA / EN N DÍAS *@
+            <button type="button" class="eqp-prog" @onclick="() => showProgramar = true" title="Anotar que a alguien le hay que pagar tal día">📅 Programar pago</button>
+        }
+    </th></tr>
     @foreach (var e in Items)
     {
         var emp = e;
@@ -82,11 +108,13 @@
                         var lista = urg.Count > 0 ? urg : suyos.Take(1).ToList();
                         var primero = lista[0];
                         var atr = lista.Any(p => Web.Services.FechaPalabras.Atrasado(p.Fecha));
-                        var txt = urg.Count > 0 ? (atr ? "atrasado" : "hoy") : Web.Services.FechaPalabras.Cuando(primero.Fecha);
+                        // 16/11: cartelito corto para que se vayan preparando: HOY / MAÑANA / EN N DÍAS / ATRASADO
+                        var enDias = (primero.Fecha.Date - Web.Services.FechaPalabras.HoyAr).Days;
+                        var cartel = urg.Count > 0 ? (atr ? "ATRASADO" : "HOY") : enDias == 1 ? "MAÑANA" : $"EN {enDias} DÍAS";
                         var detalle = string.Join("\n", suyos.Select(p => $"{Cap(Web.Services.FechaPalabras.Cuando(p.Fecha))}: {NombreConcepto(p.Tipo)} ${p.Monto.ToString("N0", Es)}"));
                         <a class="eqp-pill @(urg.Count > 0 ? (atr ? "atr" : "hoy") : "prox")" href="@LinkPago(primero)" @onclick:stopPropagation="true"
                            title="@("Tocá para pagar\n" + detalle)">
-                            💲 <b>$@lista.Sum(p => p.Monto).ToString("N0", Es)</b> @txt · @string.Join(", ", lista.Select(p => NombreConcepto(p.Tipo)).Distinct())
+                            💰 <span class="eqp-cartel">@cartel</span> <b>$@lista.Sum(p => p.Monto).ToString("N0", Es)</b> · @string.Join(", ", lista.Select(p => NombreConcepto(p.Tipo)).Distinct())
                         </a>
                     }
                 </div>
@@ -196,6 +224,12 @@
 
     // 2026-11-16: próximos pagos al equipo
     private List<ProximoPagoDto> proximos = new();
+    private bool showProgramar;
+    private async Task RecargarPagos()
+    {
+        try { proximos = await Api.GetProximosPagosAsync(7) ?? new(); } catch { }
+        StateHasChanged();
+    }
     private bool puedeVerPagos;
     private bool permisoMirado;
     private static string Cap(string t) => string.IsNullOrEmpty(t) ? t : char.ToUpper(t[0]) + t[1..];
