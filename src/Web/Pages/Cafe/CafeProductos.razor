@@ -125,6 +125,18 @@
         }
         else
         {
+            @* 2026-11-16: "📋 Mandar al depósito" solo pone las casillas para tildar (sin prender la Edición). *@
+            @if (modoTildar && !modoEdicion)
+            {
+                <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center; padding:0.6rem 0.8rem; background:#f9fafb; border:1px solid #d1d5db; border-radius:6px; margin:0.5rem;">
+                    <span style="font-weight:700;">📋 Tildá los productos para mandar al depósito</span>
+                    <span style="color:#6b7280;">· @IdsTarea.Count tildado@(IdsTarea.Count == 1 ? "" : "s")</span>
+                    <span style="flex:1;"></span>
+                    <button class="btn btn-secondary" style="padding:0.2rem 0.6rem; font-size:0.8rem;" @onclick="LimpiarSeleccion" disabled="@(selProductos.Count == 0)">Sacar tildes</button>
+                    <button class="btn btn-secondary" @onclick="CancelarTildar">Cancelar</button>
+                    <button class="btn btn-primary" @onclick="AbrirMandarDeposito" disabled="@(IdsTarea.Count == 0)">📋 Mandar al depósito @IdsTarea.Count</button>
+                </div>
+            }
             @if (modoEdicion)
             {
                 <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; padding:0.6rem 0.7rem; background:#fef3c7; border:1px solid #f59e0b; border-radius:6px; margin:0.5rem;">
@@ -186,7 +198,7 @@
                 <table class="data-table">
                     <thead>
                         <tr>
-                            @if (modoEdicion)
+                            @if (modoEdicion || modoTildar)
                             {
                                 <th style="width:32px;">
                                     <input type="checkbox" @onchange="ToggleAllVisibles" checked="@TodosVisiblesSeleccionados" />
@@ -213,7 +225,7 @@
                             var capturado = p;
                             @* 26/10/2026: barrita al costado según el tipo (gris producto, violeta compuesto/pack). *@
                             <tr class="@(p.EsCompuestoFake ? "tipo-compuesto" : "tipo-producto")">
-                                @if (modoEdicion)
+                                @if (modoEdicion || modoTildar)
                                 {
                                     <td>
                                         <input type="checkbox"
@@ -1868,15 +1880,12 @@
     private List<int> IdsTarea => (productos ?? new()).Where(p => !p.EsCompuestoFake && selProductos.Contains(p.Id)).Select(p => p.Id).ToList();
     private void AbrirMandarDeposito()
     {
-        if (IdsTarea.Count == 0)
-        {
-            modoEdicion = true;
-            ToastService.Info("Tildá los productos que querés mandar y volvé a tocar 📋 Mandar al depósito.");
-            return;
-        }
+        if (IdsTarea.Count == 0) { modoTildar = true; return; }   // primero aparecen las casillas
         verMandarDeposito = true;
     }
-    private void TareaMandada() { verMandarDeposito = false; selProductos.Clear(); }
+    private bool modoTildar;
+    private void CancelarTildar() { modoTildar = false; selProductos.Clear(); }
+    private void TareaMandada() { verMandarDeposito = false; selProductos.Clear(); modoTildar = false; }
     private string bulkMarcaIdStr = "";
     private bool isBusyBulk;
 
