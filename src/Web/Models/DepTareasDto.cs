@@ -21,8 +21,18 @@ public record DepTareaCrearResultDto(bool Ok, int Id, int Items);
 public record DepTareaAceptarResultDto(bool Ok, int StockAntes, int StockDespues);
 public record DepTareaLinkDto(string Token);
 
-public record DepTareasResumenItemDto(string Titulo, string? Empleado, string Para);
-public record DepTareasResumenDto(int Pendientes, List<DepTareasResumenItemDto> Lista);
+public record DepTareasResumenItemDto(string Titulo, string? Empleado, string Para,
+    int Id = 0, string Tipo = "", string? Comentario = null, DateTime? CreatedAt = null, int Total = 0);
+// 2026-11-16: Nuevas = las que nadie empezó (cartel "TAREA NUEVA" en la pantalla del depósito)
+public record DepTareasResumenDto(int Pendientes, List<DepTareasResumenItemDto> Lista, List<DepTareasResumenItemDto>? Nuevas = null);
+
+// 2026-11-16: alquileres día por día para el depósito (GET /api/deposito-tareas/alquileres)
+public record AlqEquipoCantDto(string Nombre, int Cantidad);
+public record AlqReservaDepoDto(int Id, string Numero, string Cliente, string? Direccion, DateTime Entrega, DateTime Retiro,
+    string Estado, List<AlqEquipoCantDto> Equipos);
+public record AlqMovDepoDto(string Tipo, List<AlqEquipoCantDto> Equipos, List<int> Reservas);
+public record AlqDiaDepoDto(DateTime Fecha, List<AlqMovDepoDto> Movimientos);
+public record AlqDepoResDto(List<AlqDiaDepoDto> Dias, List<AlqReservaDepoDto> Reservas, int HoyYManiana);
 
 public record DepTareaNombrePendienteDto(int ItemId, int ProductoId, string? Sku, string NombreActual, string NombrePropuesto,
     string? PropuestoPor, DateTime? PropuestoAt);

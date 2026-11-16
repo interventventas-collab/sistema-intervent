@@ -276,7 +276,7 @@
                         <td>@tSel.Empleado</td>
                         <td class="dt-gris">@ParaTxt(tSel)</td>
                         <td style="white-space:nowrap;">
-                            @if (tSel.Tipo == "LIBRE")
+                            @if (tSel.Tipo is "LIBRE" or "ALQUILER")
                             {
                                 @(tSel.TerminadaAt is null ? "pendiente" : $"✓ {tSel.TerminadaPor}")
                             }
@@ -301,7 +301,7 @@
                             {
                                 <span class="dt-gris">todo coincide</span>
                             }
-                            @if (tSel.Tipo != "LIBRE" && tSel.Hechos > 0)
+                            @if (tSel.Tipo is not ("LIBRE" or "ALQUILER") && tSel.Hechos > 0)
                             {
                                 <text> · </text><button type="button" class="dt-link" @onclick="() => VerDetalle(tSel.Id)">@(abierta == tSel.Id ? "cerrar" : "ver")</button>
                             }
@@ -650,7 +650,8 @@
 
     private static string TipoCorto(string t) => t switch
     {
-        "CONTAR" => "contar", "UBICACION" => "dónde está", "BARCODE" => "código de barras", _ => "libre"
+        "CONTAR" => "contar", "UBICACION" => "dónde está", "BARCODE" => "código de barras",
+        "FOTOS" => "sacar fotos", "REVISAR" => "revisar estado", "OTRO" => "otra cosa", "ALQUILER" => "preparar alquiler", _ => "libre"
     };
 
     private static string ParaTxt(DepTareaDto t)

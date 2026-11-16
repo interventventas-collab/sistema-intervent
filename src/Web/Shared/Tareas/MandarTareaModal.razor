@@ -1,0 +1,150 @@
+@* 2026-11-16: "📋 Mandar al depósito". Pedido del dueño: "que el sistema me permita seleccionar cualquier
+   producto o varios y enviarle la tarea desde ahí mismo a depósito, con un mensaje aclarando lo que tienen
+   que hacer, y que me deje elegir si es arreglar el stock, fotos u otra tarea; además poder mandarles
+   alquileres a su pantalla". Lo usan Productos (tildados) y Alquileres → Reservas (un alquiler).
+   Les aparece el cartel "TAREA NUEVA" en el celu y en la PC del depósito. Ver DepositoTareasController. *@
+@inject ApiClient Api
+@inject ToastService Toast
+
+<style>
+    .mt-fondo { position:fixed; inset:0; background:rgba(17,24,39,0.45); z-index:1400; }
+    .mt-box { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:1401; background:#fff; border-radius:12px;
+              width:min(560px, calc(100vw - 32px)); max-height:calc(100vh - 40px); overflow-y:auto; padding:1.1rem 1.3rem 1.2rem;
+              box-shadow:0 12px 40px rgba(0,0,0,0.25); color:#111827; }
+    .mt-h { display:flex; justify-content:space-between; align-items:flex-start; gap:0.8rem; }
+    .mt-h h3 { margin:0; font-size:1.15rem; }
+    .mt-sub { font-size:0.85rem; color:#6b7280; margin-top:0.2rem; }
+    .mt-x { background:none; border:1px solid #d1d5db; border-radius:8px; padding:0.2rem 0.6rem; cursor:pointer; font-size:1rem; }
+    .mt-lbl { font-size:0.85rem; font-weight:700; margin:0.95rem 0 0.4rem; }
+    .mt-lbl span { font-weight:400; color:#6b7280; }
+    .mt-chips { display:flex; flex-wrap:wrap; gap:0.35rem; }
+    .mt-chip { border:1px solid #d1d5db; background:#fff; border-radius:999px; padding:0.35rem 0.8rem; font:inherit; font-size:0.88rem; cursor:pointer; color:#111827; }
+    .mt-chip.on { background:#111827; border-color:#111827; color:#fff; }
+    .mt-ayuda { font-size:0.8rem; color:#6b7280; margin-top:0.35rem; }
+    .mt-txt { width:100%; box-sizing:border-box; border:1px solid #d1d5db; border-radius:8px; padding:0.5rem 0.65rem; font:inherit; font-size:0.92rem; resize:vertical; }
+    .mt-pie { display:flex; justify-content:flex-end; gap:0.5rem; margin-top:1.1rem; }
+    .mt-b { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.5rem 1rem; font:inherit; font-weight:700; cursor:pointer; }
+    .mt-b.d { background:#111827; border-color:#111827; color:#fff; }
+    .mt-b:disabled { opacity:0.45; cursor:default; }
+    .mt-err { color:#b91c1c; font-size:0.85rem; margin-top:0.6rem; font-weight:600; }
+</style>
+
+<div class="mt-fondo" @onclick="Cerrar"></div>
+<div class="mt-box">
+    <div class="mt-h">
+        <div>
+            <h3>📋 Mandar al depósito</h3>
+            <div class="mt-sub">@Que</div>
+        </div>
+        <button type="button" class="mt-x" @onclick="Cerrar">✕</button>
+    </div>
+
+    @if (AlqReservaId is null)
+    {
+        <div class="mt-lbl">¿Qué tienen que hacer?</div>
+        <div class="mt-chips">
+            @foreach (var (cod, txt) in TiposProducto)
+            {
+                var c = cod;
+                <button type="button" class="mt-chip @(tipo == c ? "on" : "")" @onclick="() => tipo = c">@txt</button>
+            }
+        </div>
+        <div class="mt-ayuda">@Ayuda</div>
+    }
+
+    <div class="mt-lbl">¿Para quién?</div>
+    <div class="mt-chips">
+        <button type="button" class="mt-chip @(empleadoId is null ? "on" : "")" @onclick="() => empleadoId = null">Cualquiera</button>
+        @foreach (var e in empleados)
+        {
+            var eSel = e;
+            <button type="button" class="mt-chip @(empleadoId == eSel.Id ? "on" : "")" @onclick="() => empleadoId = eSel.Id">@eSel.Nombre</button>
+        }
+    </div>
+
+    <div class="mt-lbl">Mensaje <span>@(tipo == "OTRO" && AlqReservaId is null ? "(contales qué tienen que hacer)" : "(opcional)")</span></div>
+    <textarea class="mt-txt" rows="3" maxlength="1000" @bind="mensaje" @bind:event="oninput"
+              placeholder="@(AlqReservaId is null ? "Ej: fíjense que hay una caja abierta atrás, cuéntenla también" : "Ej: las sillas que estén limpias, revisar las patas")"></textarea>
+
+    <div class="mt-lbl">¿Para cuándo?</div>
+    <div class="mt-chips">
+        @foreach (var (cod, txt) in new[] { ("HOY", "Hoy"), ("SEMANA", "Esta semana"), ("SIN_APURO", "Sin apuro") })
+        {
+            var c = cod;
+            <button type="button" class="mt-chip @(para == c ? "on" : "")" @onclick="() => para = c">@txt</button>
+        }
+    </div>
+
+    @if (error is not null) { <div class="mt-err">@error</div> }
+
+    <div class="mt-pie">
+        <button type="button" class="mt-b" @onclick="Cerrar">Cancelar</button>
+        <button type="button" class="mt-b d" disabled="@(!PuedeMandar || mandando)" @onclick="Mandar">@(mandando ? "Mandando…" : "Mandar")</button>
+    </div>
+</div>
+
+@code {
+    /// <summary>Productos tildados (tarea de productos).</summary>
+    [Parameter] public List<int> ProductoIds { get; set; } = new();
+    /// <summary>Si viene, la tarea es "Preparar alquiler" de esa reserva.</summary>
+    [Parameter] public int? AlqReservaId { get; set; }
+    [Parameter] public string? AlqNumero { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+    [Parameter] public EventCallback OnMandada { get; set; }
+
+    private static readonly (string, string)[] TiposProducto =
+    {
+        ("CONTAR", "🔢 Contar / arreglar stock"), ("FOTOS", "📷 Sacar fotos"), ("UBICACION", "📍 Dónde está"),
+        ("BARCODE", "🏷 Código de barras"), ("REVISAR", "🧹 Revisar estado / vencimiento"), ("OTRO", "✏ Otra cosa"),
+    };
+
+    private List<DepTareaEmpleadoDto> empleados = new();
+    private string tipo = "CONTAR";
+    private int? empleadoId;
+    private string mensaje = "";
+    private string para = "HOY";
+    private bool mandando;
+    private string? error;
+
+    private string Que => AlqReservaId is not null
+        ? $"Preparar el alquiler {AlqNumero}: les aparece con lo que lleva, para ir tildando."
+        : ProductoIds.Count == 1 ? "1 producto" : $"{ProductoIds.Count} productos";
+
+    private string Ayuda => tipo switch
+    {
+        "CONTAR" => "Cuentan sin ver lo que dice el sistema y el stock queda arreglado en el momento (y en MercadoLibre).",
+        "FOTOS" => "Sacan la foto con el celu. Te llega para aprobar; no toca MercadoLibre.",
+        "UBICACION" => "Cargan en qué planta y zona está.",
+        "BARCODE" => "Cargan el número del código de barras.",
+        "REVISAR" => "Miran cada producto y lo marcan hecho, con una nota si encuentran algo (ej: vence en diciembre).",
+        _ => "Hacen lo que digas en el mensaje con cada producto y lo marcan hecho (pueden dejar una nota).",
+    };
+
+    private bool PuedeMandar => AlqReservaId is not null
+        || (ProductoIds.Count > 0 && (tipo != "OTRO" || !string.IsNullOrWhiteSpace(mensaje)));
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { empleados = await Api.GetDepTareasEmpleadosAsync() ?? new(); } catch { }
+    }
+
+    private Task Cerrar() => OnCerrar.InvokeAsync();
+
+    private async Task Mandar()
+    {
+        mandando = true;
+        error = null;
+        try
+        {
+            var t = AlqReservaId is not null ? "ALQUILER" : tipo;
+            var msj = string.IsNullOrWhiteSpace(mensaje) ? null : mensaje.Trim();
+            var r = await Api.CrearDepTareaAsync(t, null, msj, empleadoId, para, AlqReservaId is null ? ProductoIds : new(), AlqReservaId);
+            if (r is null) { error = "No se pudo mandar. Probá de nuevo."; return; }
+            var quien = empleadoId is int id ? empleados.FirstOrDefault(e => e.Id == id)?.Nombre ?? "" : "cualquiera del depósito";
+            Toast.Success(AlqReservaId is not null ? $"Listo, le llegó a {quien}." : $"Listo: {r.Items} producto{(r.Items == 1 ? "" : "s")} para {quien}.");
+            await OnMandada.InvokeAsync();
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { mandando = false; }
+    }
+}

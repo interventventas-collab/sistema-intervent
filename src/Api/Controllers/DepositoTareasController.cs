@@ -39,7 +39,9 @@ public class DepositoTareasController : ControllerBase
 
     private string Usuario => User.Identity?.Name ?? "?";
 
-    public static readonly string[] Tipos = { "CONTAR", "UBICACION", "BARCODE", "LIBRE" };
+    // 2026-11-16: + FOTOS (sacar foto, la aprueba el dueño), REVISAR (estado / vencimiento), OTRO (lo que diga
+    // el mensaje, de a un producto) y ALQUILER (preparar una reserva de alquiler, sin productos).
+    public static readonly string[] Tipos = { "CONTAR", "UBICACION", "BARCODE", "LIBRE", "FOTOS", "REVISAR", "OTRO", "ALQUILER" };
     public static readonly string[] Paras = { "HOY", "SEMANA", "SIN_APURO" };
 
     // Movimientos que son "alguien tocó el stock a mano" (no ventas ni MeLi).
@@ -224,7 +226,7 @@ public class DepositoTareasController : ControllerBase
         }));
     }
 
-    public record CrearRequest(string Tipo, string? Titulo, string? Comentario, int? EmpleadoId, string? Para, List<int>? ProductoIds);
+    public record CrearRequest(string Tipo, string? Titulo, string? Comentario, int? EmpleadoId, string? Para, List<int>? ProductoIds, int? AlqReservaId = null);
 
     [HttpPost]
     public async Task<IActionResult> Crear([FromBody] CrearRequest req)
@@ -235,16 +237,30 @@ public class DepositoTareasController : ControllerBase
         var ids = (req.ProductoIds ?? new()).Distinct().ToList();
         var titulo = (req.Titulo ?? "").Trim();
 
+        int? alqId = null;
+        var comentario = (req.Comentario ?? "").Trim();
         if (tipo == "LIBRE")
         {
             if (titulo.Length == 0) return BadRequest(new { error = "Escribí qué tienen que hacer." });
             ids.Clear();
         }
+        else if (tipo == "ALQUILER")
+        {
+            // 2026-11-16: "mandarles un alquiler a su pantalla". Lo que lleva se lee de la reserva al abrirla.
+            var res = await _db.AlqReservas.AsNoTracking().Where(r => r.Id == req.AlqReservaId)
+                .Select(r => new { r.Id, r.Numero }).FirstOrDefaultAsync();
+            if (res is null) return BadRequest(new { error = "No encontré ese alquiler." });
+            alqId = res.Id;
+            ids.Clear();
+            if (titulo.Length == 0) titulo = $"Preparar alquiler {res.Numero}";
+        }
         else
         {
+            if (tipo == "OTRO" && titulo.Length == 0 && comentario.Length == 0)
+                return BadRequest(new { error = "Escribí en el mensaje qué tienen que hacer." });
             if (ids.Count == 0) return BadRequest(new { error = "No elegiste ningún producto." });
             if (ids.Count > 500) return BadRequest(new { error = "Son demasiados productos para una sola tarea (máximo 500)." });
-            if (titulo.Length == 0) titulo = TituloPorDefecto(tipo);
+            if (titulo.Length == 0) titulo = tipo == "OTRO" ? (comentario.Length > 60 ? comentario[..60] + "…" : comentario) : TituloPorDefecto(tipo);
         }
 
         if (req.EmpleadoId is int eid && !await _db.NomEmpleados.AnyAsync(e => e.Id == eid && e.IsActive))
@@ -258,7 +274,8 @@ public class DepositoTareasController : ControllerBase
             EmpleadoId = req.EmpleadoId,
             Para = para,
             CreatedAt = DateTime.UtcNow,
-            CreatedBy = Usuario
+            CreatedBy = Usuario,
+            AlqReservaId = alqId
         };
         _db.DepTareas.Add(t);
         await _db.SaveChangesAsync();
@@ -334,6 +351,8 @@ public class DepositoTareasController : ControllerBase
         "CONTAR" => "Contar stock",
         "UBICACION" => "Cargar dónde está",
         "BARCODE" => "Cargar código de barras",
+        "FOTOS" => "Sacar fotos",
+        "REVISAR" => "Revisar estado / vencimiento",
         _ => "Tarea"
     };
 
@@ -400,18 +419,27 @@ public class DepositoTareasController : ControllerBase
         var tareas = await _db.DepTareas.AsNoTracking()
             .Where(t => t.CanceladaAt == null && t.TerminadaAt == null)
             .OrderBy(t => t.Para == "HOY" ? 0 : t.Para == "SEMANA" ? 1 : 2).ThenBy(t => t.CreatedAt)
-            .Select(t => new { t.Titulo, t.EmpleadoId, t.Para })
+            .Select(t => new { t.Id, t.Tipo, t.Titulo, t.Comentario, t.EmpleadoId, t.Para, t.CreatedAt })
             .ToListAsync();
         var emps = await _db.NomEmpleados.AsNoTracking().ToDictionaryAsync(e => e.Id, e => NombreCorto(e.Nombre));
+        // 2026-11-16: las que nadie empezó todavía → cartel "TAREA NUEVA" en la pantalla del depósito
+        var ids = tareas.Select(t => t.Id).ToList();
+        var empezadas = await _db.DepTareaItems.AsNoTracking().Where(i => ids.Contains(i.TareaId) && i.HechoAt != null)
+            .Select(i => i.TareaId).Distinct().ToListAsync();
+        var totales = await _db.DepTareaItems.AsNoTracking().Where(i => ids.Contains(i.TareaId))
+            .GroupBy(i => i.TareaId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N);
+        object Fila(int id, string tipo, string titulo, string? comentario, int? empleadoId, string para, DateTime createdAt) => new
+        {
+            id, tipo, titulo, comentario,
+            empleado = empleadoId is int e && emps.TryGetValue(e, out var n) ? n : null,
+            para, createdAt,
+            total = totales.TryGetValue(id, out var tot) ? tot : 0
+        };
         return Ok(new
         {
             pendientes = tareas.Count,
-            lista = tareas.Take(5).Select(t => new
-            {
-                titulo = t.Titulo,
-                empleado = t.EmpleadoId is int e && emps.TryGetValue(e, out var n) ? n : null,
-                para = t.Para
-            })
+            lista = tareas.Take(5).Select(t => Fila(t.Id, t.Tipo, t.Titulo, t.Comentario, t.EmpleadoId, t.Para, t.CreatedAt)),
+            nuevas = tareas.Where(t => !empezadas.Contains(t.Id)).OrderByDescending(t => t.CreatedAt).Take(5).Select(t => Fila(t.Id, t.Tipo, t.Titulo, t.Comentario, t.EmpleadoId, t.Para, t.CreatedAt))
         });
     }
 
@@ -582,6 +610,7 @@ public class DepositoTareasController : ControllerBase
                     comentario = t.Comentario,
                     para = t.Para,
                     paraTodos = t.EmpleadoId == null,
+                    createdAt = t.CreatedAt,
                     total = s?.Total ?? 0,
                     hechos = s?.Hechos ?? 0,
                     terminadaAt = t.TerminadaAt,
@@ -635,6 +664,8 @@ public class DepositoTareasController : ControllerBase
         var zonas = await _db.CafeUbicacionZonas.AsNoTracking().OrderBy(z => z.Planta).ThenBy(z => z.Codigo)
             .Select(z => new { planta = z.Planta, codigo = z.Codigo, nombre = z.Nombre }).ToListAsync();
 
+        var alquiler = t.AlqReservaId is int rid ? (await AlquileresAsync(null, null, rid)).Reservas.FirstOrDefault() : null;
+
         return Ok(new
         {
             id = t.Id,
@@ -642,6 +673,7 @@ public class DepositoTareasController : ControllerBase
             titulo = t.Titulo,
             comentario = t.Comentario,
             terminada = t.TerminadaAt != null,
+            alquiler,
             items = items.Select(i => new
             {
                 i.id, i.sku, i.nombre, i.barcode, i.hecho, i.contado, i.noEncontrado, i.valor, i.hechoPor, i.hechoAt,
@@ -663,7 +695,7 @@ public class DepositoTareasController : ControllerBase
         });
     }
 
-    public record CeluItemRequest(int? Contado, bool NoEncontrado, string? Planta, string? Zona, string? Barcode, bool Confirmado = false);
+    public record CeluItemRequest(int? Contado, bool NoEncontrado, string? Planta, string? Zona, string? Barcode, bool Confirmado = false, string? Nota = null);
 
     /// <summary>Guarda lo que hicieron con un producto. CONTAR: solo anota (el stock no cambia).
     /// UBICACION y BARCODE: se cargan directo en el producto.</summary>
@@ -761,6 +793,21 @@ public class DepositoTareasController : ControllerBase
                     prod.Barcode = bc;
                     prod.UpdatedAt = DateTime.UtcNow;
                     it.Valor = bc;
+                    break;
+                }
+                case "FOTOS":
+                    // 2026-11-16: la foto la mandan con 📷 (queda "en revisión" hasta que el dueño la aprueba);
+                    // el producto se da por hecho recién cuando ya hay una foto mandada.
+                    if (it.FotoPropuestaArchivo is null && it.FotoRevision != "APROBADA")
+                        return BadRequest(new { error = "Primero sacá la foto." });
+                    it.Valor = "📷 foto mandada";
+                    break;
+                case "REVISAR":
+                case "OTRO":
+                {
+                    // 2026-11-16: "✓ Hecho" con una nota opcional (ej: "2 vencen en diciembre").
+                    var nota = (req.Nota ?? "").Trim();
+                    it.Valor = nota.Length == 0 ? "✓ hecho" : (nota.Length > 100 ? nota[..100] : nota);
                     break;
                 }
             }
@@ -1208,6 +1255,85 @@ public class DepositoTareasController : ControllerBase
         t.TerminadaAt = DateTime.UtcNow;
         t.TerminadaPor = quien;
         await _db.SaveChangesAsync();
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    // ALQUILERES en la pantalla del depósito (2026-11-16)
+    // ════════════════════════════════════════════════════════════════════
+    // Pedido del dueño: "necesito poder mandarles alquileres a su pantalla o bien que puedan visualizar
+    // cantidades de cada cosa cada día". Día por día: qué SALE (entrega) y qué VUELVE (retiro), con las
+    // cantidades sumadas por equipo. Sin precios ni plata. Solo equipos del catálogo (los renglones
+    // escritos a mano, tipo "Flete Morón", no son cosas que se preparen).
+
+    public record AlqEquipoCant(string Nombre, int Cantidad);
+    public record AlqReservaDepo(int Id, string Numero, string Cliente, string? Direccion, DateTime Entrega, DateTime Retiro,
+        string Estado, List<AlqEquipoCant> Equipos);
+    public record AlqMovDepo(string Tipo, List<AlqEquipoCant> Equipos, List<int> Reservas);
+    public record AlqDiaDepo(DateTime Fecha, List<AlqMovDepo> Movimientos);
+    public record AlqDepoRes(List<AlqDiaDepo> Dias, List<AlqReservaDepo> Reservas, int HoyYManiana);
+
+    /// <summary>Con <paramref name="soloReservaId"/>: solo esa reserva (para la tarea "Preparar alquiler").</summary>
+    private async Task<AlqDepoRes> AlquileresAsync(DateTime? desde, int? dias, int? soloReservaId = null)
+    {
+        // sin "Z" al mandarla: si no, el navegador la pasa a su hora y en Argentina quedaba el día anterior
+        var hoy = DateTime.SpecifyKind((desde ?? DateTime.UtcNow.AddHours(-3)).Date, DateTimeKind.Unspecified);
+        var hasta = hoy.AddDays(Math.Clamp(dias ?? 10, 1, 31) - 1);
+        var q = _db.AlqReservas.AsNoTracking();
+        q = soloReservaId is int rid
+            ? q.Where(r => r.Id == rid)
+            : q.Where(r => (r.Estado == "reservado" || r.Estado == "entregado")
+                && ((r.FechaEntrega >= hoy && r.FechaEntrega <= hasta) || (r.FechaRetiro >= hoy && r.FechaRetiro <= hasta)));
+        var reservas = await q.OrderBy(r => r.FechaEntrega).ThenBy(r => r.Numero)
+            .Select(r => new
+            {
+                r.Id, r.Numero, r.FechaEntrega, r.FechaRetiro, r.Estado, r.DireccionEvento,
+                Cliente = r.ClienteNav != null ? r.ClienteNav.Nombre : ""
+            }).ToListAsync();
+        var ids = reservas.Select(r => r.Id).ToList();
+        var items = await (from i in _db.AlqReservaItems.AsNoTracking()
+                           join e in _db.AlqEquipos.AsNoTracking() on i.EquipoId equals e.Id
+                           where ids.Contains(i.ReservaId) && i.Cantidad > 0
+                           select new { i.ReservaId, e.Id, e.Nombre, i.Cantidad }).ToListAsync();
+
+        var lista = reservas.Select(r => new AlqReservaDepo(r.Id, r.Numero, r.Cliente, r.DireccionEvento, r.FechaEntrega.Date, r.FechaRetiro.Date, r.Estado,
+            items.Where(i => i.ReservaId == r.Id).GroupBy(i => i.Nombre).Select(g => new AlqEquipoCant(g.Key, g.Sum(x => x.Cantidad)))
+                .OrderByDescending(x => x.Cantidad).ToList())).ToList();
+
+        List<AlqEquipoCant> Sumar(IEnumerable<AlqReservaDepo> rs) => rs.SelectMany(r => r.Equipos)
+            .GroupBy(e => e.Nombre).Select(g => new AlqEquipoCant(g.Key, g.Sum(x => x.Cantidad)))
+            .OrderByDescending(x => x.Cantidad).ToList();
+
+        var diasRes = new List<AlqDiaDepo>();
+        if (soloReservaId is null)
+        {
+            for (var d = hoy; d <= hasta; d = d.AddDays(1))
+            {
+                var movs = new List<AlqMovDepo>();
+                // SALE: lo que se entrega ese día (si ya figura entregado igual se muestra: ya salió)
+                var salen = lista.Where(r => r.Entrega == d).ToList();
+                if (salen.Count > 0) movs.Add(new AlqMovDepo("SALE", Sumar(salen), salen.Select(r => r.Id).ToList()));
+                var vuelven = lista.Where(r => r.Retiro == d).ToList();
+                if (vuelven.Count > 0) movs.Add(new AlqMovDepo("VUELVE", Sumar(vuelven), vuelven.Select(r => r.Id).ToList()));
+                if (movs.Count > 0) diasRes.Add(new AlqDiaDepo(d, movs));
+            }
+        }
+        var maniana = hoy.AddDays(1);
+        var hm = lista.Count(r => r.Entrega == hoy || r.Entrega == maniana || r.Retiro == hoy || r.Retiro == maniana);
+        return new AlqDepoRes(diasRes, lista, hm);
+    }
+
+    /// <summary>Compu (pantalla del depósito y oficina).</summary>
+    [HttpGet("alquileres")]
+    public async Task<IActionResult> Alquileres([FromQuery] int? dias = null) => Ok(await AlquileresAsync(null, dias));
+
+    /// <summary>Celu (link del empleado).</summary>
+    [HttpGet("celu/{token}/alquileres")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CeluAlquileres(string token, [FromQuery] int? dias = null)
+    {
+        var emp = await EmpleadoDelTokenAsync(token);
+        if (emp is null) return NotFound();
+        return Ok(await AlquileresAsync(null, dias));
     }
 
     /// <summary>"Alexis madotta" → "Alexis"; "Osmar Leandro palanica jamkowy" → "Osmar".</summary>

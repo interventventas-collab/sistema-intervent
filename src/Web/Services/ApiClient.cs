@@ -3853,8 +3853,12 @@ public class ApiClient
     public async Task<List<DepTareaCandidatoDto>?> GetDepTareasCandidatosAsync(string fuente, string tipo, string? q = null)
         => await GetAsync<List<DepTareaCandidatoDto>>($"/api/deposito-tareas/candidatos?fuente={fuente}&tipo={tipo}&q={Uri.EscapeDataString(q ?? "")}");
 
-    public async Task<DepTareaCrearResultDto?> CrearDepTareaAsync(string tipo, string? titulo, string? comentario, int? empleadoId, string para, List<int> productoIds)
-        => await PostAsync<DepTareaCrearResultDto>("/api/deposito-tareas", new { tipo, titulo, comentario, empleadoId, para, productoIds });
+    public async Task<DepTareaCrearResultDto?> CrearDepTareaAsync(string tipo, string? titulo, string? comentario, int? empleadoId, string para, List<int> productoIds, int? alqReservaId = null)
+        => await PostAsync<DepTareaCrearResultDto>("/api/deposito-tareas", new { tipo, titulo, comentario, empleadoId, para, productoIds, alqReservaId });
+
+    // 2026-11-16: alquileres día por día (pantalla del depósito)
+    public async Task<AlqDepoResDto?> GetDepAlquileresAsync(int dias = 10)
+        => await GetAsync<AlqDepoResDto>($"/api/deposito-tareas/alquileres?dias={dias}");
 
     public async Task<List<DepTareaDto>?> GetDepTareasAsync(string estado)
         => await GetAsync<List<DepTareaDto>>($"/api/deposito-tareas?estado={estado}");

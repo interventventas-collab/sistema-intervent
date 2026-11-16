@@ -55,6 +55,17 @@
     .tc-zoom { position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:1700; display:flex; align-items:center; justify-content:center; }
     .tc-zoom img { max-width:96vw; max-height:90vh; }
     .tc-mini { background:none; border:none; padding:0.3rem 0; color:#374151; text-decoration:underline; cursor:pointer; font:inherit; font-size:0.85rem; margin-right:1rem; }
+    /* 2026-11-16: cartel "TAREA NUEVA" (nadie la empezó) y el mensaje del dueño bien grande */
+    .tc-nueva { display:block; width:100%; text-align:left; background:#fff7d6; border:2px solid #e0a800; border-radius:12px; padding:0.85rem 0.95rem; margin-bottom:0.6rem; cursor:pointer; font-family:inherit; color:#111827; }
+    .tc-nueva-h { font-size:1.15rem; font-weight:800; }
+    .tc-msj { background:#fff; border-radius:8px; padding:0.55rem 0.7rem; margin:0.5rem 0 0.2rem; font-size:1rem; line-height:1.35; white-space:pre-wrap; }
+    .tc-msj-grande { background:#fff7d6; border:2px solid #e0a800; border-radius:12px; padding:0.75rem 0.9rem; margin-bottom:0.6rem; font-size:1.05rem; line-height:1.4; white-space:pre-wrap; }
+    .tc-empezar { display:block; width:100%; margin-top:0.55rem; background:#111827; color:#fff; border-radius:9px; padding:0.6rem; text-align:center; font-weight:800; }
+    .tc-alq-it { display:flex; gap:0.7rem; align-items:center; padding:0.6rem 0; border-bottom:1px solid #f3f4f6; font-size:1.05rem; cursor:pointer; }
+    .tc-alq-it:last-child { border-bottom:none; }
+    .tc-alq-it span.c { width:1.6rem; height:1.6rem; border:2px solid #9ca3af; border-radius:6px; display:inline-flex; align-items:center; justify-content:center; font-weight:800; flex-shrink:0; }
+    .tc-alq-it.ok span.c { background:#111827; border-color:#111827; color:#fff; }
+    .tc-alq-it.ok b { text-decoration:line-through; color:#6b7280; }
     @((MarkupString)TareasNivel.Css)
 </style>
 
@@ -67,7 +78,22 @@
     {
         <div class="tc-m" style="margin:0 0.2rem 0.8rem;">No tenés tareas pendientes. 👌</div>
     }
-    @foreach (var t in pend)
+    @foreach (var t in pend.Where(x => x.Hechos == 0))
+    {
+        var tSel = t;
+        <button type="button" class="tc-nueva" @onclick="() => Abrir(tSel.Id)">
+            <div class="tc-nueva-h">📋 TAREA NUEVA</div>
+            <div class="tc-m" style="color:#374151;">
+                @if (t.Para == "HOY") { <span class="tc-urg">Para hoy</span> }
+                else { @(t.Para == "SEMANA" ? "Esta semana" : "Sin apuro") }
+                @(t.ParaTodos ? " · para cualquiera" : "")@(t.CreatedAt is DateTime ca ? $" · {ca.AddHours(-3):dd/MM HH:mm}" : "")
+            </div>
+            <div class="tc-t" style="margin-top:0.35rem;">@IconoTipo(t.Tipo) @t.Titulo@(SinProductos(t.Tipo) ? "" : $" — {t.Total} producto{(t.Total == 1 ? "" : "s")}")</div>
+            @if (!string.IsNullOrWhiteSpace(t.Comentario)) { <div class="tc-msj">💬 @t.Comentario</div> }
+            <span class="tc-empezar">Empezar</span>
+        </button>
+    }
+    @foreach (var t in pend.Where(x => x.Hechos > 0))
     {
         var tSel = t;
         <button type="button" class="tc-card" @onclick="() => Abrir(tSel.Id)">
@@ -75,11 +101,11 @@
             <div class="tc-m">
                 @if (t.Para == "HOY") { <span class="tc-urg">Para hoy</span> }
                 else { @(t.Para == "SEMANA" ? "Esta semana" : "Sin apuro") }
-                @if (t.Tipo == "LIBRE") { @(string.IsNullOrWhiteSpace(t.Comentario) ? "" : $" · {t.Comentario}") }
+                @if (SinProductos(t.Tipo)) { @(string.IsNullOrWhiteSpace(t.Comentario) ? "" : $" · {t.Comentario}") }
                 else { <text> · @t.Hechos de @t.Total</text> }
                 @if (t.ParaTodos) { <text> · para cualquiera</text> }
             </div>
-            @if (t.Tipo != "LIBRE")
+            @if (!SinProductos(t.Tipo))
             {
                 <div class="tc-bar"><i style="width:@(t.Total == 0 ? 0 : t.Hechos * 100 / t.Total)%"></i></div>
             }
@@ -92,7 +118,7 @@
         {
             <div class="tc-card" style="cursor:default;">
                 <div class="tc-done">@t.Titulo</div>
-                <div class="tc-m tc-ok">✓ @(t.Tipo == "LIBRE" ? "" : $"{t.Hechos} de {t.Total} · ")@t.TerminadaPor · @t.TerminadaAt!.Value.AddHours(-3).ToString("HH:mm")</div>
+                <div class="tc-m tc-ok">✓ @(SinProductos(t.Tipo) ? "" : $"{t.Hechos} de {t.Total} · ")@t.TerminadaPor · @t.TerminadaAt!.Value.AddHours(-3).ToString("HH:mm")</div>
             </div>
         }
     }
@@ -102,6 +128,8 @@ else if (error && !Embebido)
 {
     <div class="tc-m">No pudimos cargar las tareas. <button type="button" class="tc-btn" @onclick="Cargar">🔄 Reintentar</button></div>
 }
+@* 2026-11-16: alquileres día por día (qué sale y qué vuelve, con cantidades) *@
+<AlquileresDias Token="@Token" Plegable="true" AbiertoAlInicio="@(!Embebido)" />
 
 @if (tarea is not null)
 {
@@ -113,10 +141,34 @@ else if (error && !Embebido)
             </div>
             @if (!string.IsNullOrWhiteSpace(tarea.Comentario))
             {
-                <div class="tc-box" style="font-size:0.92rem;">💬 @tarea.Comentario</div>
+                <div class="tc-msj-grande">💬 @tarea.Comentario</div>
             }
 
-            @if (tarea.Tipo == "LIBRE")
+            @if (tarea.Tipo == "ALQUILER" && tarea.Alquiler is { } al)
+            {
+                <div class="tc-box">
+                    <div class="tc-m">@al.Cliente · sale @al.Entrega.ToString("dd/MM") · vuelve @al.Retiro.ToString("dd/MM")</div>
+                    @if (!string.IsNullOrWhiteSpace(al.Direccion)) { <div class="tc-m">📍 @al.Direccion</div> }
+                    <div class="tc-lab">Tocá cada cosa a medida que la preparás:</div>
+                    @foreach (var e in al.Equipos)
+                    {
+                        var eSel = e.Nombre;
+                        <div class="tc-alq-it @(tildadosAlq.Contains(eSel) ? "ok" : "")" @onclick="() => TildarAlq(eSel)">
+                            <span class="c">@(tildadosAlq.Contains(eSel) ? "✓" : "")</span>
+                            <b>@e.Cantidad @AlquileresDias.Corto(e.Nombre)</b>
+                        </div>
+                    }
+                </div>
+                @if (tarea.Terminada)
+                {
+                    <div class="tc-fin"><div>✅</div><div class="tc-t">Ya está armado</div></div>
+                }
+                else
+                {
+                    <button type="button" class="tc-btn dark tc-big" disabled="@guardando" @onclick="Listo">✓ Listo, está armado</button>
+                }
+            }
+            else if (SinProductos(tarea.Tipo))
             {
                 @if (tarea.Terminada)
                 {
@@ -196,6 +248,23 @@ else if (error && !Embebido)
                         case "BARCODE":
                             <div class="tc-lab">Escribí el número que está abajo de las rayitas del código de barras.</div>
                             <input class="tc-input" inputmode="numeric" placeholder="Ej: 7790733001018" @bind="barcode" @bind:event="oninput" maxlength="40" />
+                            break;
+                        case "FOTOS":
+                            @if (it.FotoPropuesta is not null)
+                            {
+                                <div class="tc-lab">✓ Foto mandada. Si salió mal, sacá otra.</div>
+                            }
+                            else
+                            {
+                                <div class="tc-lab">Sacale una foto al producto: de frente, con buena luz y que se vea entero.</div>
+                            }
+                            <span class="tc-btn dark tc-big tc-camgrande">@(subiendoFoto ? "Mandando…" : it.FotoPropuesta is null ? "📷 Sacar la foto" : "📷 Sacar otra")
+                                <InputFile OnChange="SubirFotoPedida" accept="image/*" capture="environment" disabled="@subiendoFoto" /></span>
+                            break;
+                        case "REVISAR":
+                        case "OTRO":
+                            <div class="tc-lab">@(tarea.Tipo == "REVISAR" ? "Fijate cómo está (roto, sucio, vencido, cuándo vence…)." : "Hacé lo que dice el mensaje.") ¿Algo para avisar? <span style="color:#9ca3af;">(opcional)</span></div>
+                            <input class="tc-input" placeholder="@(tarea.Tipo == "REVISAR" ? "Ej: 2 vencen en diciembre" : "Ej: ya está")" @bind="nota" @bind:event="oninput" maxlength="100" />
                             break;
                     }
                     @if (errorItem is not null) { <div class="tc-err">@errorItem</div> }
@@ -319,7 +388,7 @@ else if (error && !Embebido)
     /// <summary>Tarea para abrir al entrar (QR de la PC del depósito).</summary>
     [Parameter] public int? AbrirAl { get; set; }
 
-    private record TareaRes(int Id, string Tipo, string Titulo, string? Comentario, string Para, bool ParaTodos, int Total, int Hechos, DateTime? TerminadaAt, string? TerminadaPor);
+    private record TareaRes(int Id, string Tipo, string Titulo, string? Comentario, string Para, bool ParaTodos, int Total, int Hechos, DateTime? TerminadaAt, string? TerminadaPor, DateTime? CreatedAt = null);
     private record InicioRes(string Nombre, List<TareaRes> Tareas);
     private record ItemRes(int Id, string? Sku, string Nombre, string? Barcode, bool Hecho, int? Contado, bool NoEncontrado, string? Valor, string? Lugar,
         string? NombreSugerido, string? NombreRevision, string? Planta, string? Zona, string? Foto, bool FotoPropia,
@@ -329,7 +398,19 @@ else if (error && !Embebido)
     private string? fotoMotivo, fotoLink;
     private record PlantaRes(string Codigo, string Nombre);
     private record ZonaRes(string Planta, string Codigo, string? Nombre);
-    private record DetalleRes(int Id, string Tipo, string Titulo, string? Comentario, bool Terminada, List<ItemRes> Items, List<PlantaRes> Plantas, List<ZonaRes>? Zonas);
+    private record DetalleRes(int Id, string Tipo, string Titulo, string? Comentario, bool Terminada, List<ItemRes> Items, List<PlantaRes> Plantas, List<ZonaRes>? Zonas,
+        AlqReservaDepoDto? Alquiler = null);
+
+    /// <summary>Tareas sin productos: se terminan con "✓ Listo".</summary>
+    public static bool SinProductos(string tipo) => tipo is "LIBRE" or "ALQUILER";
+    public static string IconoTipo(string tipo) => tipo switch
+    {
+        "CONTAR" => "🔢", "FOTOS" => "📷", "UBICACION" => "📍", "BARCODE" => "🏷", "REVISAR" => "🧹", "ALQUILER" => "🪑", _ => "✏",
+    };
+    private string nota = "";
+    // ALQUILER: lo que ya prepararon (solo en este celu, es para ir tildando)
+    private readonly HashSet<string> tildadosAlq = new();
+    private void TildarAlq(string n) { if (!tildadosAlq.Remove(n)) tildadosAlq.Add(n); }
     private record GuardarRes(bool Ok, bool Terminada, int? StockAntes, int? StockDespues, int Apartados, bool Confirmar);
     private record Confirmacion(int Antes, int Despues, int Apartados);
     private Confirmacion? confirmar;     // mucha diferencia: esperando "Sí, guardar" / "Vuelvo a contar"
@@ -373,6 +454,7 @@ else if (error && !Embebido)
         {
             tarea = await Http.GetFromJsonAsync<DetalleRes>($"api/deposito-tareas/celu/{Token}/tarea/{id}");
             ultimoArreglo = null;
+            tildadosAlq.Clear();
             salteados.Clear();
             elegido = null;
             PrepararItem();
@@ -397,6 +479,7 @@ else if (error && !Embebido)
         errorItem = null;
         numero = it?.Hecho == true && it.Contado is int c ? c.ToString() : "";
         barcode = it?.Hecho == true && tarea?.Tipo == "BARCODE" ? it.Valor : null;
+        nota = it?.Hecho == true && tarea?.Tipo is "REVISAR" or "OTRO" && it.Valor != "✓ hecho" ? it.Valor ?? "" : "";
         planta = null; zona = null;
         confirmar = null;
         verLugar = false; verNombre = false; verFoto = false;
@@ -425,6 +508,8 @@ else if (error && !Embebido)
         "CONTAR" => numero.Length > 0,
         "UBICACION" => planta is not null,
         "BARCODE" => (barcode ?? "").Trim().Length >= 4,
+        "FOTOS" => Actual?.FotoPropuesta is not null || Actual?.FotoRevision == "APROBADA",
+        "REVISAR" or "OTRO" => true,
         _ => false
     };
 
@@ -439,7 +524,8 @@ else if (error && !Embebido)
         planta,
         zona,
         barcode,
-        confirmado
+        confirmado,
+        nota
     });
 
     private async Task GuardarLugar()
@@ -470,6 +556,17 @@ else if (error && !Embebido)
             await MandarFoto(img, null);
         }
         catch { errorItem = "No se pudo leer la foto. Probá de nuevo."; }
+    }
+
+    /// <summary>2026-11-16: tarea FOTOS: saca la foto, la manda (queda para que el dueño la apruebe) y
+    /// pasa sola al siguiente producto.</summary>
+    private async Task SubirFotoPedida(InputFileChangeEventArgs e)
+    {
+        if (Actual is not { } it) return;
+        fotoMotivo = "Foto pedida en la tarea";
+        try { await MandarFoto(await e.File.RequestImageFileAsync("image/jpeg", 1600, 1600), null); }
+        catch { errorItem = "No se pudo leer la foto. Probá de nuevo."; return; }
+        if (errorItem is null && tarea?.Items.FirstOrDefault(x => x.Id == it.Id)?.FotoPropuesta is not null) await Guardar();
     }
 
     private async Task MandarFoto(IBrowserFile? archivo, string? link)

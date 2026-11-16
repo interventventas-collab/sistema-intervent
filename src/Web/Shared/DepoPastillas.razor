@@ -18,6 +18,17 @@
     .dp-big.ven { background:linear-gradient(135deg,#fde68a,#fef3c7); }
     .dp-big.tar { background:linear-gradient(135deg,#bbf7d0,#ecfdf5); }
     .dp-big.fal { background:linear-gradient(135deg,#a5f3fc,#ecfeff); }
+    .dp-big.alq { background:linear-gradient(135deg,#e9d5ff,#faf5ff); }
+    /* 2026-11-16: cartel "TAREA NUEVA" (queda hasta que tocan Ver o Después) */
+    .dp-tn { position:fixed; top:110px; left:50%; transform:translateX(-50%); z-index:960; width:min(460px, calc(100vw - 32px));
+             background:#fff7d6; border:2px solid #e0a800; border-radius:14px; box-shadow:0 14px 40px rgba(0,0,0,.3); padding:0.9rem 1.1rem; color:#111827; }
+    .dp-tn-h { font-size:1.35rem; font-weight:800; }
+    .dp-tn-m { font-size:0.85rem; color:#4b5563; margin-top:0.1rem; }
+    .dp-tn-t { font-size:1.05rem; font-weight:700; margin-top:0.5rem; }
+    .dp-tn-msj { background:#fff; border-radius:8px; padding:0.55rem 0.7rem; margin-top:0.45rem; font-size:1rem; line-height:1.4; white-space:pre-wrap; }
+    .dp-tn-bs { display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.7rem; }
+    .dp-tn-bs button { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:0.45rem 1rem; font:inherit; font-weight:700; cursor:pointer; }
+    .dp-tn-bs button.si { background:#111827; border-color:#111827; color:#fff; }
     .dp-big.pre { background:linear-gradient(135deg,#ddd6fe,#f5f3ff); border-radius:26px; margin-bottom:0.65rem; }
     .dp-big.pre::after { content:""; position:absolute; right:34px; bottom:-16px; border-left:24px solid transparent; border-top:17px solid #f3efff; }
     .dp-big.nueva { outline:3px solid #dc2626; outline-offset:1px; }
@@ -204,6 +215,25 @@
             @foreach (var t in Tareas?.Lista.Take(5) ?? Enumerable.Empty<DepTareasResumenItemDto>())
             {
                 <div class="dp-prev-f"><b>@t.Titulo</b><small>@(t.Empleado ?? "Sin asignar")@(t.Para == "HOY" ? ", para hoy" : "")</small></div>
+            }
+        </div>
+    </div>
+
+    @* 2026-11-16: alquileres día por día (qué sale y qué vuelve). El número = alquileres que salen o vuelven hoy y mañana. *@
+    <div class="dp-big alq @Marcas("alq")" @onclick='() => Tocar("alq")'>
+        <div class="dp-t">🪑 Alquileres <span class="dp-n cero">@(alq?.HoyYManiana ?? 0)</span></div>
+        <div class="dp-l gris">@((alq?.HoyYManiana ?? 0) == 0 ? "nada hoy ni mañana" : "salen o vuelven hoy y mañana")</div>
+        <div class="dp-prev">
+            <div class="dp-prev-t">Próximos días</div>
+            @if ((alq?.Dias.Count ?? 0) == 0) { <div class="dp-prev-f">No sale ni vuelve ningún alquiler</div> }
+            @foreach (var d in alq?.Dias.Take(4) ?? Enumerable.Empty<AlqDiaDepoDto>())
+            {
+                <div class="dp-prev-f"><b>@d.Fecha.ToString("dd/MM")</b>
+                    @foreach (var m in d.Movimientos)
+                    {
+                        <small>@(m.Tipo == "SALE" ? "Sale" : "Vuelve"): @string.Join(" · ", m.Equipos.Take(3).Select(e => $"{e.Cantidad} {Web.Shared.Tareas.AlquileresDias.Corto(e.Nombre)}"))@(m.Equipos.Count > 3 ? " …" : "")</small>
+                    }
+                </div>
             }
         </div>
     </div>
@@ -499,6 +529,34 @@
     </div>
 }
 
+@if (ventana == "alq")
+{
+    <div class="dp-flot dp-vent @Lugar @(Oficina ? "ofi" : "")">
+        <div class="dp-vh">
+            🪑 Alquileres <small>qué sale y qué vuelve cada día · tocá un día para ver cada alquiler</small>
+            <button class="dp-x" title="Cerrar" @onclick="Cerrar">✕</button>
+        </div>
+        <div class="dp-lista" style="padding:0.5rem 0.8rem; background:#f9fafb;">
+            <Web.Shared.Tareas.AlquileresDias />
+        </div>
+    </div>
+}
+
+@if (!Oficina && ventana is null && CartelTarea is { } tn)
+{
+    <div class="dp-tn">
+        <div class="dp-tn-h">📋 TAREA NUEVA</div>
+        <div class="dp-tn-m">@(tn.Empleado is null ? "Para cualquiera" : $"Para {tn.Empleado}")@(tn.Para == "HOY" ? " · para hoy" : tn.Para == "SEMANA" ? " · esta semana" : "")@(tn.CreatedAt is DateTime ca ? $" · {ca.ToArTime():HH:mm}" : "")</div>
+        <div class="dp-tn-t">@Web.Shared.Tareas.TareasCelu.IconoTipo(tn.Tipo) @tn.Titulo@(tn.Total > 0 ? $" — {tn.Total} producto{(tn.Total == 1 ? "" : "s")}" : "")</div>
+        @if (!string.IsNullOrWhiteSpace(tn.Comentario)) { <div class="dp-tn-msj">💬 @tn.Comentario</div> }
+        @if (CartelesPendientes > 1) { <div class="dp-tn-m" style="margin-top:0.4rem;">y @(CartelesPendientes - 1) tarea@(CartelesPendientes - 1 == 1 ? "" : "s") nueva@(CartelesPendientes - 1 == 1 ? "" : "s") más</div> }
+        <div class="dp-tn-bs">
+            <button @onclick="() => CartelVisto(tn.Id, false)">Después</button>
+            <button class="si" @onclick="() => CartelVisto(tn.Id, true)">Ver la tarea</button>
+        </div>
+    </div>
+}
+
 @if (ventana == "pre")
 {
     <div class="dp-flot dp-vent @Lugar @(Oficina ? "ofi" : "")">
@@ -610,6 +668,25 @@
 
     private string? ventana;
     private string? marcaAbierta;
+
+    // 2026-11-16: alquileres día por día + cartel "TAREA NUEVA"
+    private AlqDepoResDto? alq;
+    private readonly HashSet<int> cartelesVistos = new();
+    private const string ClaveCarteles = "tareas_cartel_vistas";
+    private IEnumerable<DepTareasResumenItemDto> Carteles =>
+        (Tareas?.Nuevas ?? new()).Where(t => t.Id > 0 && !cartelesVistos.Contains(t.Id));
+    private DepTareasResumenItemDto? CartelTarea => Carteles.FirstOrDefault();
+    private int CartelesPendientes => Carteles.Count();
+    private async Task CartelVisto(int id, bool abrir)
+    {
+        cartelesVistos.Add(id);
+        try { await JS.InvokeVoidAsync("localStorage.setItem", ClaveCarteles, string.Join(",", cartelesVistos.TakeLast(200))); } catch { }
+        if (abrir) { nuevas.Remove("tar"); avisos.RemoveAll(a => a.Pastilla == "tar"); ventana = null; await OnAbrirTareas.InvokeAsync(); }
+    }
+    private async Task CargarAlquileres()
+    {
+        try { alq = await Api.GetDepAlquileresAsync(10) ?? alq; } catch { }
+    }
     private int? preguntaAbierta;
     private string borrador = "";
     private bool enviando, verDespachados, ocupado, cerrado;
@@ -734,8 +811,10 @@
             if (nuevasT.Count > 0)
             {
                 nuevas.Add("tar");
-                Avisar("tar", nuevasT.Count == 1 ? "Tarea nueva" : $"{nuevasT.Count} tareas nuevas",
-                    string.Join(" · ", nuevasT.Select(t => t.Titulo)));
+                // 2026-11-16: si tiene cartel grande "TAREA NUEVA", no se repite con el cartelito chico
+                if (Tareas.Nuevas is null)
+                    Avisar("tar", nuevasT.Count == 1 ? "Tarea nueva" : $"{nuevasT.Count} tareas nuevas",
+                        string.Join(" · ", nuevasT.Select(t => t.Titulo)));
             }
         }
         vistasTareas.Clear();
@@ -751,6 +830,14 @@
         {
             var f = await JS.InvokeAsync<string?>("localStorage.getItem", ClaveFormato);
             if (FormatosEtiqueta.Any(x => x.Item1 == f)) { formato = f!; StateHasChanged(); }
+        }
+        catch { }
+        try
+        {
+            var vistas = await JS.InvokeAsync<string?>("localStorage.getItem", ClaveCarteles);
+            foreach (var x in (vistas ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+                if (int.TryParse(x, out var n)) cartelesVistos.Add(n);
+            StateHasChanged();
         }
         catch { }
     }
@@ -771,6 +858,7 @@
                 await CargarPreguntas();
             }
             if (vuelta % 6 == 0) await CargarFaltantes();
+            if (!Oficina && vuelta % 20 == 0) await CargarAlquileres();   // cada 5 minutos
             vuelta++;
             if (!cerrado) StateHasChanged();
         }
