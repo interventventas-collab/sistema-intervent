@@ -8574,6 +8574,36 @@ public class ApiClient
     public record EcheqPropioDto(int Id, string Numero, DateTime? FechaPago, decimal Importe, string Estado, string? Beneficiario);
     public async Task<List<EcheqPropioDto>> GetEcheqsPropiosAsync(int proveedorId)
         => await GetAsync<List<EcheqPropioDto>>($"/api/cafe/pagos-proveedor/echeqs-propios/{proveedorId}") ?? new();
+    // --- 16/11/2026: ventana Banco Galicia → ✍ Cheques emitidos (con "Asociar factura") ---
+    public record ChequeEmitidoDto(int Id, string Numero, DateTime? Vence, decimal Importe, string Estado, string? A,
+        int? ProveedorId, string? ProveedorNombre, bool CuentaCorriente, string? PagoNumero, string? Facturas);
+    public async Task<List<ChequeEmitidoDto>?> GetChequesEmitidosAsync()
+        => await GetAsync<List<ChequeEmitidoDto>>("/api/cafe/pagos-proveedor/cheques-emitidos");
+    public class FacturasEmitidoDto
+    {
+        public int? ProveedorId { get; set; }
+        public string? ProveedorNombre { get; set; }
+        public bool CuentaCorriente { get; set; }
+        public decimal TotalDeuda { get; set; }
+        public List<CtaCteDocDto> Documentos { get; set; } = new();
+    }
+    public async Task<FacturasEmitidoDto?> GetFacturasParaEmitidoAsync(int chequeBancoId)
+        => await GetAsync<FacturasEmitidoDto>($"/api/cafe/pagos-proveedor/cheques-emitidos/{chequeBancoId}/facturas");
+    public async Task<(CrearPagoResultDto? result, string? error)> AsociarEmitidoAsync(int chequeBancoId, List<string> claves, string? operador)
+    {
+        await SetAuthHeaderAsync();
+        var response = await _http.PostAsJsonAsync($"/api/cafe/pagos-proveedor/cheques-emitidos/{chequeBancoId}/asociar", new { claves, operador });
+        if (response.IsSuccessStatusCode)
+            return (await response.Content.ReadFromJsonAsync<CrearPagoResultDto>(), null);
+        string error = "No se pudo asociar";
+        try
+        {
+            var el = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            if (el.TryGetProperty("error", out var e) && e.GetString() is string s && !string.IsNullOrWhiteSpace(s)) error = s;
+        }
+        catch { }
+        return (null, error);
+    }
     /// <summary>Clave = documento de la cuenta corriente ("AFIP:..." / "DEU:..."). Sin clave = a cuenta.</summary>
     public record CrearCompraItemRequest(int? CompraId, decimal Importe, string? Clave = null);
     public record CrearPagoResultDto(int Id, string Numero);

@@ -479,6 +479,111 @@ public class ProveedorCtaCteService
         return (null, pago.Id, numero);
     }
 
+    // ─────────── Cheques emitidos desde la ventana del Banco Galicia (16/11/2026) ───────────
+
+    /// <summary>Un cheque que emitimos (lo baja el banco como EMITIDO) y el banco todavía no pagó.
+    /// PagoNumero/Facturas: si ya está asociado a un pago a proveedor (OP) y a qué facturas.</summary>
+    public record EmitidoPendiente(int Id, string Numero, DateTime? Vence, decimal Importe, string Estado, string? A,
+        int? ProveedorId, string? ProveedorNombre, bool CuentaCorriente, string? PagoNumero, string? Facturas);
+
+    public static bool EmitidoSinPagar(string? estado)
+        => !string.Equals(estado, "Pagado", StringComparison.OrdinalIgnoreCase)
+        && !string.Equals(estado, "Rechazado", StringComparison.OrdinalIgnoreCase);
+
+    public async Task<List<EmitidoPendiente>> EmitidosPendientesAsync()
+    {
+        var cheques = (await _db.CafeChequesBanco.AsNoTracking().Where(b => b.Tipo == "EMITIDO").ToListAsync())
+            .Where(b => EmitidoSinPagar(b.Estado)).ToList();
+        if (cheques.Count == 0) return new();
+        var ids = cheques.Select(b => b.Id).ToList();
+
+        var medios = await _db.CafePagosProveedorMedios.AsNoTracking()
+            .Where(m => m.ChequeBancoId != null && ids.Contains(m.ChequeBancoId.Value) && m.Pago!.Estado == "VIGENTE")
+            .Select(m => new { Cheque = m.ChequeBancoId!.Value, m.PagoId, m.Pago!.Numero })
+            .ToListAsync();
+        var pagoIds = medios.Select(m => m.PagoId).Distinct().ToList();
+        var imps = await _db.CafePagosProveedorComprobantes.AsNoTracking()
+            .Where(c => pagoIds.Contains(c.PagoId))
+            .Select(c => new { c.PagoId, c.AfipIdComprobante, c.DeudaId })
+            .ToListAsync();
+        var afipIds = imps.Where(i => i.AfipIdComprobante != null).Select(i => i.AfipIdComprobante!).Distinct().ToList();
+        var afip = await _db.ContadoraComprobantes.AsNoTracking()
+            .Where(c => afipIds.Contains(c.IdComprobante))
+            .Select(c => new { c.IdComprobante, c.PuntoVenta, c.NumeroComprobante })
+            .ToListAsync();
+        var nroAfip = afip.ToDictionary(a => a.IdComprobante, a => NumeroAfip(a.PuntoVenta, a.NumeroComprobante));
+        string Etiquetas(int pagoId)
+        {
+            var l = imps.Where(i => i.PagoId == pagoId).Select(i =>
+                i.AfipIdComprobante != null ? "factura " + nroAfip.GetValueOrDefault(i.AfipIdComprobante, i.AfipIdComprobante)
+                : i.DeudaId != null ? "deuda cargada a mano" : "a cuenta").Distinct().ToList();
+            return string.Join(" + ", l);
+        }
+
+        var provs = (await _db.CafeProveedores.AsNoTracking()
+                .Select(p => new { p.Id, p.Nombre, p.Cuit, p.CuentaCorriente, p.IsActive }).ToListAsync())
+            .Where(p => NormCuit(p.Cuit).Length > 0)
+            .GroupBy(p => NormCuit(p.Cuit))
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.CuentaCorriente).ThenByDescending(p => p.IsActive).First());
+
+        return cheques.OrderBy(b => b.FechaPago ?? DateTime.MaxValue).Select(b =>
+        {
+            provs.TryGetValue(NormCuit(b.ContraparteCuit), out var p);
+            var m = medios.FirstOrDefault(x => x.Cheque == b.Id);
+            return new EmitidoPendiente(b.Id, b.Numero.TrimStart('0'), b.FechaPago, b.Importe, b.Estado,
+                b.ContraparteNombre ?? b.BeneficiarioActualNombre, p?.Id, p?.Nombre, p?.CuentaCorriente ?? false,
+                m?.Numero, m is null ? null : Etiquetas(m.PagoId));
+        }).ToList();
+    }
+
+    /// <summary>El proveedor al que le emitimos el cheque (por CUIT). Null si no está cargado.</summary>
+    public async Task<(CafeChequeBanco? cheque, CafeProveedor? proveedor)> EmitidoYProveedorAsync(int chequeBancoId)
+    {
+        var b = await _db.CafeChequesBanco.AsNoTracking().FirstOrDefaultAsync(x => x.Id == chequeBancoId && x.Tipo == "EMITIDO");
+        if (b is null) return (null, null);
+        var cuit = NormCuit(b.ContraparteCuit);
+        if (cuit.Length == 0) return (b, null);
+        var provs = await _db.CafeProveedores.AsNoTracking().Where(p => p.Cuit != null).ToListAsync();
+        var p = provs.Where(x => NormCuit(x.Cuit) == cuit)
+            .OrderByDescending(x => x.CuentaCorriente).ThenByDescending(x => x.IsActive).FirstOrDefault();
+        return (b, p);
+    }
+
+    /// <summary>Asocia un cheque emitido a facturas del proveedor: arma el pago (OP) con el e-cheq como
+    /// medio, igual que Tesorería → Pagos. Reparte el importe del cheque en el orden de las claves elegidas
+    /// (hasta el saldo de cada una); lo que sobra queda "a cuenta". El banco baja recién cuando se paga.</summary>
+    public async Task<(string? error, int id, string numero)> PagarConEmitidoAsync(int chequeBancoId, List<string> claves, string? operador)
+    {
+        var (b, prov) = await EmitidoYProveedorAsync(chequeBancoId);
+        if (b is null) return ("No encontré ese cheque emitido", 0, "");
+        if (prov is null) return ($"{b.ContraparteNombre ?? "El que recibió el cheque"} no está cargado como proveedor", 0, "");
+        if (!prov.CuentaCorriente) return ($"{prov.Nombre} no tiene cuenta corriente prendida", 0, "");
+        if (claves is null || claves.Count == 0) return ("Elegí al menos una factura", 0, "");
+
+        var cta = await GetCuentaAsync(prov.Id);
+        var pend = (cta?.Pendientes ?? new()).ToDictionary(d => d.Clave);
+        var resto = b.Importe;
+        var items = new List<ItemPago>();
+        foreach (var k in claves.Distinct())
+        {
+            if (!pend.TryGetValue(k, out var d)) return ("Esa factura ya no está pendiente. Actualizá la ventana.", 0, "");
+            if (resto <= 0.005m) break;
+            var imp = Math.Min(d.Saldo, resto);
+            items.Add(new ItemPago(k, null, Math.Round(imp, 2)));
+            resto -= imp;
+        }
+        if (resto > 0.005m) items.Add(new ItemPago(null, null, Math.Round(resto, 2)));
+
+        var caja = await _db.CafeCajas.AsNoTracking().Where(c => c.IsActive && c.Tipo == "BANCO")
+            .OrderByDescending(c => c.Nombre.Contains("Galicia")).ThenBy(c => c.Id).FirstOrDefaultAsync();
+        if (caja is null) return ("No encontré la caja del banco en Tesorería", 0, "");
+
+        var nro = b.Numero.TrimStart('0');
+        var refe = $"E-cheq propio N° {nro}" + (b.FechaPago.HasValue ? $" · vence {b.FechaPago.Value:dd/MM/yyyy}" : "");
+        return await CrearPagoAsync(new NuevoPago(prov.Id, 0, operador, $"Cheque emitido N° {nro}, asociado desde la ventana del Banco Galicia",
+            items, new List<MedioPago> { new(caja.Id, b.Importe, refe, null, b.Id) }));
+    }
+
     /// <summary>Número correlativo OP-00000001, igual que siempre.</summary>
     public async Task<string> SiguienteNumeroAsync()
     {

@@ -5,6 +5,7 @@
 @inject ToastService ToastService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject Web.Services.TraerBancosService Traer
 
 @* 2026-11-10: columna de pastillas vivas a la derecha del Dashboard (solo admin; maqueta aprobada
    Todo_junto_PROPUESTA). Mismo estilo que las pastillas del depósito (DepoPastillas, clases .dp-*),
@@ -76,6 +77,12 @@
     .op-vacio { padding:2rem; text-align:center; color:#6b7280; }
     .op-pie { padding:0.5rem 1rem; border-top:1px solid #eef0f3; font-size:0.8rem; text-align:right; flex-shrink:0; }
     .op-pie a { color:#111827; font-weight:700; cursor:pointer; }
+    /* 16/11/2026: ventana Banco Galicia — renglón de estado y pestaña Cheques emitidos */
+    .op-banco-estado { display:flex; flex-wrap:wrap; align-items:center; gap:0.5rem; padding:0.5rem 1rem; font-size:0.82rem; border-bottom:1px solid #eef0f3; flex-shrink:0; }
+    .op-banco-estado .gris, .op-banco-total .gris { color:#6b7280; }
+    .op-tabla tr.op-mes td { background:#fafafa; font-size:0.72rem; color:#6b7280; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:0.35rem 0.6rem; }
+    .op-tabla tr.op-abierto td { background:#fffbeb; }
+    .op-banco-total { display:flex; justify-content:space-between; padding:0.7rem 1rem; font-size:0.92rem; border-top:2px solid #111827; }
 
     @@media (max-width: 899px) {
         .op-col { position:static; flex-direction:row; overflow-x:auto; gap:0.6rem; padding:0.2rem 0.1rem 0.6rem; -webkit-overflow-scrolling:touch; }
@@ -304,20 +311,40 @@
     <div class="op-vent op-vent-ancha">
         <div class="op-vh">
             🏦 Banco Galicia
-            <small>@(saldoBanco?.UltimoImportadoAt is DateTime u2 ? $"se actualiza solo · última vez {u2.ToArTime():dd/MM HH:mm}" : "")</small>
             <span style="margin-left:auto; font-size:1rem; font-weight:800; cursor:pointer;" @onclick="ToggleSaldo" title="@(verSaldo ? "Tapar el saldo" : "Ver el saldo")">
                 @(saldoBanco is null ? "" : verSaldo ? "$" + Plata(saldoBanco.Saldo) : "$ ••••••") @(verSaldo ? "👁" : "🙈")
             </span>
             <button class="op-x" style="margin-left:0.6rem;" title="Cerrar" @onclick="Cerrar">✕</button>
         </div>
+        @* 16/11/2026: renglón de estado. Antes el título decía "se actualiza solo", pero el automático está
+           apagado a pedido de él desde el 29/10 (los robots entran solo cuando aprieta Traer). *@
+        <div class="op-banco-estado">
+            <span>@(saldoBanco?.UltimoImportadoAt is DateTime u2 ? $"Se trajo del banco {CuandoDia(u2)}" : "Todavía no se trajo nada del banco")</span>
+            <span class="gris">·</span>
+            @if (galicia?.AutoSyncEnabled == true)
+            {
+                <span class="gris">entra solo a las @((galicia.AutoSyncTimes ?? "").Replace(",", ", ")) hs</span>
+            }
+            else
+            {
+                <span class="gris">automático apagado · entra cuando apretás Traer</span>
+            }
+            <span style="margin-left:auto; display:flex; gap:0.4rem; align-items:center;">
+                @if (Traer.Corriendo) { <span class="gris">trayendo… (podés cerrar, sigue solo)</span> }
+                else if (Traer.TerminoAt is not null && Traer.HuboError) { <span style="color:#b91c1c;" title="@($"Galicia: {Traer.GaliciaMovimientos} · cheques: {Traer.GaliciaCheques}")">no se pudo traer todo</span> }
+                <button class="op-tab on" disabled="@Traer.Corriendo" @onclick="Traer.TraerTodoAsync">⬇ Traer ahora</button>
+                <button class="op-tab" title="Elegir a qué horas entra solo" @onclick='() => Nav.NavigateTo("/integraciones/galicia")'>⚙ Horarios</button>
+            </span>
+        </div>
         <div class="op-tabs">
-            <button class="op-tab @(bancoVista == "ent" ? "on" : "")" @onclick='() => bancoVista = "ent"'>💰 Entraron (@Entraron.Count)</button>
-            <button class="op-tab @(bancoVista == "sal" ? "on" : "")" @onclick='() => bancoVista = "sal"'>💸 Salieron (@salieron.Count)</button>
-            <button class="op-tab @(bancoVista == "che" ? "on" : "")" @onclick='() => { bancoVista = "che"; _ = VerCheques(chVista); }'>📄 Cheques (@ChequesSemana.Count)</button>
+            <button class="op-tab @(bancoVista == "ent" ? "on" : "")" @onclick='() => bancoVista = "ent"'>💰 Transferencias recibidas (@Entraron.Count)</button>
+            <button class="op-tab @(bancoVista == "sal" ? "on" : "")" @onclick='() => bancoVista = "sal"'>💸 Transferencias realizadas (@salieron.Count)</button>
+            <button class="op-tab @(bancoVista == "che" ? "on" : "")" @onclick='() => { bancoVista = "che"; _ = VerCheques(chVista); }'>📄 Cheques recibidos</button>
+            <button class="op-tab @(bancoVista == "emi" ? "on" : "")" @onclick='() => { bancoVista = "emi"; _ = CargarEmitidos(); }'>✍ Cheques emitidos@(emitidos is null ? "" : $" ({EmitidosSinAsociar})")</button>
         </div>
         @if (bancoVista == "ent")
         {
-            <div class="op-l gris" style="padding:0.45rem 1rem; margin:0;">Plata que entró al banco y todavía no es cobranza de nadie</div>
+            <div class="op-l gris" style="padding:0.45rem 1rem; margin:0;">Plata que entró al banco (transferencias y e-cheq) y todavía no es cobranza de nadie</div>
             <div class="op-lista">
                 @if (Entraron.Count == 0) { <div class="op-vacio">No hay nada para aplicar. Todo al día.</div> }
                 @foreach (var it in Entraron)
@@ -388,22 +415,88 @@
             </div>
             <div class="op-pie"><a @onclick='() => Nav.NavigateTo("/cafe/tesoreria/extracto-banco")'>Ir al extracto completo ›</a></div>
         }
+        else if (bancoVista == "emi")
+        {
+            <div class="op-l gris" style="padding:0.45rem 1rem; margin:0;">Cheques que emitiste y el banco todavía no pagó · el número de la pestaña son los que todavía no dicen qué factura pagan</div>
+            <div class="op-lista">
+                @if (emitidos is null) { <div class="op-vacio">Cargando…</div> }
+                else if (emitidos.Count == 0) { <div class="op-vacio">No hay cheques emitidos por pagar.</div> }
+                else
+                {
+                    <table class="op-tabla">
+                        <tr><th>Vence</th><th>Cheque</th><th>A quién</th><th style="text-align:right;">Importe</th><th>¿Qué pagó?</th></tr>
+                        @foreach (var grupo in emitidos.GroupBy(e => e.Vence is DateTime v ? new DateTime(v.Year, v.Month, 1) : DateTime.MaxValue))
+                        {
+                            <tr class="op-mes"><td colspan="5">@(grupo.Key == DateTime.MaxValue ? "Sin fecha" : Mes(grupo.Key)) · $@Plata(grupo.Sum(e => e.Importe))</td></tr>
+                            @foreach (var em in grupo)
+                            {
+                                var e = em;
+                                var hoyOVencido = e.Vence.HasValue && e.Vence.Value.Date <= HoyAr;
+                                <tr class="@(emiAbierto == e.Id ? "op-abierto" : "")">
+                                    <td style="white-space:nowrap; @(hoyOVencido && !EnProceso(e) ? "color:#b91c1c; font-weight:700;" : "")">@(e.Vence?.ToString("dd/MM") ?? "—")@(e.Vence?.Date == HoyAr ? " hoy" : "")
+                                        <div class="sub">@EstadoEmitido(e)</div></td>
+                                    <td>#@e.Numero</td>
+                                    <td>@NombreCorto(e.ProveedorNombre ?? e.A)</td>
+                                    <td style="text-align:right; white-space:nowrap; font-weight:700;">$@Plata(e.Importe)</td>
+                                    <td>
+                                        @if (e.PagoNumero is not null) { <span style="color:#065f46;" title="@e.PagoNumero">✓ @e.Facturas</span> }
+                                        else if (emiAbierto == e.Id) { <span class="sub">elegí abajo ↓</span> }
+                                        else { <button class="op-tab" @onclick="() => AbrirEmitido(e)">Asociar factura</button> }
+                                    </td>
+                                </tr>
+                                @if (emiAbierto == e.Id)
+                                {
+                                    <tr class="op-abierto"><td></td><td colspan="4">
+                                        @if (emiFacturas is null) { <span class="sub">Buscando facturas…</span> }
+                                        else if (emiFacturas.ProveedorId is null) { <span class="sub">@(e.A ?? "El que recibió el cheque") no está cargado como proveedor. Cargalo en Compras → Proveedores con su CUIT.</span> }
+                                        else if (!emiFacturas.CuentaCorriente) { <span class="sub">@emiFacturas.ProveedorNombre no tiene la cuenta corriente prendida. <a style="cursor:pointer; text-decoration:underline;" @onclick='() => Nav.NavigateTo("/cafe/proveedores-ctacte")'>Prenderla</a></span> }
+                                        else if (emiFacturas.Documentos.Count == 0) { <span class="sub">No le debés nada a @emiFacturas.ProveedorNombre en el sistema. Puede que la factura todavía no haya entrado de AFIP.</span> }
+                                        else
+                                        {
+                                            <div class="sub" style="margin-bottom:0.3rem;">¿Qué pagó este cheque de $@Plata(e.Importe)? Tildá una o varias.</div>
+                                            @foreach (var d in emiFacturas.Documentos)
+                                            {
+                                                var doc = d;
+                                                var igual = Math.Abs(doc.Saldo - e.Importe) < 0.01m;
+                                                <label style="display:flex; gap:0.5rem; align-items:center; padding:0.2rem 0; cursor:pointer;">
+                                                    <input type="checkbox" checked="@emiElegidas.Contains(doc.Clave)" @onchange="() => ElegirFactura(doc.Clave)" />
+                                                    <span style="flex:1;">@doc.Tipo @doc.Numero <span class="sub" style="display:inline;">@doc.Fecha.ToString("dd/MM")@(doc.Pagado > 0 ? $" · total ${Plata(doc.Total)}" : "")</span>@if (igual) { <b style="color:#065f46;"> · mismo monto</b> }</span>
+                                                    <span style="white-space:nowrap;">debe <b>$@Plata(doc.Saldo)</b></span>
+                                                </label>
+                                            }
+                                            var resumen = ResumenEleccion(e);
+                                            <div style="display:flex; gap:0.5rem; align-items:center; margin-top:0.35rem;">
+                                                <span class="sub" style="flex:1;">@resumen</span>
+                                                <button class="op-tab" @onclick="() => emiAbierto = null">Cancelar</button>
+                                                <button class="op-tab on" disabled="@(emiGuardando || emiElegidas.Count == 0)" @onclick="() => AsociarEmitido(e)">@(emiGuardando ? "Guardando…" : "Asociar")</button>
+                                            </div>
+                                        }
+                                    </td></tr>
+                                }
+                            }
+                        }
+                    </table>
+                    <div class="op-banco-total"><span><b>Total por pagar</b> <span class="gris">· @emitidos.Count cheque@(emitidos.Count == 1 ? "" : "s") · @EmitidosSinAsociar sin asociar</span></span><b>$@Plata(emitidos.Sum(e => e.Importe))</b></div>
+                }
+            </div>
+            <div class="op-pie"><a @onclick='() => Nav.NavigateTo("/cafe/tesoreria/cheques-todos?vista=USADOS")'>Ver también los que ya se pagaron ›</a></div>
+        }
         else
         {
             <div class="op-tabs">
                 @foreach (var (k, l) in SolapasCheques)
                 {
-                    <button class="op-tab @(chVista == k ? "on" : "")" @onclick="() => VerCheques(k)">@l @(chResp is null ? "" : $"({ConteoCh(k)})")</button>
+                    <button class="op-tab @(chVista == k ? "on" : "")" @onclick="() => VerCheques(k)">@l @(chResp is null || chVista != k ? "" : $"({FilasRecibidos.Count})")</button>
                 }
             </div>
             <div class="op-lista">
                 @if (chCargando) { <div class="op-vacio">Cargando…</div> }
-                else if ((chResp?.Filas.Count ?? 0) == 0) { <div class="op-vacio">No hay cheques en esta lista.</div> }
+                else if (FilasRecibidos.Count == 0) { <div class="op-vacio">No hay cheques en esta lista.</div> }
                 else
                 {
                     <table class="op-tabla">
                         <tr><th>Vence</th><th>Cheque</th><th>De / para</th><th style="text-align:right;">Importe</th><th>Estado</th></tr>
-                        @foreach (var c in chResp!.Filas.OrderBy(c => c.Vence.HasValue && c.Vence.Value.Date >= HoyAr ? 0 : 1).ThenBy(c => c.Vence.HasValue && c.Vence.Value.Date >= HoyAr ? c.Vence.Value.Ticks : -(c.Vence?.Ticks ?? 0)))
+                        @foreach (var c in FilasRecibidos.OrderBy(c => c.Vence.HasValue && c.Vence.Value.Date >= HoyAr ? 0 : 1).ThenBy(c => c.Vence.HasValue && c.Vence.Value.Date >= HoyAr ? c.Vence.Value.Ticks : -(c.Vence?.Ticks ?? 0)))
                         {
                             var vencido = c.Vence.HasValue && c.Vence.Value.Date < HoyAr && c.Vista is "EN_MANO" or "A_PAGAR";
                             <tr>
@@ -526,10 +619,11 @@
     // ───────── Ventanas de Cheques y Alquileres (2026-11-10) ─────────
     private static readonly (string Key, string Label)[] SolapasCheques =
     {
-        ("TODOS", "Todos"), ("EN_MANO", "Tengo en mano"), ("EN_BANCO", "En el banco"),
-        ("A_PAGAR", "Tengo que pagar"), ("USADOS", "Ya los usé"), ("RECHAZADOS", "Rebotaron"),
+        // 16/11/2026: acá solo los RECIBIDOS; los que emitimos tienen su pestaña "✍ Cheques emitidos".
+        ("EN_MANO", "Tengo en mano"), ("EN_BANCO", "En el banco"), ("USADOS", "Ya los usé"), ("RECHAZADOS", "Rebotaron"),
     };
-    private string chVista = "TODOS";
+    private string chVista = "EN_MANO";
+    private List<ChequeUniDto> FilasRecibidos => chResp?.Filas.Where(f => !f.EsPropio).ToList() ?? new();
     private ChequesUnificadoResponse? chResp;
     private bool chCargando;
     private int ConteoCh(string k) => chResp is null ? 0 : k switch
@@ -597,6 +691,7 @@
 
     protected override void OnInitialized()
     {
+        Traer.OnChange += OnTraerCambio;
         timer = new System.Threading.Timer(async _ =>
         {
             if (cerrado) return;
@@ -710,8 +805,121 @@
 
     private void ToggleSaldo() => verSaldo = !verSaldo;
 
+    // ───────── ✍ Cheques emitidos (16/11/2026) ─────────
+    private Web.Models.GaliciaAccountDto? galicia;
+    private List<ApiClient.ChequeEmitidoDto>? emitidos;
+    private int? emiAbierto;
+    private ApiClient.FacturasEmitidoDto? emiFacturas;
+    private readonly List<string> emiElegidas = new();
+    private bool emiGuardando;
+    private int EmitidosSinAsociar => emitidos?.Count(e => e.PagoNumero is null) ?? 0;
+
+    private async Task CargarEmitidos()
+    {
+        try { emitidos = await Api.GetChequesEmitidosAsync() ?? new(); }
+        catch { emitidos ??= new(); }
+        StateHasChanged();
+    }
+
+    private static bool EnProceso(ApiClient.ChequeEmitidoDto e) => e.Estado.Contains("proceso", StringComparison.OrdinalIgnoreCase);
+    private string EstadoEmitido(ApiClient.ChequeEmitidoDto e)
+    {
+        if (EnProceso(e)) return "lo están depositando";
+        if (e.Vence is not DateTime v) return e.Estado.ToLowerInvariant();
+        var dias = (v.Date - HoyAr).Days;
+        return dias switch { 0 => "sale hoy", < 0 => "ya venció", 1 => "mañana", _ => $"en {dias} días" };
+    }
+    private static readonly string[] Meses = { "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre" };
+    private static string Mes(DateTime d) => Meses[d.Month - 1];
+    /// <summary>"COLOMBRARO HERMANOS SA" → "Colombraro Hermanos SA": se lee mejor en la tabla.</summary>
+    private static string NombreCorto(string? n)
+    {
+        if (string.IsNullOrWhiteSpace(n)) return "—";
+        if (n.Any(char.IsLower)) return n;
+        return string.Join(' ', n.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w =>
+            w is "SA" or "SRL" or "SAS" or "SH" or "S.A." or "S.R.L." or "S.A" ? w
+            : char.ToUpper(w[0]) + w[1..].ToLowerInvariant()));
+    }
+
+    private async Task AbrirEmitido(ApiClient.ChequeEmitidoDto e)
+    {
+        emiAbierto = e.Id; emiFacturas = null; emiElegidas.Clear();
+        try
+        {
+            emiFacturas = await Api.GetFacturasParaEmitidoAsync(e.Id);
+            // Si hay una factura con el mismo saldo que el cheque, viene tildada.
+            var igual = emiFacturas?.Documentos.FirstOrDefault(d => Math.Abs(d.Saldo - e.Importe) < 0.01m);
+            if (igual is not null) emiElegidas.Add(igual.Clave);
+        }
+        catch { emiFacturas = new(); }
+    }
+
+    private void ElegirFactura(string clave)
+    {
+        if (!emiElegidas.Remove(clave)) emiElegidas.Add(clave);
+    }
+
+    /// <summary>Cuenta igual que la API: reparte el cheque en las facturas en el orden en que se tildaron; lo que sobra queda a cuenta.</summary>
+    private string ResumenEleccion(ApiClient.ChequeEmitidoDto e)
+    {
+        if (emiFacturas is null || emiElegidas.Count == 0) return "";
+        var resto = e.Importe;
+        var partes = new List<string>();
+        foreach (var k in emiElegidas)
+        {
+            var d = emiFacturas.Documentos.FirstOrDefault(x => x.Clave == k);
+            if (d is null || resto <= 0.005m) continue;
+            var imp = Math.Min(d.Saldo, resto);
+            partes.Add(imp < d.Saldo - 0.005m ? $"paga ${Plata(imp)} de la {d.Numero} (queda debiendo ${Plata(d.Saldo - imp)})" : $"cancela la {d.Numero}");
+            resto -= imp;
+        }
+        if (resto > 0.005m) partes.Add($"sobran ${Plata(resto)} que quedan a cuenta de {NombreCorto(emiFacturas.ProveedorNombre)}");
+        return string.Join(" · ", partes);
+    }
+
+    private async Task AsociarEmitido(ApiClient.ChequeEmitidoDto e)
+    {
+        emiGuardando = true;
+        try
+        {
+            var (r, error) = await Api.AsociarEmitidoAsync(e.Id, emiElegidas.ToList(), null);
+            if (r is not null)
+            {
+                ToastService.Success($"✓ Cheque #{e.Numero} asociado ({r.Numero})");
+                emiAbierto = null;
+                await CargarEmitidos();
+            }
+            else ToastService.Error(error ?? "No se pudo asociar");
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        finally { emiGuardando = false; }
+    }
+
+    /// <summary>"hoy 15:48" / "ayer 08:46" / "14/11 08:46".</summary>
+    private string CuandoDia(DateTime utc)
+    {
+        var ar = utc.ToArTime();
+        var dia = ar.Date == HoyAr ? "hoy" : ar.Date == HoyAr.AddDays(-1) ? "ayer" : "el " + ar.ToString("dd/MM");
+        return $"{dia} {ar:HH:mm}";
+    }
+
+    private void OnTraerCambio()
+    {
+        if (cerrado) return;
+        _ = InvokeAsync(async () =>
+        {
+            if (!Traer.Corriendo && Traer.TerminoAt is not null)
+            {
+                await CargarBanco();
+                if (emitidos is not null) await CargarEmitidos();
+            }
+            StateHasChanged();
+        });
+    }
+
     private async Task CargarBanco()
     {
+        if (galicia is null) { try { galicia = await Api.GetGaliciaAccountAsync(); } catch { } }
         try
         {
             var tSaldo = Api.GetSaldoBancoAsync();
@@ -973,6 +1181,7 @@
     public void Dispose()
     {
         cerrado = true;
+        Traer.OnChange -= OnTraerCambio;
         timer?.Dispose();
     }
 }
