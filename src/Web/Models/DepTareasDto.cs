@@ -45,3 +45,7 @@ public record DepAvisoFotoDto(int ItemId, string? Sku, string Nombre, string? Mo
 public record DepAvisosDto(int Pendientes, List<DepTareaNombrePendienteDto> Nombres, List<DepAvisoMuchaDto> Mucha,
     List<DepAvisoNoEncontradoDto> NoEncontrados, List<DepAvisoTareaDto> Terminadas, List<DepAvisoTareaDto> EnCurso,
     List<DepAvisoFotoDto>? Fotos = null);
+
+// 2026-11-16: alquileres en "Pedidos para armar" (GET /api/deposito-tareas/alquileres-tablero)
+public record AlqTableroItemDto(int TareaId, string? Comentario, string? Empleado, DateTime CreatedAt,
+    DateTime? TerminadaAt, string? TerminadaPor, string? Telefono, string? Hora, AlqReservaDepoDto Reserva);
