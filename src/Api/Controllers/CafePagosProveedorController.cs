@@ -62,6 +62,39 @@ public class CafePagosProveedorController : ControllerBase
     public async Task<IActionResult> EcheqsPropios(int proveedorId)
         => Ok(await _ctacte.EcheqsPropiosAsync(proveedorId));
 
+    /// <summary>16/11/2026: ventana Banco Galicia → ✍ Cheques emitidos. Los que el banco todavía no pagó,
+    /// con a qué factura están asociados (si lo están).</summary>
+    [HttpGet("cheques-emitidos")]
+    public async Task<IActionResult> ChequesEmitidos()
+        => Ok(await _ctacte.EmitidosPendientesAsync());
+
+    public record FacturasEmitidoDto(int? ProveedorId, string? ProveedorNombre, bool CuentaCorriente, decimal TotalDeuda,
+        List<DocPendienteDto> Documentos);
+
+    /// <summary>16/11/2026: las facturas que se le pueden pagar con este cheque emitido (las del proveedor por CUIT).</summary>
+    [HttpGet("cheques-emitidos/{chequeBancoId:int}/facturas")]
+    public async Task<IActionResult> FacturasParaEmitido(int chequeBancoId)
+    {
+        var (b, prov) = await _ctacte.EmitidoYProveedorAsync(chequeBancoId);
+        if (b is null) return NotFound();
+        if (prov is null || !prov.CuentaCorriente)
+            return Ok(new FacturasEmitidoDto(prov?.Id, prov?.Nombre, false, 0, new()));
+        var c = await _ctacte.GetCuentaAsync(prov.Id);
+        return Ok(new FacturasEmitidoDto(prov.Id, prov.Nombre, true, c?.Total ?? 0,
+            (c?.Pendientes ?? new()).Select(d => new DocPendienteDto(d.Clave, d.Tipo, d.Numero, d.Oficial, d.Fecha, d.Total, d.Pagado, d.Saldo, d.TieneArchivo)).ToList()));
+    }
+
+    public record AsociarEmitidoRequest(List<string> Claves, string? Operador);
+
+    /// <summary>16/11/2026: asocia el cheque emitido a esas facturas (arma la OP con el e-cheq como medio).</summary>
+    [HttpPost("cheques-emitidos/{chequeBancoId:int}/asociar")]
+    public async Task<IActionResult> AsociarEmitido(int chequeBancoId, [FromBody] AsociarEmitidoRequest req)
+    {
+        var (error, id, numero) = await _ctacte.PagarConEmitidoAsync(chequeBancoId, req.Claves ?? new(), req.Operador);
+        if (error is not null) return BadRequest(new { error });
+        return Ok(new { id, numero });
+    }
+
     [HttpGet]
     public async Task<IActionResult> List(
         [FromQuery] int? proveedorId,
