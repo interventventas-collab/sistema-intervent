@@ -149,7 +149,7 @@
                     {
                         <span class="eqt-paga @(e.PagarHoyAtrasado ? "atr" : "")">
                             <b>$@e.PagarHoy.ToString("N0", Es)</b> <span class="eqt-muted">@e.PagarHoyDetalle</span>
-                            <a href="/nominas/extras/@e.PagarHoyTipo?anio=@e.PagarHoyAnio&mes=@e.PagarHoyMes" title="Ir a pagarlo">Pagar</a>
+                            <a href="/nominas/liquidaciones?anio=@e.PagarHoyAnio&mes=@e.PagarHoyMes&ver=@e.PagarHoyTipo" title="Ir a pagarlo">Pagar</a>
                         </span>
                     }
                     else
@@ -206,7 +206,7 @@
     };
     private static string LinkPago(ProximoPagoDto p) => p.Tipo == "sueldo"
         ? $"/nominas/liquidaciones?anio={p.Anio}&mes={p.Mes}&liq={p.LiquidacionId}"
-        : $"/nominas/extras/{p.Tipo}?anio={p.Anio}&mes={p.Mes}";
+        : $"/nominas/liquidaciones?anio={p.Anio}&mes={p.Mes}&ver={p.Tipo}";
 
     protected override async Task OnParametersSetAsync()
     {
