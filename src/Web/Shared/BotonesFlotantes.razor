@@ -20,15 +20,21 @@
 @if (true)
 {
     var cfg = Mio();
-    var compacto = cfg?.Compacto == true;
+    var compacto = !EnBarra && cfg?.Compacto == true;
     var der = cfg?.Derecha ?? 22;
     var aba = cfg?.Abajo ?? 22;
     if (arrastrando) { der = arrDer; aba = arrAba; }
     var labDer = arrastrando ? arrLabDer : cfg?.LabDer == true;
-    var acostado = cfg?.Acostado == true;
-    <div class="bf @(abierto ? "bf-abierto" : "") @(compacto ? "bf-compacto" : "") @(acostado ? "bf-acostado" : "") @(labDer ? "bf-labder" : "") @(arrastrando ? "bf-moviendo" : "")"
-         style="right:clamp(0px, @(der)px, calc(100vw - 56px)); bottom:clamp(0px, @(aba)px, calc(100vh - 56px));">
-        <span class="bf-agarre" title="Arrastrame para ponerme en otro lado" @onpointerdown="EmpezarArrastre">⋮⋮</span>
+    var acostado = EnBarra || cfg?.Acostado == true;
+    if (EnBarra) labDer = true;
+    @* 2026-11-17: en la compu la barra va FIJA adentro de la barra de arriba (EnBarra), para todos (pedido del
+       dueño: en la notebook de OFICINA flotaba encima de Favoritos). La flotante queda solo para el celu (SoloCelu). *@
+    <div class="bf @(EnBarra ? "bf-barra" : "") @(SoloCelu ? "bf-solo-celu" : "") @(abierto ? "bf-abierto" : "") @(compacto ? "bf-compacto" : "") @(acostado ? "bf-acostado" : "") @(labDer ? "bf-labder" : "") @(arrastrando ? "bf-moviendo" : "")"
+         style="@(EnBarra ? "" : $"right:clamp(0px, {der}px, calc(100vw - 56px)); bottom:clamp(0px, {aba}px, calc(100vh - 56px));")">
+        @if (!EnBarra)
+        {
+            <span class="bf-agarre" title="Arrastrame para ponerme en otro lado" @onpointerdown="EmpezarArrastre">⋮⋮</span>
+        }
         @if (compacto)
         {
             @* Plegado en un solo ícono: tocándolo se vuelve a abrir. *@
@@ -41,7 +47,7 @@
         <div class="bf-lista">
             @* 2026-11-13: ⚡ Acciones siempre primero (no cuenta en los 10 y no se saca). *@
             <div class="bf-acc-wrap">
-                <button type="button" class="bf-item" @onclick="AbrirCerrarAcciones">
+                <button type="button" class="bf-item" title="Acciones rápidas" @onclick="AbrirCerrarAcciones">
                     <span class="bf-circ bf-acc">⚡</span>
                     <span class="bf-lab"><b>Acciones</b></span>
                 </button>
@@ -67,27 +73,30 @@
                 var href = HrefDe(it);
                 if (href is null)
                 {
-                    <button type="button" class="bf-item" @onclick="() => Elegir(it)">
+                    <button type="button" class="bf-item" title="@it.Texto" @onclick="() => Elegir(it)">
                         @Contenido(it)
                     </button>
                 }
                 else if (it.Clave.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                 {
-                    <a class="bf-item" href="@href" target="_blank" rel="noopener" @onclick="() => abierto = false">@Contenido(it)</a>
+                    <a class="bf-item" title="@it.Texto" href="@href" target="_blank" rel="noopener" @onclick="() => abierto = false">@Contenido(it)</a>
                 }
                 else if (it.Externo)
                 {
                     @* Página entera (mapa): Blazor no la abre solo; el clic lo maneja ClicExterno. *@
-                    <a class="bf-item" href="@href" @onclick="e => ClicExterno(e, href)" @onclick:preventDefault>@Contenido(it)</a>
+                    <a class="bf-item" title="@it.Texto" href="@href" @onclick="e => ClicExterno(e, href)" @onclick:preventDefault>@Contenido(it)</a>
                 }
                 else
                 {
-                    <a class="bf-item" href="@href" @onclick="() => abierto = false">@Contenido(it)</a>
+                    <a class="bf-item" title="@it.Texto" href="@href" @onclick="() => abierto = false">@Contenido(it)</a>
                 }
             }
             <span class="bf-pie">
                 <button type="button" class="bf-lapiz" title="Elegir qué botones tengo acá (hasta @MAX)" @onclick="AbrirEditor">✏</button>
-                <button type="button" class="bf-lapiz" title="Achicarlo a un solo ícono" @onclick="() => Compactar(true)">—</button>
+                @if (!EnBarra)
+                {
+                    <button type="button" class="bf-lapiz" title="Achicarlo a un solo ícono" @onclick="() => Compactar(true)">—</button>
+                }
             </span>
         </div>
         @* Celu: el ☰ de siempre, que se abre tocándolo. *@
@@ -171,7 +180,7 @@
                 </div>
             }
 
-            <div class="bf-ed-forma">
+            <div class="bf-ed-forma" style="@(EnBarra ? "display:none" : "")">
                 <label><input type="radio" name="bf-forma" checked="@(!borradorAcostado)" @onchange="() => borradorAcostado = false" /> parado (columna)</label>
                 <label><input type="radio" name="bf-forma" checked="@borradorAcostado" @onchange="() => borradorAcostado = true" /> acostado (fila)</label>
             </div>
@@ -208,7 +217,7 @@
             <button class="bf-ed-ok" disabled="@guardando" @onclick="GuardarEditor">@(guardando ? "Guardando…" : "Listo")</button>
             <button class="bf-ed-sec-b" disabled="@guardando" @onclick="CerrarEditor">Cancelar</button>
             <span style="flex:1"></span>
-            @if (Mio()?.Derecha is not null)
+            @if (!EnBarra && Mio()?.Derecha is not null)
             {
                 <button class="bf-ed-sec-b" disabled="@guardando" title="Lo vuelve abajo a la derecha" @onclick="VolverAlLugar">↘ Volver a su lugar</button>
             }
@@ -312,6 +321,29 @@
         .bf-compacto .bf-abierto .bf-lista, .bf-compacto.bf-abierto .bf-lista { display: flex; }
         .bf-ed { right: 12px; bottom: 12px; }
     }
+    /* 2026-11-17: fija adentro de la barra de arriba: más chica y más junta, nombre corto debajo. */
+    .bf.bf-barra { position: static; z-index: auto; flex-direction: row; gap: 2px; align-items: flex-start; }
+    .bf-barra .bf-lista { gap: 0; align-items: flex-start; }
+    .bf-barra .bf-item { width: 52px; gap: 1px; }
+    .bf-barra .bf-circ { width: 32px; height: 32px; font-size: 15px; box-shadow: none; }
+    .bf-barra .bf-circ.bf-acc { font-size: 15px; }
+    .bf-barra .bf-circ svg { width: 17px; height: 17px; }
+    .bf-barra .bf-lab { font-size: 9.5px; line-height: 1.1; max-width: 52px; -webkit-line-clamp: 1; pointer-events: auto; text-shadow: none; }
+    .bf-barra .bf-num { top: -5px; right: -7px; min-width: 16px; height: 16px; font-size: 9.5px; border-width: 1.5px; }
+    .bf-barra .bf-pie { border: 0; box-shadow: none; background: none; align-self: center; }
+    .bf-barra .bf-lapiz { font-size: 12px; color: #9ca3af; padding: 2px 4px; }
+    .bf-barra .bf-lapiz:hover { color: #111827; }
+    .bf-barra .bf-acc-menu { left: 0; right: auto; }
+    .bf-barra .bf-main { display: none; }
+    /* Notebook: solo los circulitos, más juntos; el nombre sale pasando el cursor. */
+    @@media (max-width: 1750px) {
+        .bf-barra .bf-item { width: 31px; }
+        .bf-barra .bf-lab { display: none; }
+        .bf-barra .bf-circ { width: 29px; height: 29px; font-size: 13.5px; }
+        .bf-barra .bf-circ svg { width: 15px; height: 15px; }
+    }
+    @@media (max-width: 768px) { .bf.bf-barra { display: none !important; } }
+    @@media (min-width: 769px) { .bf.bf-solo-celu { display: none !important; } }
     @@media print { .bf { display: none !important; } }
 </style>
 
@@ -325,6 +357,10 @@
     [Parameter] public string Rol { get; set; } = "user";
     [Parameter] public string Usuario { get; set; } = "";
     [Parameter] public Func<string, bool>? TienePermiso { get; set; }
+    /// <summary>2026-11-17: dibujada fija adentro de la barra de arriba (compu). Sin arrastre ni "achicar".</summary>
+    [Parameter] public bool EnBarra { get; set; }
+    /// <summary>2026-11-17: la flotante de siempre, solo en el celu (en la compu está la de arriba).</summary>
+    [Parameter] public bool SoloCelu { get; set; }
     /// <summary>03/11/2026: 📋 Tareas del depósito (solo para los admin; null = no lo ve). No es parámetro:
     /// el layout lo engancha cuando TareasAvisos ya cargó (su @ref recién existe después del primer dibujo).</summary>
     public Web.Shared.Tareas.TareasAvisos? Tareas { get; set; }
@@ -565,7 +601,8 @@
     {
         if (!accAbierto)
         {
-            try { accAbajo = await JS.InvokeAsync<bool>("eval", "(() => { const e = document.querySelector('.bf-acc-wrap'); return !!e && e.getBoundingClientRect().top < window.innerHeight / 2; })()"); }
+            if (EnBarra) accAbajo = true;
+            else try { accAbajo = await JS.InvokeAsync<bool>("eval", "(() => { const e = document.querySelector('.bf-acc-wrap'); return !!e && e.getBoundingClientRect().top < window.innerHeight / 2; })()"); }
             catch { accAbajo = false; }
         }
         accAbierto = !accAbierto;
