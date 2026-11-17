@@ -284,6 +284,26 @@
     .sidebar.ta-col .nav-group-children .nav-item { padding-top: 0.32rem; padding-bottom: 0.32rem; font-size: 0.86rem; }
     /* 2026-11-10: botones del menú nuevo en la fila de arriba (opción A: tarjetitas blancas). */
     .mnb-arriba { flex: 0 0 auto; display: flex; align-items: center; }
+    /* 2026-11-17: los botones redondos fijos en esta fila: ocupan el lugar libre del medio. */
+    .bf-slot { flex: 1 0 auto; display: flex; justify-content: center; }
+    @@media (max-width: 768px) { .bf-slot { display: none; } }
+    /* Notebook: para que entre todo en una fila, chips más angostos y "Calculadoras" solo con el ícono. */
+    @@media (min-width: 769px) and (max-width: 1750px) {
+        .topstrip { padding-left: 0.8rem; padding-right: 0.6rem; gap: 0.25rem !important; }
+        .main-ta.main-ta-col .topstrip { gap: 0.25rem !important; }
+        .topstrip-chips { gap: 0.25rem !important; }
+        .topstrip-chips .topchip { padding: 0.2rem 0.5rem; gap: 0.35rem; }
+        .topstrip-chips .topchip > .topchip-ico { display: none; }
+        .calc-uno-txt { display: none; }
+        /* El nombre de la empresa ya está en el logo de la izquierda: queda solo quién está (GERMAN · OFICINA). */
+        .topstrip-chips .topchip-btn .topchip-value { display: none !important; }
+        .topstrip-chips .topchip-btn .topchip-label { font-size: 0.74rem; color: #1f2937; font-weight: 600; }
+    }
+    /* Si igual no entra todo (pantalla muy chica), baja a una segunda fila en vez de taparse o cortarse. */
+    @@media (min-width: 769px) and (max-width: 1750px) {
+        .main-ta:not(.main-ta-depo) .topstrip { flex-wrap: wrap !important; row-gap: 0.3rem; }
+        .mab-txt { display: none; }
+    }
     .mnb-arriba .mnb { flex-wrap: nowrap; gap: 0.55rem; }
     .mnb-arriba .mnb.editando { flex-wrap: wrap; }
     .mnb-arriba .mnb-cont { margin-right: 0; }
@@ -1940,6 +1960,16 @@
         @* 2026-07-08: grupo de iconitos movido acá desde la barra de menú (descongestiona
            esa fila). Misma lógica y mismos botones: Widgets/Apps, Buscar, Actualizar, campanas,
            Chat, WhatsApp, e indicadores de subida/sincro. *@
+        @* 2026-11-17: los botones redondos (⚡ Acciones, ☀, Preguntas…) FIJOS acá arriba en la compu, para todos
+           (pedido del dueño: en la notebook de OFICINA flotaban encima de Favoritos). En el celu sigue el ☰ de abajo. *@
+        @if (!IsRoleWithCustomSidebar() && !TodoArribaDepo)
+        {
+            <div class="bf-slot">
+                <BotonesFlotantes @ref="botonesBarraRef" EnBarra="true" Bienvenida="bienvenidaRef" Asistente="asistenteRef" WhatsApp="waBuscadorRef"
+                                  VePreguntas="@(HasPerm("publicaciones"))" PreguntasSinResponder="preguntasSinResponder"
+                                  Rol="@role" Usuario="@username" TienePermiso="HasPerm" />
+            </div>
+        }
         <div class="topstrip-icons">
             @* Widgets como dropdown (calc + post-its + zoom) *@
             <div class="topbar-widgets-wrap @(MenuNuevo ? "mn-oculto-pc" : "")">
@@ -2666,7 +2696,7 @@
        tienen sus pestañas y pastillas propias). *@
     @if (!IsRoleWithCustomSidebar())
     {
-        <BotonesFlotantes @ref="botonesRef" Bienvenida="bienvenidaRef" Asistente="asistenteRef" WhatsApp="waBuscadorRef"
+        <BotonesFlotantes @ref="botonesRef" SoloCelu="true" Bienvenida="bienvenidaRef" Asistente="asistenteRef" WhatsApp="waBuscadorRef"
                           VePreguntas="@(HasPerm("publicaciones"))" PreguntasSinResponder="preguntasSinResponder"
                           Rol="@role" Usuario="@username" TienePermiso="HasPerm" />
     }
@@ -3603,12 +3633,16 @@
     private AssistantWidget? asistenteRef;
     private WaBuscadorFlotante? waBuscadorRef;
     private BotonesFlotantes? botonesRef;
+    private BotonesFlotantes? botonesBarraRef;
     private Web.Shared.Tareas.TareasAvisos? tareasAvisosRef;
     private void EngancharTareas()
     {
-        if (botonesRef is null) return;
-        botonesRef.Tareas = tareasAvisosRef;
-        botonesRef.Refrescar();
+        foreach (var b in new[] { botonesRef, botonesBarraRef })
+        {
+            if (b is null) continue;
+            b.Tareas = tareasAvisosRef;
+            b.Refrescar();
+        }
     }
     private int preguntasSinResponder;
     private void PreguntasContadas(int n)
@@ -4028,6 +4062,7 @@
             // 2026-11-03: el menú arranca SIEMPRE plegado (antes se acordaba si lo habían dejado abierto).
             // Los botones del rincón reciben sus ventanas recién ahora (los @ref se llenan al dibujar).
             botonesRef?.Refrescar();
+            botonesBarraRef?.Refrescar();
             StateHasChanged();
         }
     }
