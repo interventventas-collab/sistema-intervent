@@ -3064,6 +3064,40 @@
                                                         }
                                                     </div>
                                                 }
+                                                @* 2026-11-17: "Sumar tapas": el vaso muestra qué tapa le va; se elige la variante y entra
+                                                   con la misma cantidad de unidades que los vasos (después se puede cambiar a mano). *@
+                                                @if (!esCafe && TapasDe(ci.ProductoId) is { Count: > 0 } tapasOp)
+                                                {
+                                                    var tapaCargada = TapaCargadaPara(i, tapasOp);
+                                                    @if (tapaCargada is { } tc)
+                                                    {
+                                                        <div style="font-size:0.75rem; color:#047857; margin-top:0.2rem;">✓ con tapa: @(tc.Sku ?? tc.Nombre) · @CantidadParaMostrar(ci.ProductoId, ci.Formato, ci.Cantidad) vasos / @tc.Unidades tapas</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div style="margin-top:0.25rem; position:relative;">
+                                                            <button type="button" tabindex="-1"
+                                                                    style="border:1px solid @(sumarTapasIdx == i ? "#2563eb" : "#d1d5db"); color:@(sumarTapasIdx == i ? "#2563eb" : "#374151"); font-weight:@(sumarTapasIdx == i ? "600" : "400"); background:#fff; border-radius:6px; font-size:0.75rem; padding:0.1rem 0.6rem; cursor:pointer;"
+                                                                    @onclick="() => sumarTapasIdx = sumarTapasIdx == i ? -1 : i">+ Sumar tapas@(sumarTapasIdx == i ? " ▾" : "")</button>
+                                                            @if (sumarTapasIdx == i)
+                                                            {
+                                                                var unidVasos = CantidadParaMostrar(ci.ProductoId, ci.Formato, ci.Cantidad);
+                                                                <div style="margin-top:4px; width:470px; max-width:100%; background:#fff; border:1px solid #d1d5db; border-radius:8px; box-shadow:0 4px 14px rgba(0,0,0,.1);">
+                                                                    <div style="font-size:0.7rem; color:#6b7280; padding:0.45rem 0.75rem 0.25rem;">Elegí la tapa · entra con la misma cantidad que el vaso (@unidVasos u.)</div>
+                                                                    @foreach (var tp in tapasOp)
+                                                                    {
+                                                                        var tid = tp.Id;
+                                                                        <div class="nv-tapa-op" style="padding:0.45rem 0.75rem; border-top:1px solid #f3f4f6; display:flex; justify-content:space-between; gap:0.5rem; cursor:pointer;"
+                                                                             @onclick="() => SumarTapa(i, tid)">
+                                                                            <span><span style="font-family:monospace; font-size:0.7rem; color:#1d4ed8; font-weight:700; margin-right:0.4rem;">@tp.Sku</span><b style="font-size:0.82rem;">@tp.Nombre</b></span>
+                                                                            <span style="color:#6b7280; font-size:0.75rem; white-space:nowrap;">stock @tp.StockUnidades.ToString("N0", new System.Globalization.CultureInfo("es-AR"))</span>
+                                                                        </div>
+                                                                    }
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    }
+                                                }
                                                 @if (esCafe)
                                                 {
                                                     <div style="display: flex; gap: 0.3rem; align-items: center; margin-top: 0.25rem; flex-wrap: wrap;">
@@ -8617,6 +8651,52 @@
         catch { /* sin vencimientos la venta se carga igual */ }
     }
 
+    // ── 2026-11-17: "Sumar tapas" ──
+    private Dictionary<int, List<int>> tapasPorVaso = new();
+    private int sumarTapasIdx = -1;
+
+    /// <summary>Tapas activas que le van a este vaso (vacío si no es vaso o no tiene tapa cargada).</summary>
+    private List<CafeProductoDto> TapasDe(int vasoId)
+    {
+        if (productos is null || !tapasPorVaso.TryGetValue(vasoId, out var ids)) return new();
+        return ids.Select(id => productos.FirstOrDefault(p => p.Id == id)).Where(p => p is not null).Select(p => p!).ToList();
+    }
+
+    /// <summary>Si en la venta ya hay una de las tapas de este vaso: cuál y cuántas unidades suman.</summary>
+    private (string? Sku, string Nombre, int Unidades)? TapaCargadaPara(int vasoIdx, List<CafeProductoDto> tapas)
+    {
+        var ids = tapas.Select(t => t.Id).ToHashSet();
+        var lineas = formItems.Where(f => ids.Contains(f.ProductoId)).ToList();
+        if (lineas.Count == 0) return null;
+        var t0 = tapas.First(t => t.Id == lineas[0].ProductoId);
+        return (t0.Sku, t0.Nombre, lineas.Sum(f => CantidadParaMostrar(f.ProductoId, f.Formato, f.Cantidad)));
+    }
+
+    /// <summary>Agrega la tapa justo debajo del vaso con las mismas unidades. Usa el formato más grande
+    /// de la tapa que entre justo (300 vasos → 3 packs x 100); si ninguno entra justo, va suelta.</summary>
+    private async Task SumarTapa(int vasoIdx, int tapaId)
+    {
+        sumarTapasIdx = -1;
+        if (vasoIdx < 0 || vasoIdx >= formItems.Count) return;
+        var vaso = formItems[vasoIdx];
+        var tapa = productos?.FirstOrDefault(p => p.Id == tapaId);
+        if (tapa is null) return;
+        var unidades = CantidadParaMostrar(vaso.ProductoId, vaso.Formato, vaso.Cantidad);
+        if (unidades <= 0) return;
+        var formato = "UNIT"; var cant = unidades; var mejor = 1;
+        foreach (var (val, _) in FormatoOpcionesLinea(tapaId))
+        {
+            var n = CantidadParaMostrar(tapaId, val, 1);
+            if (n > mejor && unidades % n == 0) { mejor = n; formato = val; cant = unidades / n; }
+        }
+        var pos = vasoIdx + 1;
+        formItems.Insert(pos, new CafeCotizarItemRequest { ProductoId = tapaId, Formato = formato, Cantidad = cant });
+        // La cotización se acomoda igual para que la tabla no muestre renglones cruzados mientras espera al server.
+        if (cotizacion is not null && cotizacion.Items.Count == formItems.Count - 1)
+            cotizacion.Items.Insert(pos, new CafeCotizadoItemDto { ProductoId = tapaId, ProductoNombre = tapa.Nombre, Categoria = tapa.Categoria, Formato = formato, Cantidad = cant, StockOk = true });
+        await Cotizar();
+    }
+
     private async Task LoadCatalogos()
     {
         try
@@ -8625,6 +8705,8 @@
             productos = (await Api.GetCafeProductosAsync())?.Where(p => p.IsActive).ToList() ?? new();
             combos = (await Api.GetCafeCombosAsync(activos: true)) ?? new();
             await RecargarVencimientos();
+            // 2026-11-17: "Sumar tapas": qué tapa va con cada vaso.
+            try { tapasPorVaso = (await Api.GetVasoTapasAsync() ?? new()).GroupBy(x => x.VasoProductoId).ToDictionary(g => g.Key, g => g.Select(x => x.TapaProductoId).ToList()); } catch { }
             settings = await Api.GetCafeSettingsAsync();
             // 2026-07-03: cuentas ARCA para el selector "¿Con qué empresa facturás?" (multi-sociedad).
             await LoadArcaAccountsAsync();

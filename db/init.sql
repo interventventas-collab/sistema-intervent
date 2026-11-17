@@ -8836,3 +8836,34 @@ GO
 IF COL_LENGTH('Dep_Tareas','AlqReservaId') IS NULL
     ALTER TABLE Dep_Tareas ADD AlqReservaId INT NULL;
 GO
+
+-- 17/11/2026: "Sumar tapas" en Nueva venta: qué tapa va con cada vaso (un vaso puede tener varias).
+-- Los pares se cargan por SKU (los Id de dev y prod no coinciden). Si falta un SKU, ese par no se carga.
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+IF OBJECT_ID('Cafe_ProductoTapas') IS NULL
+    CREATE TABLE Cafe_ProductoTapas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        VasoProductoId INT NOT NULL REFERENCES Cafe_Productos(Id),
+        TapaProductoId INT NOT NULL REFERENCES Cafe_Productos(Id),
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_Cafe_ProductoTapas UNIQUE (VasoProductoId, TapaProductoId)
+    );
+GO
+INSERT INTO Cafe_ProductoTapas (VasoProductoId, TapaProductoId)
+SELECT v.Id, t.Id
+FROM (VALUES
+    ('VP8','T-VP8NEG'),('VP8','T-VP8BL'),('PFVC08-G/10','T-VP8NEG'),('PFVC08-G/10','T-VP8BL'),
+    ('VP12','T-VP12NEG'),('VP12','T-VP12BL'),('PFVC12-G9','T-VP12NEG'),('PFVC12-G9','T-VP12BL'),
+    ('VP16','T-VP16NEG'),('VP16','T-VP16BL'),('PFVC16-6/2','T-VP16NEG'),('PFVC16-6/2','T-VP16BL'),
+    ('VT180','TPV180DUOMO-N'),
+    ('VT240','TPV240DUOMO-N'),('VT240','TPV240C/R'),
+    ('VT300','TPV300DUOMO-N'),
+    ('VA/WC/008/BL','TA/WC/D24/NE'),('VA/WC/008/KF','TA/WC/D24/NE'),
+    ('VA/WC/012/BL','TA/WC/D24/NE'),('VA/WC/012/KF','TA/WC/D24/NE'),
+    ('VA/WC/120/TE','TA/WC/4JL/BL'),
+    ('VA440TAI','TA440TAI')
+) AS x(VasoSku, TapaSku)
+JOIN Cafe_Productos v ON v.Sku = x.VasoSku
+JOIN Cafe_Productos t ON t.Sku = x.TapaSku
+WHERE NOT EXISTS (SELECT 1 FROM Cafe_ProductoTapas pt WHERE pt.VasoProductoId = v.Id AND pt.TapaProductoId = t.Id);
+GO
