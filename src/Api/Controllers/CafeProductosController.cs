@@ -775,6 +775,18 @@ public class CafeProductosController : ControllerBase
         return Ok(rows);
     }
 
+    /// <summary>2026-11-17: "Sumar tapas" en Nueva venta: pares vaso → tapa (solo tapas activas).</summary>
+    [HttpGet("tapas")]
+    public async Task<IActionResult> Tapas()
+    {
+        var pares = await (
+            from pt in _db.CafeProductoTapas.AsNoTracking()
+            join t in _db.CafeProductos.AsNoTracking() on pt.TapaProductoId equals t.Id
+            where t.IsActive
+            select new { pt.VasoProductoId, pt.TapaProductoId }).ToListAsync();
+        return Ok(pares);
+    }
+
     /// <summary>2026-11-06: "Última venta dd/MM/yyyy · hace N días (cliente)" debajo del botón
     /// Ver historial. Una sola consulta para toda la lista: la venta (no anulada) más nueva de cada producto.</summary>
     [HttpGet("ultimas-ventas")]

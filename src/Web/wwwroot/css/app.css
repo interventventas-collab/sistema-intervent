@@ -5489,3 +5489,6 @@ tr.om-franja-tr > td { padding: 0 0.5rem 0.8rem !important; border-top: none !im
   body:has(.sidebar.mf:hover) .mf-tag, .mf-pill:hover .mf-tag, body:has(.sidebar.mf.mf-fijo) .mf-tag { visibility: hidden; }
   .sidebar.ta-col.mf .mn-organizar { display: none; }
 }
+
+/* 2026-11-17: "Sumar tapas" en Nueva venta */
+.nv-tapa-op:hover { background: #eff6ff; }

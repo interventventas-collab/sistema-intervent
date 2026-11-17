@@ -1765,6 +1765,11 @@ public class ApiClient
         return await GetAsync<List<CafeProductoDto>>(url);
     }
 
+    // --- 2026-11-17: "Sumar tapas": qué tapa va con cada vaso ---
+    public record VasoTapaDto(int VasoProductoId, int TapaProductoId);
+    public async Task<List<VasoTapaDto>?> GetVasoTapasAsync()
+        => await GetAsync<List<VasoTapaDto>>("/api/cafe/productos/tapas");
+
     // --- 2026-11-04: Vencimientos ("Asignar vencimiento") ---
     public async Task<VencProductoDto?> GetVencimientosProductoAsync(int productoId)
         => await GetAsync<VencProductoDto>($"/api/cafe/vencimientos/producto/{productoId}");
