@@ -6,6 +6,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject Web.Services.TraerBancosService Traer
+@inject OperatorService Operator
 
 @* 2026-11-10: columna de pastillas vivas a la derecha del Dashboard (solo admin; maqueta aprobada
    Todo_junto_PROPUESTA). Mismo estilo que las pastillas del depósito (DepoPastillas, clases .dp-*),
@@ -184,9 +185,9 @@
         </div>
         <div class="op-prev">
             <div class="op-prev-t">Para hacer con el banco</div>
-            <div class="op-prev-f op-prev-m"><span><b>💰 Entraron</b><small>transferencias y cheques sin cobranza</small></span><span>@Entraron.Count</span></div>
-            <div class="op-prev-f op-prev-m"><span><b>💸 Salieron</b><small>transferencias sin decir qué pagaron</small></span><span>@salieron.Count</span></div>
-            <div class="op-prev-f op-prev-m"><span><b>📄 Cheques a pagar</b><small>@(cheques is { Count: > 0 } ? ProximoCheque(cheques[0]) : "no hay cheques por pagar")</small></span><span>@ChequesSemana.Count</span></div>
+            <div class="op-prev-f op-prev-m"><span><b>💰 Transferencias recibidas</b><small>plata que entró y no es cobranza de nadie</small></span><span>@Entraron.Count</span></div>
+            <div class="op-prev-f op-prev-m"><span><b>💸 Transferencias realizadas</b><small>sin decir qué pagaron</small></span><span>@salieron.Count</span></div>
+            <div class="op-prev-f op-prev-m"><span><b>✍ Cheques emitidos</b><small>@(cheques is { Count: > 0 } ? ProximoCheque(cheques[0]) : "no hay cheques por pagar")</small></span><span>@ChequesSemana.Count</span></div>
             <div class="op-prev-mas">Tocá para verlos ›</div>
         </div>
     </div>
@@ -339,12 +340,12 @@
         <div class="op-tabs">
             <button class="op-tab @(bancoVista == "ent" ? "on" : "")" @onclick='() => bancoVista = "ent"'>💰 Transferencias recibidas (@Entraron.Count)</button>
             <button class="op-tab @(bancoVista == "sal" ? "on" : "")" @onclick='() => bancoVista = "sal"'>💸 Transferencias realizadas (@salieron.Count)</button>
-            <button class="op-tab @(bancoVista == "che" ? "on" : "")" @onclick='() => { bancoVista = "che"; _ = VerCheques(chVista); }'>📄 Cheques recibidos</button>
-            <button class="op-tab @(bancoVista == "emi" ? "on" : "")" @onclick='() => { bancoVista = "emi"; _ = CargarEmitidos(); }'>✍ Cheques emitidos@(emitidos is null ? "" : $" ({EmitidosSinAsociar})")</button>
+            <button class="op-tab @(bancoVista == "che" ? "on" : "")" @onclick='() => { bancoVista = "che"; _ = VerCheques(chVista); }'>📄 Cheques recibidos@(chResp is null ? "" : $" ({chResp.Conteos.EnMano} en mano)")</button>
+            <button class="op-tab @(bancoVista == "emi" ? "on" : "")" @onclick='() => { bancoVista = "emi"; _ = CargarEmitidos(); }'>✍ Cheques emitidos (@ChequesSemana.Count)</button>
         </div>
         @if (bancoVista == "ent")
         {
-            <div class="op-l gris" style="padding:0.45rem 1rem; margin:0;">Plata que entró al banco (transferencias y e-cheq) y todavía no es cobranza de nadie</div>
+            <div class="op-l gris" style="padding:0.45rem 1rem; margin:0;">Plata que entró (transferencias y cheques) y todavía no es cobranza de nadie · si no es un cobro, tocá Ignorar</div>
             <div class="op-lista">
                 @if (Entraron.Count == 0) { <div class="op-vacio">No hay nada para aplicar. Todo al día.</div> }
                 @foreach (var it in Entraron)
@@ -356,7 +357,23 @@
                             <span class="sub">@item.QueEs@(string.IsNullOrWhiteSpace(item.PorQue) ? "" : " · " + item.PorQue)</span></span>
                         <span style="white-space:nowrap; font-weight:700;">@PlataAcciones.Plata(item.Importe)</span>
                         <button class="op-tab" @onclick="() => Aplicar(item)">@(PlataAcciones.Url(item) is null ? "elegir cliente" : "cobrar")</button>
+                        @if (PlataAcciones.SePuedeApartar(item))
+                        {
+                            <button class="op-tab" title="No es un cobro: sacarlo de la lista" @onclick="() => entIgnorando = entIgnorando == item.Key ? null : item.Key">Ignorar</button>
+                        }
                     </div>
+                    @if (entIgnorando == item.Key)
+                    {
+                        <div class="op-fila" style="padding-left:4.2rem; gap:0.4rem; flex-wrap:wrap; background:#f9fafb;">
+                            <span class="sub" style="display:inline;">¿Por qué no es un cobro?</span>
+                            @foreach (var mo in PlataAcciones.Motivos(item))
+                            {
+                                var mot = mo;
+                                <button class="op-tab" disabled="@entGuardando" @onclick="() => IgnorarEntro(item, mot)">@mot</button>
+                            }
+                            <button class="op-tab" @onclick="() => entIgnorando = null">cancelar</button>
+                        </div>
+                    }
                 }
             </div>
             <div class="op-pie"><a @onclick='() => Nav.NavigateTo("/cafe/cobranzas-pendientes")'>Ir a Plata que entró ›</a></div>
@@ -417,7 +434,7 @@
         }
         else if (bancoVista == "emi")
         {
-            <div class="op-l gris" style="padding:0.45rem 1rem; margin:0;">Cheques que emitiste y el banco todavía no pagó · el número de la pestaña son los que todavía no dicen qué factura pagan</div>
+            <div class="op-l gris" style="padding:0.45rem 1rem; margin:0;">Cheques que emitiste y el banco todavía no pagó · el número de la pestaña son los que vencen en los próximos 7 días@(emitidos is null ? "" : $" · {EmitidosSinAsociar} todavía no dicen qué factura pagan")</div>
             <div class="op-lista">
                 @if (emitidos is null) { <div class="op-vacio">Cargando…</div> }
                 else if (emitidos.Count == 0) { <div class="op-vacio">No hay cheques emitidos por pagar.</div> }
@@ -788,6 +805,34 @@
     private List<SalidaBancoDto> salieron = new();
     private bool bancoOk, verSaldo;
     private string bancoVista = "ent";
+    private string? entIgnorando;
+    private bool entGuardando;
+
+    /// <summary>2026-11-17: "Ignorar" en Transferencias recibidas (transferencia que no es cobro, o
+    /// cheque que el cliente anuló / mandó repetido). Queda en Plata que entró → "No eran cobros".</summary>
+    private async Task IgnorarEntro(PlataItemDto i, string motivo)
+    {
+        entGuardando = true;
+        try
+        {
+            if (await PlataAcciones.Apartar(Api, i, motivo, Operator.Current))
+            {
+                plataEntro.Remove(i); entIgnorando = null;
+                ToastService.Success("✓ Ignorado. Si te equivocaste, está en Plata que entró → \"No eran cobros\".");
+                if (i.Tipo == "CHEQUE") chResp = null;
+                _ = CargarConteoRecibidos();
+            }
+            else ToastService.Error("No se pudo ignorar");
+        }
+        catch (Exception ex) { ToastService.Error($"Error: {ex.Message}"); }
+        finally { entGuardando = false; }
+    }
+
+    private async Task CargarConteoRecibidos()
+    {
+        try { chResp = await Api.GetChequesUnificadoAsync(chVista); StateHasChanged(); }
+        catch { }
+    }
     private readonly HashSet<string> vistosBanco = new();
     private int? salAbierta;
     private List<FacturaCompraImpagaDto>? salFacturas;
@@ -798,9 +843,9 @@
     private int BancoNumero => Entraron.Count + salieron.Count + ChequesSemana.Count;
     private string BancoResumen => string.Join(" · ", new[]
     {
-        Entraron.Count == 0 ? null : $"{Entraron.Count} cobranza{(Entraron.Count == 1 ? "" : "s")}",
-        salieron.Count == 0 ? null : $"{salieron.Count} pago{(salieron.Count == 1 ? "" : "s")}",
-        ChequesSemana.Count == 0 ? null : $"{ChequesSemana.Count} cheque{(ChequesSemana.Count == 1 ? "" : "s")} a pagar",
+        Entraron.Count == 0 ? null : $"{Entraron.Count} recibida{(Entraron.Count == 1 ? "" : "s")}",
+        salieron.Count == 0 ? null : $"{salieron.Count} realizada{(salieron.Count == 1 ? "" : "s")}",
+        ChequesSemana.Count == 0 ? null : $"{ChequesSemana.Count} cheque{(ChequesSemana.Count == 1 ? "" : "s")} emitido{(ChequesSemana.Count == 1 ? "" : "s")} vence{(ChequesSemana.Count == 1 ? "" : "n")} esta semana",
     }.Where(x => x != null));
 
     private void ToggleSaldo() => verSaldo = !verSaldo;
@@ -946,6 +991,7 @@
             }
             foreach (var k in claves) vistosBanco.Add(k);
             bancoOk = true;
+            if (chResp is null) await CargarConteoRecibidos();
         }
         catch { }
     }

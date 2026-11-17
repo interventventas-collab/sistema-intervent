@@ -152,7 +152,7 @@
 
     private async Task Devolver(PlataItemDto i)
     {
-        if (await Api.DesignorarMovimientoExtractoAsync(i.Id))
+        if (await PlataAcciones.Devolver(Api, i))
         {
             items.Remove(i);
             ToastService.Success("Volvió a \"Por volcar\"");

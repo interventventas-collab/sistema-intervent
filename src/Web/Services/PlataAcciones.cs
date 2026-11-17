@@ -45,4 +45,18 @@ public static class PlataAcciones
 
     /// <summary>Motivos para apartar una transferencia que no es un cobro (3, sin lista desplegable).</summary>
     public static readonly string[] MotivosNoEsCobro = { "entre cuentas propias", "devolución", "otro, no es de un cliente" };
+
+    /// <summary>2026-11-17: motivos para ignorar un cheque cargado que nunca va a ser cobro.</summary>
+    public static readonly string[] MotivosChequeIgnorar = { "el cliente lo anuló", "vino repetido", "otro" };
+
+    public static bool SePuedeApartar(PlataItemDto i) => i.Tipo is "TRANSFERENCIA" or "CHEQUE";
+    public static string[] Motivos(PlataItemDto i) => i.Tipo == "CHEQUE" ? MotivosChequeIgnorar : MotivosNoEsCobro;
+
+    /// <summary>Aparta el renglón: la transferencia con el ignorar del extracto, el cheque pasa a anulado.</summary>
+    public static Task<bool> Apartar(ApiClient api, PlataItemDto i, string motivo, string? operador)
+        => i.Tipo == "CHEQUE" ? api.IgnorarChequePlataAsync(i.Id, motivo, operador)
+                              : api.IgnorarMovimientoExtractoAsync(i.Id, motivo, operador);
+
+    public static Task<bool> Devolver(ApiClient api, PlataItemDto i)
+        => i.Tipo == "CHEQUE" ? api.DesignorarChequePlataAsync(i.Id) : api.DesignorarMovimientoExtractoAsync(i.Id);
 }

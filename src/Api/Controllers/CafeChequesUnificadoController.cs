@@ -162,6 +162,7 @@ public class CafeChequesUnificadoController : ControllerBase
                 "COBRADO_VENTANILLA" => (USADOS, "Cobrado por ventanilla"),
                 "ENDOSADO" => (USADOS, "Endosado a un proveedor"),
                 "RECHAZADO" => (RECHAZADOS, "Rebotó"),
+                "ANULADO" => (USADOS, "Anulado (ignorado)"),
                 _ => (USADOS, c.Estado)
             };
             string? endA = null; int? endProvId = null;

@@ -2838,7 +2838,8 @@
             catch { sucursalesMismoCuit = new(); }
 
             // Cargar movimientos del extracto bancario asociados a este cliente que aun no se usaron
-            try { movsBancoDisponibles = await Api.GetMovimientosAsociadosSinCobrarAsync(selClienteId) ?? new(); }
+            try { movsBancoDisponibles = await Api.GetMovimientosAsociadosSinCobrarAsync(selClienteId,
+                      selClienteId == PreClienteId ? PreMovimientoId : null) ?? new(); }
             catch { movsBancoDisponibles = new(); }
             // 2026-06-03: cargar tambien los movimientos descartados para este cliente
             try { movsBancoDescartados = await Api.GetMovimientosDescartadosParaClienteAsync(selClienteId) ?? new(); }
@@ -3159,7 +3160,8 @@
             if (!ok) { ToastService.Error("No se pudo restaurar"); return; }
             movsBancoDescartados.RemoveAll(x => x.MovimientoId == movId);
             // Recargar la lista visible para que aparezca de vuelta (la fuente de verdad la tiene el backend).
-            try { movsBancoDisponibles = await Api.GetMovimientosAsociadosSinCobrarAsync(selClienteId) ?? new(); }
+            try { movsBancoDisponibles = await Api.GetMovimientosAsociadosSinCobrarAsync(selClienteId,
+                      selClienteId == PreClienteId ? PreMovimientoId : null) ?? new(); }
             catch { /* ignore */ }
             ToastService.Success("Movimiento restaurado");
             StateHasChanged();

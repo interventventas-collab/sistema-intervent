@@ -217,7 +217,7 @@ public class CafeExtractoBancoController : ControllerBase
     /// todavia en una cobranza (CobranzaUsadaId IS NULL). Para sugerirlos como formas de cobro
     /// en /cafe/tesoreria/cobranzas. Tambien trae los SIN asociar pero que matchean por CUIT del cliente.</summary>
     [HttpGet("asociados-sin-cobrar/{clienteId:int}")]
-    public async Task<IActionResult> AsociadosSinCobrar(int clienteId)
+    public async Task<IActionResult> AsociadosSinCobrar(int clienteId, [FromQuery] int? incluir = null)
     {
         var cliente = await _db.CafeClientes.FirstOrDefaultAsync(c => c.Id == clienteId);
         if (cliente is null) return Ok(new List<MovimientoDisponibleDto>());
@@ -247,6 +247,14 @@ public class CafeExtractoBancoController : ControllerBase
             (!m.VentaIdAsociada.HasValue && cliente.Cuit != null && m.LeyendaAdicional2 == cliente.Cuit)
             || (m.VentaIdAsociada.HasValue && clientesDict.TryGetValue(m.VentaIdAsociada.Value, out var v) && v.ClienteId == clienteId)
         ).ToList();
+
+        // 2026-11-17: si vino desde "cobrar" con una transferencia puntual (?incluir=), va aunque no
+        // coincida el CUIT: la sugerencia "por el importe" abría la cobranza sin la transferencia.
+        if (incluir is int inc && filtrados.All(m => m.Id != inc))
+        {
+            var extra = await _db.CafeExtractoMovimientos.FirstOrDefaultAsync(m => m.Id == inc && m.Creditos > 0 && m.CobranzaUsadaId == null);
+            if (extra is not null) filtrados.Insert(0, extra);
+        }
 
         var result = filtrados.Select(m =>
         {

@@ -128,7 +128,7 @@ public class PlataQueEntroController : ControllerBase
 
         // Sugerencia de cliente: por CUIT, y si no, por una factura impaga del mismo importe.
         Dictionary<string, List<(int Id, string Nombre)>> porCuit = new();
-        List<(int ClienteId, string Nombre, string Numero, decimal Importe)> impagas = new();
+        List<(int VentaId, int ClienteId, string Nombre, string Numero, decimal Importe)> impagas = new();
         if (conSugerencia && (movs.Count > 0 || echeqs.Count > 0))
         {
             var cl = await _db.CafeClientes.AsNoTracking().Where(c => c.IsActive && c.Cuit != null && c.Cuit != "")
@@ -137,33 +137,37 @@ public class PlataQueEntroController : ControllerBase
                 .ToDictionary(g => g.Key, g => g.Select(x => (x.Id, x.Nombre)).ToList());
             var imp = await _db.CafeVentas.AsNoTracking()
                 .Where(v => !v.IsPaid && v.ClienteId != null && v.Estado != "anulado" && (v.TipoComprobante == null || !v.TipoComprobante.StartsWith("NC")))
-                .Select(v => new { ClienteId = v.ClienteId!.Value, Nombre = v.ClienteNav!.Nombre, v.Numero,
+                .Select(v => new { v.Id, ClienteId = v.ClienteId!.Value, Nombre = v.ClienteNav!.Nombre, v.Numero,
                     Importe = v.ArcaImpTotal != null && v.ArcaImpTotal > 0 ? v.ArcaImpTotal.Value : v.Total })
                 .ToListAsync();
-            impagas = imp.Select(v => (v.ClienteId, v.Nombre, v.Numero, v.Importe)).ToList();
+            impagas = imp.Select(v => (v.Id, v.ClienteId, v.Nombre, v.Numero, v.Importe)).ToList();
         }
 
-        (int? id, string? nombre, string? porQue) Sugerir(string? cuit, decimal importe, int? ventaAsociada)
+        // 2026-11-17: devuelve también la factura del mismo importe, para que "cobrar" la deje tildada
+        // (antes solo decía el número en el texto y la cobranza abría sin nada elegido).
+        (int? id, string? nombre, string? porQue, int? ventaId) Sugerir(string? cuit, decimal importe, int? ventaAsociada)
         {
-            if (!conSugerencia) return (null, null, null);
+            if (!conSugerencia) return (null, null, null, null);
             var d = SoloDigitos(cuit);
             if (d.Length >= 10 && porCuit.TryGetValue(d, out var cs))
-                return (cs[0].Id, cs[0].Nombre, cs.Count == 1 ? "mismo CUIT" : $"mismo CUIT · hay {cs.Count} clientes con ese CUIT");
-            var mismas = impagas.Where(v => Math.Abs(v.Importe - importe) < 0.01m).ToList();
+                return (cs[0].Id, cs[0].Nombre, cs.Count == 1 ? "mismo CUIT" : $"mismo CUIT · hay {cs.Count} clientes con ese CUIT", null);
+            // La más vieja primero: es la que nombra el cartel y la que queda tildada.
+            var mismas = impagas.Where(v => Math.Abs(v.Importe - importe) < 0.01m).OrderBy(v => v.VentaId).ToList();
             if (mismas.Select(v => v.ClienteId).Distinct().Count() == 1)
-                return (mismas[0].ClienteId, mismas[0].Nombre, $"por el importe: la factura {mismas[0].Numero} es de ${importe.ToString("N2", EsAr)}");
-            return (null, null, null);
+                return (mismas[0].ClienteId, mismas[0].Nombre, $"por el importe: la factura {mismas[0].Numero} es de ${importe.ToString("N2", EsAr)}",
+                        mismas[0].VentaId);
+            return (null, null, null, null);
         }
 
         foreach (var m in movs)
         {
             var s = Sugerir(m.LeyendaAdicional2, m.Creditos, m.VentaIdAsociada);
-            int? ventaId = m.VentaIdAsociada;
-            if (ventaId.HasValue && conSugerencia)
+            int? ventaId = m.VentaIdAsociada ?? s.ventaId;
+            if (m.VentaIdAsociada.HasValue && conSugerencia)
             {
-                var v = await _db.CafeVentas.AsNoTracking().Where(x => x.Id == ventaId.Value)
+                var v = await _db.CafeVentas.AsNoTracking().Where(x => x.Id == ventaId!.Value)
                     .Select(x => new { x.ClienteId, Nombre = x.ClienteNav!.Nombre, x.Numero }).FirstOrDefaultAsync();
-                if (v?.ClienteId is not null) s = (v.ClienteId, v.Nombre, $"ya asociada a la venta {v.Numero}");
+                if (v?.ClienteId is not null) s = (v.ClienteId, v.Nombre, $"ya asociada a la venta {v.Numero}", null);
             }
             items.Add(new PlataItemDto(
                 $"T-{m.Id}", "TRANSFERENCIA", m.Id, m.Fecha, Dias(m.Fecha, hoy), m.Creditos,
@@ -271,6 +275,22 @@ public class PlataQueEntroController : ControllerBase
                         && (m.IgnoradoAt != null || m.LeyendaAdicional2 == ChequesBancoImportService.CuitPalanica))
             .Select(m => new { m.Id, m.Fecha, m.Creditos, m.LeyendaAdicional1, m.LeyendaAdicional2, m.IgnoradoAt, m.IgnoradoPor, m.IgnoradoMotivo })
             .ToListAsync();
+        // 2026-11-17: cheques cargados que se ignoraron (el cliente lo anuló, repetido…).
+        var anulados = await _db.CafeCheques.AsNoTracking()
+            .Where(c => c.Estado == EstadoIgnorado && c.CobranzaOrigenId == null)
+            .Select(c => new { c.Id, c.Numero, c.Importe, c.Emisor, c.CreatedAt, c.FechaCambioEstado, c.Observaciones })
+            .ToListAsync();
+        var cheq = anulados.Select(c =>
+        {
+            var obs = c.Observaciones ?? "";
+            var ix = obs.LastIndexOf(MarcaIgnorado, StringComparison.Ordinal);
+            var resto = ix < 0 ? "" : obs[(ix + MarcaIgnorado.Length)..];
+            var partes = resto.Split(" · por ", 2);
+            return new PlataItemDto($"C-{c.Id}", "CHEQUE", c.Id, c.CreatedAt, 0, c.Importe,
+                $"Cheque N° {c.Numero}", c.Emisor, null, null, null, null, null, null,
+                partes.Length > 1 ? partes[1] : null, c.FechaCambioEstado,
+                string.IsNullOrWhiteSpace(partes[0]) ? "ignorado" : partes[0], PuedeDeshacer: true);
+        });
         return movs.Select(m =>
         {
             var propia = m.IgnoradoAt == null;
@@ -279,7 +299,46 @@ public class PlataQueEntroController : ControllerBase
                 propia ? "el sistema" : m.IgnoradoPor, propia ? m.Fecha : m.IgnoradoAt,
                 propia ? "entre cuentas propias (se aparta sola)" : (m.IgnoradoMotivo ?? "no es cobro"),
                 PuedeDeshacer: !propia);
-        }).OrderByDescending(i => i.Cuando).ToList();
+        }).Concat(cheq).OrderByDescending(i => i.Cuando).ToList();
+    }
+
+    // ─────────────────────────────── Ignorar un cheque (2026-11-17) ───────────────────────────────
+    // Pedido del dueño: un e-cheq que el cliente mandó dos veces y después anuló quedaba para siempre
+    // en "Transferencias recibidas". Se pasa a ANULADO (sale de "en mano") y se puede deshacer.
+    public const string EstadoIgnorado = "ANULADO";
+    private const string MarcaIgnorado = " · Ignorado: ";
+    public record IgnorarChequeRequest(string? Motivo, string? Operador);
+
+    [HttpPost("cheque/{id:int}/ignorar")]
+    public async Task<IActionResult> IgnorarCheque(int id, [FromBody] IgnorarChequeRequest req)
+    {
+        var c = await _db.CafeCheques.FirstOrDefaultAsync(x => x.Id == id);
+        if (c is null) return NotFound();
+        if (c.Estado != "EN_CARTERA" || c.CobranzaOrigenId != null)
+            return BadRequest(new { error = "Ese cheque ya se usó o ya es cobranza de alguien: no se puede ignorar." });
+        var motivo = string.IsNullOrWhiteSpace(req.Motivo) ? "ignorado" : req.Motivo.Trim();
+        var quien = string.IsNullOrWhiteSpace(req.Operador) ? User.Identity?.Name : req.Operador.Trim();
+        var obs = (c.Observaciones ?? "") + MarcaIgnorado + motivo + (string.IsNullOrWhiteSpace(quien) ? "" : $" · por {quien}");
+        c.Observaciones = obs.Length > 500 ? obs[^500..] : obs;
+        c.Estado = EstadoIgnorado;
+        c.FechaCambioEstado = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { id = c.Id });
+    }
+
+    [HttpDelete("cheque/{id:int}/ignorar")]
+    public async Task<IActionResult> DesignorarCheque(int id)
+    {
+        var c = await _db.CafeCheques.FirstOrDefaultAsync(x => x.Id == id);
+        if (c is null) return NotFound();
+        if (c.Estado != EstadoIgnorado) return BadRequest(new { error = "Ese cheque no está ignorado." });
+        c.Estado = "EN_CARTERA";
+        c.FechaCambioEstado = DateTime.UtcNow;
+        var obs = c.Observaciones ?? "";
+        var ix = obs.LastIndexOf(MarcaIgnorado, StringComparison.Ordinal);
+        if (ix >= 0) c.Observaciones = obs[..ix] + " · des-ignorado " + DateTime.UtcNow.AddHours(-3).ToString("dd/MM");
+        await _db.SaveChangesAsync();
+        return Ok(new { id = c.Id });
     }
 
     private static int Dias(DateTime llego, DateTime hoyAr)
