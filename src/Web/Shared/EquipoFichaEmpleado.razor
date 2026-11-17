@@ -36,6 +36,11 @@
     .eqf-link { display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.25rem; }
     .eqf-mono { font-family:ui-monospace,Consolas,monospace; font-size:0.74rem; background:#f3f4f6; padding:1px 5px; border-radius:4px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .eqf-nota { font-size:0.72rem; color:#9ca3af; margin-top:0.6rem; }
+    .eqf-fich { margin:0.35rem 0 0.25rem; max-height:190px; overflow-y:auto; font-size:0.8rem; }
+    .eqf-fich div { display:grid; grid-template-columns:80px 1fr auto; gap:0.5rem; padding:2px 0; border-bottom:1px dotted #e5e7eb; font-variant-numeric:tabular-nums; }
+    .eqf-fich .fd { color:#6b7280; }
+    .eqf-fich .fh { color:#6b7280; }
+    .eqf-fich .falta .fh { color:#b45309; font-weight:600; }
 </style>
 
 @if (Ficha is null)
@@ -178,6 +183,22 @@ else
             <div class="eqf-kv" style="margin-top:0.3rem;">
                 <span>Fichar</span><span>@f.Fichar</span>
             </div>
+            @* 2026-11-16: el fichaje de los últimos 14 días, a la vista (pedido del dueño). *@
+            @if (f.Fichadas is { Count: > 0 } fl)
+            {
+                <div class="eqf-fich">
+                    @foreach (var d in fl)
+                    {
+                        var falta = d.Entrada is not null && d.Salida is null && d.Fecha.Date < hoy;
+                        <div class="@(falta ? "falta" : "")">
+                            <span class="fd">@DiaTexto(d.Fecha)</span>
+                            <span>@(d.Entrada ?? "—") a @(d.Salida ?? (d.Fecha.Date == hoy ? "…" : "—"))</span>
+                            <span class="fh">@(falta ? "⚠ no fichó la salida" : d.Horas)</span>
+                        </div>
+                    }
+                </div>
+                <a class="eqf-a" style="font-size:0.78rem;" href="/horas-extras">Corregir fichaje →</a>
+            }
             <div class="eqf-sep"></div>
             <div class="eqf-kv">
                 <span>Documentos</span>

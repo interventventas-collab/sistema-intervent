@@ -54,15 +54,27 @@
     .eqt-tot b { color:#111827; }
     .eqt tr.fila.abierta td { background:#f9fafb; border-bottom:none; }
     .eqt-chev { color:#9ca3af; font-size:0.7rem; width:10px; }
-    .eqt-um { max-width:420px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.82rem; }
+    .eqt-um { max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.82rem; }
     .eqt-um-cuando { font-weight:600; color:#111827; }
     .eqt tr.eqf-row > td { background:#f9fafb; padding:0 0.5rem 1rem 2.6rem; border-bottom:1px solid #e5e7eb; }
+    .eqt-nm { display:flex; align-items:center; gap:0.35rem; font-weight:700; }
+    .eqt-est { font-size:0.76rem; color:#6b7280; font-weight:400; margin-top:1px; white-space:nowrap; }
+    .eqt-est.naranja { color:#9a3412; }
+    .eqt-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px; vertical-align:1px; background:#d1d5db; }
+    .eqt-dot.trabajando { background:#22c55e; } .eqt-dot.salio { background:#9ca3af; } .eqt-dot.activo { background:#f59e0b; } .eqt-dot.vacaciones { background:#38bdf8; }
+    .eqt-ic { display:inline-grid; place-items:center; width:19px; height:19px; border-radius:50%; font-size:0.68rem; cursor:pointer; border:1px solid #e5e7eb; background:#f3f4f6; color:#6b7280; font-weight:400; }
+    .eqt-ic.atr { background:#fee2e2; border-color:#fca5a5; color:#b91c1c; }
+    .eqt-ic.hoy { background:#fef3c7; border-color:#fcd34d; color:#92400e; }
+    .eqt-tar { font-size:0.7rem; font-weight:500; color:#6b7280; cursor:default; }
+    .eqt-tipos { font-weight:400; font-size:0.74rem; }
+    .eqt-rend { text-decoration:none; color:#111827; white-space:nowrap; }
+    .eqt-rend:hover b { text-decoration:underline; }
+    .eqt-viejo { color:#b91c1c; font-size:0.78rem; font-weight:600; }
     @@media (max-width: 900px) { .eqt .col-ult { display:none; } .eqt-track { width:70px; } }
 </style>
 @* 2026-11-16: "Pagos al equipo": lo atrasado, lo de hoy y lo de los próximos 7 días (sueldo en partes y
    horas extras, comisiones, feriados, plus, aguinaldo con fecha de pago). Reemplaza la columna "Hoy se le paga".
    Solo lo ve quien ve Sueldos. *@
-@{ var hayPagar = false; }
 @if (pagoAbierto is { } pa)
 {
     <div class="modal-overlay" @onclick="CerrarPago">
@@ -93,65 +105,57 @@
     </div>
 }
 <table class="eqt">
-    <tr><th>Quién</th><th>Estado</th><th class="col-ult">Último movimiento en el sistema</th><th>Entregas de hoy</th>@if (hayPagar) {<th>Hoy se le paga</th>}<th>Aviso
+    <tr><th>Quién
         @if (puedeVerPagos)
         {
-            @* 16/11: programar un pago (sueldo o concepto) para otro día → sale acá con 💰 MAÑANA / EN N DÍAS *@
+            @* 16/11: programar un pago (sueldo o concepto) para otro día → sale con el iconito 💰 al lado del nombre *@
             <button type="button" class="eqp-prog" @onclick="() => showProgramar = true" title="Anotar que a alguien le hay que pagar tal día">📅 Programar pago</button>
         }
-    </th></tr>
+    </th><th class="col-ult">Último movimiento en el sistema</th><th>Entregas de hoy</th><th>A rendir</th></tr>
     @foreach (var e in Items)
     {
         var emp = e;
-        var tipo = Tipo(e);
+        var est = EstadoDe(e);
         var total = e.RutaEntregadas + e.RutaFaltan + e.RutaNoEntregadas;
-        var quieto = e.MinutosSinMarcar >= UmbralQuietoMin && e.RutaFaltan > 0;
-        var termino = total > 0 && e.RutaFaltan == 0;
+        var aviso = AvisoRuta(e);
         var abierto = abiertoId == e.NomEmpleadoId;
         <tr class="fila @(abierto ? "abierta" : "")" @onclick="() => Toggle(emp)" title="@(abierto ? "Tocá para cerrar" : "Tocá para ver todo de esta persona")">
             <td>
                 <div class="eqt-who">
                     <span class="eqt-chev">@(abierto ? "▾" : "▸")</span>
                     <span class="eqt-av" style="background:@OperatorService.ShortBgColor(e.ApodoKiosko ?? e.Nombre);">@OperatorService.ShortLabel(e.ApodoKiosko ?? e.Nombre)</span>
-                    @ShortName(e.Nombre)
-                    @* 2026-11-16: aviso de pago en el MISMO renglón (pedido del dueño): hoy o atrasado bien a la vista,
-                       lo de los próximos 7 días más suave. Tocándolo va a pagarlo. *@
-                    @if (puedeVerPagos && proximos.Any(p => p.EmpleadoId == emp.NomEmpleadoId))
-                    {
-                        var suyos = proximos.Where(p => p.EmpleadoId == emp.NomEmpleadoId).OrderBy(p => p.Fecha).ToList();
-                        var urg = suyos.Where(p => p.Fecha.Date <= Web.Services.FechaPalabras.HoyAr).ToList();
-                        var lista = urg.Count > 0 ? urg : suyos.Take(1).ToList();
-                        var primero = lista[0];
-                        var atr = lista.Any(p => Web.Services.FechaPalabras.Atrasado(p.Fecha));
-                        // 16/11: cartelito corto para que se vayan preparando: HOY / MAÑANA / EN N DÍAS / ATRASADO
-                        var enDias = (primero.Fecha.Date - Web.Services.FechaPalabras.HoyAr).Days;
-                        var cartel = urg.Count > 0 ? (atr ? "ATRASADO" : "HOY") : enDias == 1 ? "MAÑANA" : $"EN {enDias} DÍAS";
-                        var detalle = string.Join("\n", suyos.Select(p => $"{Cap(Web.Services.FechaPalabras.Cuando(p.Fecha))}: {NombreConcepto(p.Tipo)}{MesSiNoEsEste(p)} ${p.Monto.ToString("N0", Es)}"));
-                        @* 16/11: tocar abre el pago YA ARMADO (empleado, concepto, mes e importe) del primero de la lista *@
-                        <a class="eqp-pill @(urg.Count > 0 ? (atr ? "atr" : "hoy") : "prox")" href="javascript:void(0)" @onclick="() => AbrirPago(primero)" @onclick:stopPropagation="true"
-                           title="@("Tocá para pagar\n" + detalle)">
-                            💰 <span class="eqp-cartel">@cartel</span> <b>$@lista.Sum(p => p.Monto).ToString("N0", Es)</b> · @string.Join(", ", lista.Select(p => NombreConcepto(p.Tipo) + MesSiNoEsEste(p)).Distinct())
-                        </a>
-                    }
+                    <div style="min-width:0;">
+                        <div class="eqt-nm">
+                            @ShortName(e.Nombre)
+                            @* 2026-11-16: el pago va como iconito; pasando el cursor se ve qué, cuánto y la fecha. Tocándolo se paga. *@
+                            @if (puedeVerPagos && proximos.Any(p => p.EmpleadoId == emp.NomEmpleadoId))
+                            {
+                                var suyos = proximos.Where(p => p.EmpleadoId == emp.NomEmpleadoId).OrderBy(p => p.Fecha).ToList();
+                                var urg = suyos.Where(p => p.Fecha.Date <= Web.Services.FechaPalabras.HoyAr).ToList();
+                                var lista = urg.Count > 0 ? urg : suyos.Take(1).ToList();
+                                var primero = lista[0];
+                                var atr = lista.Any(p => Web.Services.FechaPalabras.Atrasado(p.Fecha));
+                                var enDias = (primero.Fecha.Date - Web.Services.FechaPalabras.HoyAr).Days;
+                                var cartel = urg.Count > 0 ? (atr ? $"ATRASADO · se tenía que pagar el {primero.Fecha:dd/MM}" : "SE PAGA HOY")
+                                           : enDias == 1 ? $"Se paga mañana ({primero.Fecha:dd/MM})" : $"Se paga en {enDias} días ({primero.Fecha:dd/MM})";
+                                var detalle = string.Join("\n", suyos.Select(p => $"{Cap(Web.Services.FechaPalabras.Cuando(p.Fecha))}: {NombreConcepto(p.Tipo)}{MesSiNoEsEste(p)} ${p.Monto.ToString("N0", Es)}"));
+                                <span class="eqt-ic @(urg.Count > 0 ? (atr ? "atr" : "hoy") : "prox")" @onclick="() => AbrirPago(primero)" @onclick:stopPropagation="true"
+                                      title="@(cartel + "\n" + detalle + "\nTocá para pagarlo")">@(urg.Count > 0 ? "⚠" : "💰")</span>
+                            }
+                            @if (e.SalidaSinFichar is DateTime ss)
+                            {
+                                <span class="eqt-ic hoy" title="@($"El {DiaCorto(ss)} fichó la entrada y no la salida.\nTocá la fila para ver su fichaje.")">⏱</span>
+                            }
+                            @if (e.TareasPendientes > 0)
+                            {
+                                <span class="eqt-tar" title="@($"Tareas del depósito sin terminar:\n{e.TareasDetalle}")">📋 @e.TareasPendientes</span>
+                            }
+                        </div>
+                        <div class="eqt-est @(est == "activo" ? "naranja" : "")" title="@HorasTitulo(e)">
+                            <span class="eqt-dot @est"></span>@EstadoTexto(e, est)
+                        </div>
+                    </div>
                 </div>
-            </td>
-            <td>
-                @if (e.Estado == "trabajando")
-                {
-                    <span class="eqt-st on">trabajando</span> <span class="eqt-muted">· desde @e.HoraEntrada</span>
-                }
-                else if (e.Estado == "salio")
-                {
-                    <span class="eqt-st fue">se fue @e.HoraSalida</span> <span class="eqt-muted">· entró @e.HoraEntrada</span>
-                }
-                else if (tipo == "repartiendo")
-                {
-                    <span class="eqt-st sf">repartiendo sin fichar</span>
-                }
-                else
-                {
-                    <span class="eqt-st no">@(e.Estado == "no_ficha" ? "no ficha" : "no vino")</span>
-                }
             </td>
             <td class="col-ult">
                 @if (ultimos.TryGetValue(e.NomEmpleadoId, out var um))
@@ -172,9 +176,24 @@
                 {
                     var pct = (100.0 * e.RutaEntregadas / total).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
                     <div class="eqt-bar"><b>@e.RutaEntregadas de @total</b><span class="eqt-track"><span class="eqt-fill" style="width:@pct%;"></span></span></div>
-                    @if (e.MinutosSinMarcar >= 0 && !string.IsNullOrWhiteSpace(e.UltimoDomicilio))
+                    <div class="eqt-muted eqt-tipos">@TiposRuta(e)</div>
+                    @switch (aviso)
                     {
-                        <div class="eqt-muted" style="max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="@e.UltimoDomicilio">última hace @Minutos(e.MinutosSinMarcar) · @e.UltimoDomicilio</div>
+                        case "se_fue":
+                            <div class="eqt-warn" title="Fichó la salida pero en el mapa le quedaron entregas sin marcar. Preguntale si las entregó o si volvieron.">⚠ se fue con @e.RutaFaltan sin marcar</div>
+                            break;
+                        case "quieto":
+                            <div class="eqt-warn" title="Le quedan entregas y hace rato que no marca ninguna. Conviene llamarlo.">⚠ hace @Minutos(e.MinutosSinMarcar) que no marca · le faltan @e.RutaFaltan</div>
+                            break;
+                        case "termino":
+                            <div class="eqt-ok">✅ terminó la ruta@(e.RutaNoEntregadas > 0 ? $" · {e.RutaNoEntregadas} no se entreg{(e.RutaNoEntregadas == 1 ? "ó" : "aron")}" : "")</div>
+                            break;
+                        default:
+                            if (e.MinutosSinMarcar >= 0 && !string.IsNullOrWhiteSpace(e.UltimoDomicilio))
+                            {
+                                <div class="eqt-muted" style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="@e.UltimoDomicilio">última hace @Minutos(e.MinutosSinMarcar) · @e.UltimoDomicilio</div>
+                            }
+                            break;
                     }
                 }
                 else if (!e.TieneRepartidor)
@@ -186,36 +205,26 @@
                     <span class="eqt-muted">sin entregas hoy</span>
                 }
             </td>
-            @if (hayPagar)
-            {
-                <td @onclick:stopPropagation="true">
-                    @if (e.PagarHoy > 0)
-                    {
-                        <span class="eqt-paga @(e.PagarHoyAtrasado ? "atr" : "")">
-                            <b>$@e.PagarHoy.ToString("N0", Es)</b> <span class="eqt-muted">@e.PagarHoyDetalle</span>
-                            <a href="/nominas/liquidaciones?anio=@e.PagarHoyAnio&mes=@e.PagarHoyMes&ver=@e.PagarHoyTipo" title="Ir a pagarlo">Pagar</a>
-                        </span>
-                    }
-                    else
-                    {
-                        <span class="eqt-muted">—</span>
-                    }
-                </td>
-            }
-            <td>
-                @if (quieto)
+            <td @onclick:stopPropagation="true">
+                @if (e.PorRendir > 0)
                 {
-                    <span class="eqt-warn">⚠ @Minutos(e.MinutosSinMarcar) quieto</span>
+                    var viejo = e.RendirDesde is DateTime rd && rd.Date < DateTimeExt.AhoraAr().Date;
+                    var link = e.PorRendirVentas > 0 || e.PorRendirAlquiler <= 0 ? "/cafe/cobranzas-pendientes" : "/alquileres/cobranzas-pendientes";
+                    <a class="eqt-rend @(viejo ? "viejo" : "")" href="@link" title="Cobró en la calle y todavía no se aprobó en Cobranzas a aprobar. Tocá para verlo.">
+                        <b>$@e.PorRendir.ToString("N0", Es)</b>
+                        <span class="eqt-muted">· @e.CobrosARendir cobro@(e.CobrosARendir == 1 ? "" : "s")</span>
+                        @if (viejo) { <span class="eqt-viejo">· desde el @e.RendirDesde!.Value.ToString("dd/MM")</span> }
+                    </a>
                 }
-                else if (termino)
+                else
                 {
-                    <span class="eqt-ok">✅ terminó</span>
+                    <span class="eqt-muted">—</span>
                 }
             </td>
         </tr>
         @if (abierto)
         {
-            <tr class="eqf-row"><td colspan="@(hayPagar ? 6 : 5)">
+            <tr class="eqf-row"><td colspan="4">
                 <EquipoFichaEmpleado Ficha="ficha" Cargando="fichaCargando" Item="emp"
                                      OnCambiarDia="CambiarDia" OnVerReparto="() => OnClickEmp.InvokeAsync(emp)" />
             </td></tr>
@@ -349,6 +358,61 @@
         if (e.TieneRepartidor && (total > 0 || e.VentasEntregadasHoy > 0 || e.AlqEntregadosHoy > 0 || e.AlqRetiradosHoy > 0))
             return "repartiendo";
         return "nada";
+    }
+
+    /// <summary>2026-11-16: un solo estado por persona, sin contradicciones:
+    /// trabajando · salio · vacaciones · activo (no fichó pero hizo algo hoy) · no_ficha · no_vino.</summary>
+    public static string EstadoDe(ApiClient.DashboardEquipoItem e)
+    {
+        if (e.Estado == "trabajando") return "trabajando";
+        if (e.Estado == "salio") return "salio";
+        if (e.ActivoHoy || Tipo(e) == "repartiendo") return "activo";
+        if (e.VacacionesHasta is not null) return "vacaciones";
+        return e.Estado == "no_ficha" ? "no_ficha" : "no_vino";
+    }
+
+    /// <summary>2026-11-16: el aviso del reparto (va adentro de "Entregas de hoy"):
+    /// se_fue = fichó la salida con entregas abiertas · quieto = sigue en la calle y no marca hace rato ·
+    /// termino = no le queda ninguna · "" = nada que avisar.</summary>
+    public static string AvisoRuta(ApiClient.DashboardEquipoItem e)
+    {
+        var total = e.RutaEntregadas + e.RutaFaltan + e.RutaNoEntregadas;
+        if (total == 0) return "";
+        if (e.RutaFaltan == 0) return "termino";
+        if (e.Estado == "salio") return "se_fue";
+        if (e.MinutosSinMarcar >= UmbralQuietoMin) return "quieto";
+        return "";
+    }
+
+    private static string EstadoTexto(ApiClient.DashboardEquipoItem e, string est) => est switch
+    {
+        "trabajando" => $"trabajando desde {e.HoraEntrada}",
+        "salio" => $"se fue {e.HoraSalida} · entró {e.HoraEntrada}",
+        "activo" => "sin fichar · activo",
+        "vacaciones" => $"🏖 de vacaciones hasta el {e.VacacionesHasta:dd/MM}",
+        "no_ficha" => "no ficha",
+        _ => "no vino",
+    };
+
+    /// <summary>Las horas de hoy, solo pasando el cursor (pedido del dueño).</summary>
+    private static string HorasTitulo(ApiClient.DashboardEquipoItem e)
+        => string.IsNullOrWhiteSpace(e.Trabajado) ? "" : (e.Estado == "trabajando" ? "Lleva " : "Trabajó ") + Duracion(e.Trabajado) + " min hoy";
+
+    private static string TiposRuta(ApiClient.DashboardEquipoItem e)
+    {
+        var p = new List<string>();
+        if (e.RutaFlex > 0) p.Add($"{e.RutaFlex} Flex");
+        if (e.RutaMe1 > 0) p.Add($"{e.RutaMe1} ME1");
+        if (e.RutaVentas > 0) p.Add($"{e.RutaVentas} venta{(e.RutaVentas == 1 ? "" : "s")}");
+        if (e.RutaAlquiler > 0) p.Add($"{e.RutaAlquiler} alquiler{(e.RutaAlquiler == 1 ? "" : "es")}");
+        if (e.RutaOtras > 0) p.Add($"{e.RutaOtras} otra{(e.RutaOtras == 1 ? "" : "s")}");
+        return string.Join(" · ", p);
+    }
+
+    private static string DiaCorto(DateTime d)
+    {
+        var hoy = DateTimeExt.AhoraAr().Date;
+        return d.Date == hoy.AddDays(-1) ? $"ayer ({d:dd/MM})" : d.ToString("dddd dd/MM", Es);
     }
 
     private static string Pct(double minutos, bool posicion = true)
