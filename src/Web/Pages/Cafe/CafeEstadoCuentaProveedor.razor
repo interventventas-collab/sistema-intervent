@@ -66,6 +66,7 @@
         {
             <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
                 <button class="btn btn-secondary" @onclick="AbrirCotizacionNueva">+ Cargar cotización</button>
+                <button class="btn btn-secondary" @onclick="() => programando = true">📅 Programar pago</button>
                 <button class="btn btn-primary" @onclick='() => Nav.NavigateTo($"/cafe/tesoreria/pagos?proveedor={ProveedorId}")'>💰 Pagar</button>
             </div>
         }
@@ -260,7 +261,14 @@
     </div>
 }
 
+@if (programando)
+{
+    <ProgramarPagoProveedor ProveedorId="ProveedorId" OnCerrar="() => programando = false" OnGuardado="() => programando = false" />
+}
+
 @code {
+    private bool programando;   // 17/11/2026: misma ventana que "¿A quién le debo?"
+
     [Parameter] public int ProveedorId { get; set; }
 
     private static readonly CultureInfo Ar = new("es-AR");

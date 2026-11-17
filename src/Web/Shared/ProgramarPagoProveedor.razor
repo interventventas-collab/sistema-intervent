@@ -1,0 +1,286 @@
+@* 17/11/2026: "📅 Programar pago" a un PROVEEDOR. Pedido del dueño: "como lo que craneamos para los pagos en
+   equipo, pero para poder crear pagos con fecha: elegir un proveedor y cargar el pago pendiente".
+   No mueve plata: anota cuándo, cuánto y cómo. Se ve arriba de "¿A quién le debo?", en el Almanaque y en la
+   tarjeta Compras del inicio. Con "Pagar" se abre el Nuevo pago de siempre ya completo.
+   Maqueta aprobada: scratchpad/Pagos_programados_proveedores_PROPUESTA.png *@
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="modal-overlay" @onclick="Cerrar">
+    <div class="modal-card" @onclick:stopPropagation="true" style="max-width:560px; width:95vw; max-height:90vh; overflow-y:auto;">
+        <div class="modal-header">
+            <h4 style="margin:0;">📅 Programar pago a proveedor</h4>
+            <button class="btn-close" @onclick="Cerrar">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group" style="position:relative;">
+                <label class="form-label">Proveedor</label>
+                @if (provId > 0)
+                {
+                    <div style="display:flex; gap:0.3rem; align-items:center;">
+                        <div class="form-input" style="flex:1;"><b>@provNombre</b></div>
+                        <button class="btn btn-secondary" type="button" @onclick="SacarProveedor" title="Elegir otro">×</button>
+                    </div>
+                    @if (cuenta is null)
+                    {
+                        <div class="pp-sub">Cargando lo que le debés…</div>
+                    }
+                    else if (!cuenta.CuentaCorriente)
+                    {
+                        <div class="pp-sub">No lleva cuenta corriente: el pago queda "a cuenta".</div>
+                    }
+                    else
+                    {
+                        <div class="pp-sub">
+                            Le debés <b>@Plata(cuenta.Total)</b>
+                            @if (docs.Count > 0) { <span> · @docs.Count pendiente@(docs.Count == 1 ? "" : "s") · el más viejo del @docs.Min(d => d.Fecha).ToString("dd/MM")</span> }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <input class="form-input" @bind="busca" @bind:event="oninput" placeholder="🔍 Nombre o CUIT" autofocus />
+                    @if (busca.Trim().Length >= 1)
+                    {
+                        var ms = Coinciden().Take(15).ToList();
+                        <div class="pp-drop">
+                            @if (ms.Count == 0) { <div class="pp-op" style="color:#6b7280;">Sin resultados.</div> }
+                            @foreach (var p in ms)
+                            {
+                                var pp = p;
+                                <div class="pp-op" @onclick="() => ElegirProveedor(pp.Id, pp.Nombre)">
+                                    <b>@p.Nombre</b>@if (!string.IsNullOrEmpty(p.Cuit)) { <span style="color:#6b7280; font-size:0.78rem;"> · @p.Cuit</span> }
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+
+            @if (provId > 0)
+            {
+                @if (docs.Count > 0)
+                {
+                    <div class="form-group">
+                        <label class="form-label">¿Qué le pagás? <span style="color:#9ca3af;">(opcional)</span></label>
+                        <table class="pp-docs">
+                            @foreach (var d in docs)
+                            {
+                                var dd = d;
+                                <tr @onclick="() => Tildar(dd.Clave)">
+                                    <td style="width:1.6rem;"><input type="checkbox" checked="@tildadas.Contains(dd.Clave)" @onclick:stopPropagation="true" @onchange="() => Tildar(dd.Clave)" /></td>
+                                    <td>@d.Etiqueta · @d.Fecha.ToString("dd/MM")@(d.Oficial ? "" : " · no oficial")</td>
+                                    <td class="num">@Plata(d.Saldo)</td>
+                                </tr>
+                            }
+                        </table>
+                    </div>
+                }
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label">Importe</label>
+                        <input class="form-input" type="text" inputmode="decimal" @bind="ImporteTexto" @bind:after="ArmarPartes" />
+                    </div>
+                    <div class="form-group" style="margin:0;">
+                        <label class="form-label">@(partes == 1 ? "Fecha" : "Primera fecha")</label>
+                        <input class="form-input" type="date" @bind="fecha" @bind:after="ArmarPartes" />
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top:0.8rem;">
+                    <label class="form-label">¿Cómo?</label>
+                    <div class="pp-seg">
+                        @foreach (var (k, l) in MediosOp)
+                        {
+                            var kk = k;
+                            <button type="button" class="@(medio == kk ? "on" : "")" @onclick="() => medio = kk">@l</button>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Dividir en pagos</label>
+                    <div class="pp-seg">
+                        @foreach (var n in new[] { 1, 2, 3, 4, 6 })
+                        {
+                            var nn = n;
+                            <button type="button" class="@(partes == nn ? "on" : "")" @onclick="() => CambiarPartes(nn)">@(nn == 1 ? "1 pago" : nn.ToString())</button>
+                        }
+                        @if (partes > 1)
+                        {
+                            <span style="align-self:center; color:#6b7280; font-size:0.82rem; margin-left:0.3rem;">cada</span>
+                            <input class="form-input" type="number" min="1" style="width:4.2rem; padding:0.25rem 0.4rem;" @bind="cadaDias" @bind:after="ArmarPartes" />
+                            <span style="align-self:center; color:#6b7280; font-size:0.82rem;">días</span>
+                        }
+                    </div>
+                    @if (partes > 1)
+                    {
+                        <table class="pp-docs" style="margin-top:0.4rem;">
+                            @for (var i = 0; i < lineas.Count; i++)
+                            {
+                                var l = lineas[i];
+                                <tr>
+                                    <td style="color:#6b7280; width:3.5rem;">@(i + 1) de @lineas.Count</td>
+                                    <td><input class="form-input" type="date" style="padding:0.25rem 0.4rem;" @bind="l.Fecha" /></td>
+                                    <td class="num"><input class="form-input" type="text" inputmode="decimal" style="padding:0.25rem 0.4rem; text-align:right; width:9rem;" @bind="l.ImporteTexto" /></td>
+                                </tr>
+                            }
+                        </table>
+                        @if (Math.Abs(lineas.Sum(x => x.Importe) - importe) > 0.01m)
+                        {
+                            <div class="pp-sub" style="color:#b45309;">Las partes suman @Plata(lineas.Sum(x => x.Importe)), no @Plata(importe).</div>
+                        }
+                    }
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Nota</label>
+                    <input class="form-input" @bind="nota" maxlength="500" placeholder="ej: acordado con Juan, pasar comprobante por mail" />
+                </div>
+            }
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" @onclick="Cerrar" disabled="@guardando">Cancelar</button>
+            @if (provId > 0)
+            {
+                <button class="btn btn-primary" @onclick="Guardar" disabled="@(guardando || importe <= 0)">@(guardando ? "Guardando..." : "Programar")</button>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .pp-sub { font-size: 0.8rem; color: #6b7280; margin-top: 0.3rem; }
+    .pp-drop { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #d1d5db; border-radius: 6px;
+               max-height: 260px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 14px rgba(0,0,0,.12); margin-top: 0.2rem; }
+    .pp-op { padding: 0.45rem 0.6rem; border-bottom: 1px solid #f3f4f6; cursor: pointer; font-size: 0.88rem; }
+    .pp-op:hover { background: #f9fafb; }
+    .pp-docs { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+    .pp-docs td { padding: 0.3rem 0.25rem; border-bottom: 1px solid #f3f4f6; }
+    .pp-docs tr { cursor: pointer; }
+    .pp-docs .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .pp-seg { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .pp-seg button { border: 1px solid #d1d5db; background: #fff; border-radius: 16px; padding: 0.25rem 0.75rem; font-size: 0.82rem; cursor: pointer; }
+    .pp-seg button.on { background: #1f2937; border-color: #1f2937; color: #fff; }
+</style>
+
+@code {
+    /// <summary>Si viene, arranca con ese proveedor elegido (desde la ficha / el renglón del proveedor).</summary>
+    [Parameter] public int? ProveedorId { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+    [Parameter] public EventCallback OnGuardado { get; set; }
+
+    private static readonly (string, string)[] MediosOp = { ("TRANSFERENCIA", "Transferencia"), ("ECHEQ", "E-cheq"), ("EFECTIVO", "Efectivo") };
+
+    private List<CafeProveedorDto> proveedores = new();
+    private string busca = "";
+    private int provId;
+    private string provNombre = "";
+    private PendientesProveedorDto? cuenta;
+    private List<CtaCteDocDto> docs = new();
+    private readonly HashSet<string> tildadas = new();
+    private decimal importe;
+    private DateTime fecha = FechaPalabras.HoyAr;
+    private string medio = "TRANSFERENCIA";
+    private int partes = 1, cadaDias = 30;
+    private string? nota;
+    private bool guardando;
+    private List<Linea> lineas = new();
+
+    private class Linea
+    {
+        public DateTime Fecha { get; set; }
+        public decimal Importe { get; set; }
+        public string ImporteTexto
+        {
+            get => MontoInput.Formato(Importe);
+            set { MontoInput.TryParse(value, out var v); Importe = v; }
+        }
+    }
+
+    private string ImporteTexto
+    {
+        get => MontoInput.Formato(importe);
+        set { MontoInput.TryParse(value, out importe); }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { proveedores = (await Api.GetCafeProveedoresAsync() ?? new()).Where(p => p.IsActive).OrderBy(p => p.Nombre).ToList(); }
+        catch { proveedores = new(); }
+        if (ProveedorId is > 0)
+        {
+            var p = proveedores.FirstOrDefault(x => x.Id == ProveedorId);
+            await ElegirProveedor(ProveedorId.Value, p?.Nombre ?? "");
+        }
+    }
+
+    private IEnumerable<CafeProveedorDto> Coinciden()
+    {
+        var t = busca.Trim();
+        return proveedores.Where(p => p.Nombre.Contains(t, StringComparison.OrdinalIgnoreCase) || (p.Cuit ?? "").Contains(t));
+    }
+
+    private async Task ElegirProveedor(int id, string nombre)
+    {
+        provId = id; provNombre = nombre; busca = "";
+        cuenta = null; docs = new(); tildadas.Clear(); importe = 0;
+        try
+        {
+            cuenta = await Api.GetPendientesProveedorAsync(id);
+            docs = (cuenta?.Documentos ?? new()).Where(d => d.Saldo > 0.01m).OrderBy(d => d.Fecha).ToList();
+        }
+        catch { cuenta = new PendientesProveedorDto(); }
+        ArmarPartes();
+    }
+
+    private void SacarProveedor() { provId = 0; provNombre = ""; cuenta = null; docs = new(); tildadas.Clear(); }
+
+    private void Tildar(string clave)
+    {
+        if (!tildadas.Remove(clave)) tildadas.Add(clave);
+        importe = docs.Where(d => tildadas.Contains(d.Clave)).Sum(d => d.Saldo);
+        ArmarPartes();
+    }
+
+    private void CambiarPartes(int n) { partes = n; ArmarPartes(); }
+
+    /// <summary>Reparte el importe en partes iguales (la última se lleva los centavos), una cada N días.</summary>
+    private void ArmarPartes()
+    {
+        if (cadaDias < 1) cadaDias = 1;
+        lineas = new();
+        var cada = Math.Round(importe / partes, 0);
+        for (var i = 0; i < partes; i++)
+            lineas.Add(new Linea
+            {
+                Fecha = fecha.AddDays(cadaDias * i),
+                Importe = i == partes - 1 ? importe - cada * (partes - 1) : cada,
+            });
+    }
+
+    private async Task Guardar()
+    {
+        if (provId <= 0 || importe <= 0) return;
+        var ps = partes == 1
+            ? new List<ApiClient.PagoProgramadoParte> { new(fecha, importe) }
+            : lineas.Select(l => new ApiClient.PagoProgramadoParte(l.Fecha, l.Importe)).ToList();
+        if (ps.Any(p => p.Importe <= 0)) { ToastService.Error("Hay una parte sin importe"); return; }
+        guardando = true;
+        try
+        {
+            if (!await Api.CrearPagoProgramadoAsync(provId, medio, tildadas.ToList(), nota, ps)) { ToastService.Error("No se pudo guardar"); return; }
+            ToastService.Success(ps.Count == 1
+                ? $"Programado: {provNombre} · {FechaPalabras.Corta(ps[0].Fecha)} · {Plata(importe)}"
+                : $"Programados {ps.Count} pagos a {provNombre}");
+            await OnGuardado.InvokeAsync();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private Task Cerrar() => guardando ? Task.CompletedTask : OnCerrar.InvokeAsync();
+
+    private static string Plata(decimal v) => "$" + v.ToString("N0", CultureInfo.GetCultureInfo("es-AR"));
+}

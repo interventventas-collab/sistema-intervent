@@ -183,6 +183,7 @@
     private static readonly Tipo[] Tipos =
     {
         new("chp", "Cheques a pagar", "#dc2626", "💸"),
+        new("pgp", "Pagos a proveedores", "#b45309", "📅"),
         new("chc", "Cheques a cobrar", "#16a34a", "💰"),
         new("ent", "Entregas de alquiler", "#7c3aed", "🎪"),
         new("ret", "Retiros de alquiler", "#ea580c", "🔁"),
@@ -198,7 +199,7 @@
     private string vista = "sem";
     private DateTime cursor = DateTimeExt.AhoraAr().Date;
     private static DateTime Hoy => DateTimeExt.AhoraAr().Date;
-    private readonly HashSet<string> activos = new() { "chp", "chc", "ent", "ret", "ven", "not" };
+    private readonly HashSet<string> activos = new() { "chp", "pgp", "chc", "ent", "ret", "ven", "not" };
     private List<Ev> eventos = new();
     private bool cargando;
     private (DateTime, DateTime)? cargado;
@@ -255,6 +256,15 @@
                 if (r.FechaRetiro.Date >= desde && r.FechaRetiro.Date <= hasta)
                     lista.Add(new Ev(r.FechaRetiro.Date, "ret", r.ClienteNombre, $"retiro · {r.Numero}", r.DireccionEvento, "/alquileres/reservas"));
             }
+            // 17/11/2026: pagos a proveedores programados (pendientes) de ese rango.
+            try
+            {
+                var progs = await Api.GetPagosProgramadosAsync(desde, hasta);
+                foreach (var p in progs)
+                    lista.Add(new Ev(p.Fecha.Date, "pgp", $"${p.Importe.ToString("N0", Ar)}",
+                        p.ProveedorNombre + (p.Partes > 1 ? $" · {p.Parte} de {p.Partes}" : ""), p.Nota, "/cafe/proveedores-ctacte"));
+            }
+            catch { }
             try
             {
                 var notas = await Api.GetCalendarioNotasAsync(desde, hasta) ?? new();

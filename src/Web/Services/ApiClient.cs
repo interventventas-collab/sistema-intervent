@@ -8653,6 +8653,28 @@ public class ApiClient
         return r is not null;
     }
 
+    // ===== 17/11/2026: Pagos a proveedores PROGRAMADOS =====
+    public record PagoProgramadoDto(int Id, int ProveedorId, string ProveedorNombre, DateTime Fecha, decimal Importe,
+        string Medio, List<string> Claves, string? Nota, int Parte, int Partes, string Estado, int? PagoId, string? Operador);
+    public record PagoProgramadoParte(DateTime Fecha, decimal Importe);
+    public async Task<List<PagoProgramadoDto>> GetPagosProgramadosAsync(DateTime? desde = null, DateTime? hasta = null, string estado = "PENDIENTE")
+    {
+        var url = $"/api/cafe/pagos-programados?estado={estado}";
+        if (desde.HasValue) url += $"&desde={desde.Value:yyyy-MM-dd}";
+        if (hasta.HasValue) url += $"&hasta={hasta.Value:yyyy-MM-dd}";
+        return await GetAsync<List<PagoProgramadoDto>>(url) ?? new();
+    }
+    public async Task<PagoProgramadoDto?> GetPagoProgramadoAsync(int id)
+        => await GetAsync<PagoProgramadoDto>($"/api/cafe/pagos-programados/{id}");
+    public async Task<bool> CrearPagoProgramadoAsync(int proveedorId, string medio, List<string> claves, string? nota, List<PagoProgramadoParte> partes)
+        => await PostAsync<object>("/api/cafe/pagos-programados", new { proveedorId, medio, claves, nota, partes }) is not null;
+    public async Task<bool> EditarPagoProgramadoAsync(int id, DateTime fecha, decimal importe, string medio, string? nota)
+        => await PutAsync<object>($"/api/cafe/pagos-programados/{id}", new { fecha, importe, medio, nota }) is not null;
+    public async Task<bool> AnularPagoProgramadoAsync(int id)
+        => await DeleteAsync($"/api/cafe/pagos-programados/{id}");
+    public async Task<bool> MarcarPagoProgramadoPagadoAsync(int id, int pagoId)
+        => await PostAsync<object>($"/api/cafe/pagos-programados/{id}/pagado", new { pagoId }) is not null;
+
     // ===== 17/09/2026: Cuenta corriente de proveedores =====
     public async Task<List<CtaCteResumenDto>> GetCtaCteProveedoresAsync()
         => await GetAsync<List<CtaCteResumenDto>>("/api/cafe/proveedores-ctacte") ?? new();

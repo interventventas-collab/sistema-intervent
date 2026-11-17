@@ -8869,3 +8869,25 @@ JOIN Cafe_Productos v ON v.Sku = x.VasoSku
 JOIN Cafe_Productos t ON t.Sku = x.TapaSku
 WHERE NOT EXISTS (SELECT 1 FROM Cafe_ProductoTapas pt WHERE pt.VasoProductoId = v.Id AND pt.TapaProductoId = t.Id);
 GO
+
+-- 17/11/2026: pagos a proveedores PROGRAMADOS (fecha + importe, no mueven plata).
+-- Se ven en "¿A quién le debo?", en el Almanaque y en la tarjeta Compras del inicio.
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+IF OBJECT_ID('Cafe_PagosProgramados') IS NULL
+    CREATE TABLE Cafe_PagosProgramados (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ProveedorId INT NOT NULL REFERENCES Cafe_Proveedores(Id),
+        Fecha DATE NOT NULL,
+        Importe DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Medio NVARCHAR(20) NOT NULL DEFAULT 'TRANSFERENCIA',
+        Claves NVARCHAR(2000) NULL,
+        Nota NVARCHAR(500) NULL,
+        Parte INT NOT NULL DEFAULT 1,
+        Partes INT NOT NULL DEFAULT 1,
+        Estado NVARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+        PagoId INT NULL,
+        Operador NVARCHAR(100) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+GO

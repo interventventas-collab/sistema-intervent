@@ -167,6 +167,13 @@ public class CafePagosProveedorController : ControllerBase
                 ch.PagoOrigenId = null;
             }
         }
+        // 17/11/2026: si el pago cumplía un pago PROGRAMADO, ese vuelve a quedar pendiente.
+        foreach (var prog in await _db.CafePagosProgramados.Where(x => x.PagoId == id && x.Estado == "PAGADO").ToListAsync())
+        {
+            prog.Estado = "PENDIENTE";
+            prog.PagoId = null;
+            prog.UpdatedAt = DateTime.UtcNow;
+        }
         await _db.SaveChangesAsync();
         await _audit.LogAsync("CafePagoProveedor", id.ToString(), "ANULAR", $"Pago {p.Numero} anulado");
         return Ok(new { ok = true });
