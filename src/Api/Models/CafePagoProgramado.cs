@@ -38,6 +38,17 @@ public class CafePagoProgramado
     public int? PagoId { get; set; }
     [MaxLength(100)]
     public string? Operador { get; set; }
+    /// <summary>18/11/2026 — "Todos los meses": día del mes en que se repite (null = una sola vez).
+    /// Cuando este queda pagado (o se saltea), se crea solo el del mes siguiente.</summary>
+    public int? DiaMes { get; set; }
+    /// <summary>Id del primero de la serie mensual (todos los meses del mismo pago comparten este número).</summary>
+    public int? SerieId { get; set; }
+    /// <summary>El importe sale de la última factura que nos hizo (si no, queda fijo).</summary>
+    public bool ImporteUltimaFactura { get; set; }
+    /// <summary>Tocó "Ya la hice": queda esperando que aparezca en el extracto del banco.</summary>
+    public DateTime? TransferidoAt { get; set; }
+    /// <summary>La campanita ya se lo mostró hoy (para que no siga titilando).</summary>
+    public DateTime? AvisoVistoAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

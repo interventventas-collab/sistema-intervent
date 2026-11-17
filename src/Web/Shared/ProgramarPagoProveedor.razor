@@ -59,7 +59,46 @@
 
             @if (provId > 0)
             {
-                @if (docs.Count > 0)
+                @* 18/11/2026: "Todos los meses" (contadora, alquiler, luz…). Maqueta: scratchpad/Pagos_fijos_mensuales_PROPUESTA.png *@
+                <div class="form-group">
+                    <label class="form-label">¿Cada cuánto?</label>
+                    <div class="pp-seg">
+                        <button type="button" class="@(mensual ? "" : "on")" @onclick="() => mensual = false">Una vez</button>
+                        <button type="button" class="@(mensual ? "on" : "")" @onclick="PonerMensual">🔁 Todos los meses</button>
+                    </div>
+                    @if (mensual)
+                    {
+                        <div style="display:grid; grid-template-columns:6rem 1fr; gap:0.6rem; margin-top:0.5rem;">
+                            <div>
+                                <label class="form-label">Día del mes</label>
+                                <input class="form-input" type="number" min="1" max="31" @bind="diaMes" />
+                            </div>
+                            <div>
+                                <label class="form-label">Importe</label>
+                                <div class="pp-seg">
+                                    @if (banco?.UltimaFacturaImporte is decimal uf)
+                                    {
+                                        <button type="button" class="@(ultimaFactura ? "on" : "")" @onclick="() => { ultimaFactura = true; importe = uf; }">Lo de su última factura</button>
+                                    }
+                                    <button type="button" class="@(ultimaFactura ? "" : "on")" @onclick="() => ultimaFactura = false">Fijo</button>
+                                </div>
+                            </div>
+                        </div>
+                        @if (ultimaFactura && banco?.UltimaFacturaImporte is decimal uf2)
+                        {
+                            <div class="pp-sub">Hoy sería <b>@Plata(uf2)</b> (@banco.UltimaFacturaTexto). Cada mes toma la última factura que te hizo.</div>
+                        }
+                        else
+                        {
+                            <div class="form-group" style="margin:0.5rem 0 0;">
+                                <input class="form-input" type="text" inputmode="decimal" placeholder="$ por mes" @bind="ImporteTexto" />
+                            </div>
+                        }
+                        <div class="pp-sub">Próximos: @string.Join(" · ", ProximasFechas(3).Select(f => FechaCorta(f)))@(ProximasFechas(3).Any(f => f.Day != Math.Min(diaMes, DateTime.DaysInMonth(f.Year, f.Month))) ? " (si cae finde, pasa al lunes)" : "")</div>
+                    }
+                </div>
+
+                @if (!mensual && docs.Count > 0)
                 {
                     <div class="form-group">
                         <label class="form-label">¿Qué le pagás? <span style="color:#9ca3af;">(opcional)</span></label>
@@ -77,6 +116,8 @@
                     </div>
                 }
 
+                @if (!mensual)
+                {
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">
                     <div class="form-group" style="margin:0;">
                         <label class="form-label">Importe</label>
@@ -87,6 +128,7 @@
                         <input class="form-input" type="date" @bind="fecha" @bind:after="ArmarPartes" />
                     </div>
                 </div>
+                }
 
                 <div class="form-group" style="margin-top:0.8rem;">
                     <label class="form-label">¿Cómo?</label>
@@ -97,8 +139,18 @@
                             <button type="button" class="@(medio == kk ? "on" : "")" @onclick="() => medio = kk">@l</button>
                         }
                     </div>
+                    @if (medio == "TRANSFERENCIA")
+                    {
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem; margin-top:0.5rem;">
+                            <input class="form-input" @bind="alias" maxlength="100" placeholder="Alias" />
+                            <input class="form-input" @bind="cbu" maxlength="30" inputmode="numeric" placeholder="CBU / CVU" />
+                        </div>
+                        <div class="pp-sub">Alias y CBU quedan guardados en la ficha del proveedor.</div>
+                    }
                 </div>
 
+                @if (!mensual)
+                {
                 <div class="form-group">
                     <label class="form-label">Dividir en pagos</label>
                     <div class="pp-seg">
@@ -133,6 +185,7 @@
                         }
                     }
                 </div>
+                }
 
                 <div class="form-group">
                     <label class="form-label">Nota</label>
@@ -187,6 +240,11 @@
     private string? nota;
     private bool guardando;
     private List<Linea> lineas = new();
+    // 18/11/2026: todos los meses + alias/CBU
+    private bool mensual, ultimaFactura;
+    private int diaMes = 15;
+    private ApiClient.ProveedorBancoDto? banco;
+    private string? alias, cbu;
 
     private class Linea
     {
@@ -232,10 +290,43 @@
             docs = (cuenta?.Documentos ?? new()).Where(d => d.Saldo > 0.01m).OrderBy(d => d.Fecha).ToList();
         }
         catch { cuenta = new PendientesProveedorDto(); }
+        try { banco = await Api.GetProveedorBancoAsync(id); } catch { banco = null; }
+        alias = banco?.Alias; cbu = banco?.Cbu;
         ArmarPartes();
     }
 
-    private void SacarProveedor() { provId = 0; provNombre = ""; cuenta = null; docs = new(); tildadas.Clear(); }
+    private void PonerMensual()
+    {
+        mensual = true;
+        if (banco?.UltimaFacturaImporte is decimal uf && importe <= 0) { ultimaFactura = true; importe = uf; }
+    }
+
+    /// <summary>Igual que el servidor: el día pedido (o el último del mes), finde → lunes; desde hoy.</summary>
+    private static DateTime FechaDelMes(int y, int m, int dia)
+    {
+        var d = new DateTime(y, m, Math.Min(Math.Max(dia, 1), DateTime.DaysInMonth(y, m)));
+        while (d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) d = d.AddDays(1);
+        return d;
+    }
+
+    private List<DateTime> ProximasFechas(int n)
+    {
+        var hoy = FechaPalabras.HoyAr;
+        var res = new List<DateTime>();
+        var mes = new DateTime(hoy.Year, hoy.Month, 1);
+        while (res.Count < n)
+        {
+            var f = FechaDelMes(mes.Year, mes.Month, diaMes);
+            if (f >= hoy) res.Add(f);
+            mes = mes.AddMonths(1);
+        }
+        return res;
+    }
+
+    private static readonly string[] Dias = { "dom", "lun", "mar", "mié", "jue", "vie", "sáb" };
+    private static string FechaCorta(DateTime f) => $"{Dias[(int)f.DayOfWeek]} {f:dd/MM}";
+
+    private void SacarProveedor() { provId = 0; banco = null; alias = null; cbu = null; provNombre = ""; cuenta = null; docs = new(); tildadas.Clear(); }
 
     private void Tildar(string clave)
     {
@@ -263,15 +354,23 @@
     private async Task Guardar()
     {
         if (provId <= 0 || importe <= 0) return;
-        var ps = partes == 1
+        if (mensual && (diaMes < 1 || diaMes > 31)) { ToastService.Error("El día del mes va de 1 a 31"); return; }
+        var ps = mensual
+            ? new List<ApiClient.PagoProgramadoParte> { new(ProximasFechas(1)[0], importe) }
+            : partes == 1
             ? new List<ApiClient.PagoProgramadoParte> { new(fecha, importe) }
             : lineas.Select(l => new ApiClient.PagoProgramadoParte(l.Fecha, l.Importe)).ToList();
         if (ps.Any(p => p.Importe <= 0)) { ToastService.Error("Hay una parte sin importe"); return; }
         guardando = true;
         try
         {
-            if (!await Api.CrearPagoProgramadoAsync(provId, medio, tildadas.ToList(), nota, ps)) { ToastService.Error("No se pudo guardar"); return; }
-            ToastService.Success(ps.Count == 1
+            var cambioBanco = medio == "TRANSFERENCIA" && ((alias ?? "") != (banco?.Alias ?? "") || (cbu ?? "") != (banco?.Cbu ?? ""));
+            if (!await Api.CrearPagoProgramadoAsync(provId, medio, mensual ? new() : tildadas.ToList(), nota, ps,
+                    mensual ? diaMes : null, mensual && ultimaFactura,
+                    cambioBanco ? (alias ?? "") : null, cambioBanco ? (cbu ?? "") : null)) { ToastService.Error("No se pudo guardar"); return; }
+            ToastService.Success(mensual
+                ? $"Programado todos los {diaMes} a {provNombre} · el primero {FechaCorta(ps[0].Fecha)}"
+                : ps.Count == 1
                 ? $"Programado: {provNombre} · {FechaPalabras.Corta(ps[0].Fecha)} · {Plata(importe)}"
                 : $"Programados {ps.Count} pagos a {provNombre}");
             await OnGuardado.InvokeAsync();
