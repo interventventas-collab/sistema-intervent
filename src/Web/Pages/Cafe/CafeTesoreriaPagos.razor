@@ -77,6 +77,13 @@
                 }
                 else
                 {
+                @if (programado is not null)
+                {
+                    <div style="margin-bottom:0.8rem; font-size:0.85rem; color:#374151;">
+                        📅 Pago programado para el @FechaPalabras.Corta(programado.Fecha) · <b>$@programado.Importe.ToString("N2")</b>@(string.IsNullOrWhiteSpace(programado.Nota) ? "" : " · " + programado.Nota).
+                        Al guardarlo sale de la lista de programados.
+                    </div>
+                }
                 @* --- Proveedor --- *@
                 <div class="form-group" style="position:relative;">
                     <label class="form-label">Proveedor</label>
@@ -366,6 +373,10 @@
     private List<MedioForm> formMedios = new();
 
     [Parameter, SupplyParameterFromQuery(Name = "proveedor")] public int? PreProveedorId { get; set; }
+    /// <summary>17/11/2026: "Pagar" de un pago PROGRAMADO (¿A quién le debo?): abre el pago ya completo y, al
+    /// guardarlo, el programado queda pagado.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "programado")] public int? PreProgramadoId { get; set; }
+    private ApiClient.PagoProgramadoDto? programado;
     /// <summary>17/09/2026: botón "Pago" de la barra (y N+P): abre el formulario vacío. Trae una marca de
     /// tiempo para que vuelva a abrirse aunque ya se esté en esta pantalla.</summary>
     [Parameter, SupplyParameterFromQuery(Name = "nueva")] public long? PreNueva { get; set; }
@@ -419,7 +430,11 @@
         cajas = await Api.GetCafeCajasAsync() ?? new();
         chequesEnCartera = (await Api.GetCafeChequesAsync("EN_CARTERA")) ?? new();
         await Load();
-        if (PreProveedorId.HasValue && PreProveedorId.Value > 0)
+        if (PreProgramadoId is > 0)
+        {
+            await AbrirDesdeProgramado(PreProgramadoId.Value);
+        }
+        else if (PreProveedorId.HasValue && PreProveedorId.Value > 0)
         {
             ShowNuevo();
             await SelectProveedor(PreProveedorId.Value);
@@ -443,8 +458,44 @@
         loading = false;
     }
 
+    /// <summary>17/11/2026: completa el Nuevo pago con lo programado: proveedor, comprobantes tildados (hasta
+    /// cubrir el importe; lo que sobra va "a cuenta"), una forma de pago según cómo se iba a pagar y la nota.</summary>
+    private async Task AbrirDesdeProgramado(int id)
+    {
+        ApiClient.PagoProgramadoDto? p = null;
+        try { p = await Api.GetPagoProgramadoAsync(id); } catch { }
+        if (p is null) { ToastService.Error("No encontré ese pago programado"); return; }
+        if (p.Estado != "PENDIENTE") { ToastService.Error("Ese pago programado ya no está pendiente"); return; }
+        ShowNuevo();
+        programado = p;
+        await SelectProveedor(p.ProveedorId);
+        var resta = p.Importe;
+        foreach (var clave in p.Claves)
+        {
+            if (resta <= 0) break;
+            if (!imputaciones.TryGetValue(clave, out var imp)) continue;   // ya se pagó por otro lado
+            imp.Seleccionado = true;
+            imp.Importe = Math.Min(imp.Importe, resta);
+            resta -= imp.Importe;
+        }
+        if (resta > 0.009m) { aCuentaActivo = true; aCuentaImporte = resta; }
+        // Forma de pago: transferencia → banco (Galicia primero), efectivo → caja de efectivo.
+        // E-cheq: se deja para elegir el e-cheq de la lista (o el banco a mano).
+        CafeCajaDto? caja = p.Medio switch
+        {
+            "TRANSFERENCIA" => cajas?.Where(c => c.IsActive && c.Tipo == "BANCO" && !c.EnDolares)
+                .OrderByDescending(c => c.Nombre.Contains("Galicia")).ThenBy(c => c.Id).FirstOrDefault(),
+            "EFECTIVO" => cajas?.Where(c => c.IsActive && c.Tipo == "EFECTIVO" && !c.EnDolares).OrderBy(c => c.Id).FirstOrDefault(),
+            _ => null,
+        };
+        if (caja is not null)
+            formMedios.Add(new MedioForm { CajaId = caja.Id, TipoCaja = caja.Tipo, Importe = p.Importe });
+        formObservaciones = p.Nota;
+    }
+
     private void ShowNuevo()
     {
+        programado = null;
         selProveedorId = 0; provSearch = ""; provSearchOpen = false;
         pendientes = null; imputaciones = new(); echeqsPropios = new();
         aCuentaActivo = false; aCuentaImporte = 0;
@@ -588,6 +639,12 @@
             var r = await Api.CrearCafePagoProveedorAsync(selProveedorId, formRetenciones, null, formObservaciones, comps, medios);
             if (r is null) { ToastService.Error("No se pudo guardar"); return; }
             ToastService.Success($"Pago {r.Numero} creado");
+            if (programado is not null)
+            {
+                try { await Api.MarcarPagoProgramadoPagadoAsync(programado.Id, r.Id); }
+                catch { ToastService.Error("El pago quedó guardado, pero el programado sigue en la lista: sacalo con ✕"); }
+                programado = null;
+            }
             showNuevo = false;
             chequesEnCartera = (await Api.GetCafeChequesAsync("EN_CARTERA")) ?? new(); // refrescar (cheques endosados ya no aparecen)
             await Load();

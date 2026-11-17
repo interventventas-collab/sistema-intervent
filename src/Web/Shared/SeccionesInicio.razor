@@ -121,6 +121,16 @@
                     }
                 }
             </div>
+            @if (g.Titulo == "Compras" && avisosPagos.Count > 0 && !arreglando)
+            {
+                @* 17/11/2026: pagos a proveedores programados (atrasado · hoy · semana) → ¿A quién le debo?. Solo admin. *@
+                <div class="si-pagos">
+                    @foreach (var (txt, css) in avisosPagos)
+                    {
+                        <a class="si-pago @css" href="/cafe/proveedores-ctacte" title="Ver los pagos programados">@txt</a>
+                    }
+                </div>
+            }
         </div>
     }
 </div>
@@ -138,6 +148,11 @@
     .si-tit:hover .si-nom { text-decoration: underline; }
     .si-ico { font-size: 1.5rem; line-height: 1.2; }
     .si-nom { font-weight: 800; font-size: 0.98rem; }
+    .si-pagos { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem; margin-top: 0.55rem; padding-top: 0.5rem; border-top: 1px dashed #e5e7eb; }
+    .si-pago { font-size: 0.72rem; border: 1px solid #e5e7eb; border-radius: 12px; padding: 0.1rem 0.5rem; color: #374151; text-decoration: none; background: #fff; white-space: nowrap; }
+    .si-pago:hover { border-color: #9ca3af; }
+    .si-pago.atr { border-color: #fca5a5; color: #b91c1c; }
+    .si-pago.hoy { background: #fef3c7; border-color: #fde68a; }
     .si-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.28rem; }
     .si-ch { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.72rem; border: 1px solid #d1d5db; border-radius: 12px;
              padding: 0.1rem 0.5rem; background: #fff; color: #111827; text-decoration: none; white-space: nowrap; }
@@ -182,6 +197,34 @@
         try { permisos = (await Auth.GetUserAsync())?.Permissions ?? new(); } catch { }
         try { if ((await Api.GetMeAsync())?.Permissions is { } p) permisos = p; } catch { }
         Armar();
+        await CargarAvisosPagos();
+    }
+
+    // 17/11/2026: avisos de pagos a proveedores programados en la tarjeta Compras (como el 💲 del equipo).
+    private List<(string Txt, string Css)> avisosPagos = new();
+    private async Task CargarAvisosPagos()
+    {
+        try
+        {
+            var u = await Auth.GetUserAsync();
+            if (!string.Equals(u?.Role, "admin", StringComparison.OrdinalIgnoreCase)) return;
+            var l = await Api.GetPagosProgramadosAsync();
+            var hoy = FechaPalabras.HoyAr;
+            var finSemana = hoy.AddDays(6 - (((int)hoy.DayOfWeek + 6) % 7));
+            var ar = CultureInfo.GetCultureInfo("es-AR");
+            string P(decimal v) => "$" + v.ToString("N0", ar);
+            var atr = l.Where(p => p.Fecha.Date < hoy).ToList();
+            var deHoy = l.Where(p => p.Fecha.Date == hoy).ToList();
+            var sem = l.Where(p => p.Fecha.Date > hoy && p.Fecha.Date <= finSemana).ToList();
+            var r = new List<(string, string)>();
+            if (atr.Count > 0) r.Add(($"{atr.Count} atrasado{(atr.Count == 1 ? "" : "s")} {P(atr.Sum(p => p.Importe))}", "atr"));
+            if (deHoy.Count == 1) r.Add(($"💲 hoy {deHoy[0].ProveedorNombre} {P(deHoy[0].Importe)}", "hoy"));
+            else if (deHoy.Count > 1) r.Add(($"💲 hoy {deHoy.Count} pagos {P(deHoy.Sum(p => p.Importe))}", "hoy"));
+            if (sem.Count > 0) r.Add(($"semana {P(sem.Sum(p => p.Importe))}", ""));
+            avisosPagos = r;
+            StateHasChanged();
+        }
+        catch { }
     }
 
     // ───────── Favoritos, ocultos y colores de cada persona (2026-11-13) ─────────
