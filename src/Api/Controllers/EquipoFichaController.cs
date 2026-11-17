@@ -16,8 +16,8 @@ namespace Api.Controllers;
 /// Nacho…). Lo que se hace con los usuarios compartidos OFICINA/DEPOSITO sin elegir operador
 /// NO se le puede atribuir a nadie — por eso no aparece.
 ///
-/// Solo el usuario "admin" (el dueño): tiene sueldos y datos personales. OFICINA también tiene
-/// rol admin, así que se chequea el nombre de usuario, no el rol.
+/// Solo los usuarios "admin" (el dueño) y "OFICINA" (pedido 17/11): tiene sueldos y datos personales. Otros
+/// usuarios también pueden tener rol admin, así que se chequea el nombre de usuario, no el rol.
 /// </summary>
 [ApiController]
 [Route("api/equipo-ficha")]
@@ -27,7 +27,9 @@ public class EquipoFichaController : ControllerBase
     private readonly AppDbContext _db;
     public EquipoFichaController(AppDbContext db) => _db = db;
 
-    private bool EsDueno => string.Equals(User.Identity?.Name, "admin", StringComparison.OrdinalIgnoreCase);
+    // 17/11: el dueño pidió que OFICINA también vea la ficha y el último movimiento.
+    private static readonly string[] PuedenVer = { "admin", "OFICINA" };
+    private bool EsDueno => PuedenVer.Contains(User.Identity?.Name ?? "", StringComparer.OrdinalIgnoreCase);
 
     public record MovDto(int EmpId, DateTime CuandoUtc, string Texto, string Donde, string Clase);
     public record UltimoDto(int EmpId, DateTime CuandoUtc, string Texto, string Donde);
