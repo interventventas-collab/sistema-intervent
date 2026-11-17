@@ -121,6 +121,16 @@
                     }
                 }
             </div>
+            @if (g.Titulo == "Plata" && avisosImpuestos.Count > 0 && !arreglando)
+            {
+                @* 17/11/2026: impuestos / VEP (sin pagar · vencidos · pagado del mes) → /impuestos. Solo admin. *@
+                <div class="si-pagos">
+                    @foreach (var (txt, css) in avisosImpuestos)
+                    {
+                        <a class="si-pago @css" href="/impuestos" title="Ver impuestos y VEP">@txt</a>
+                    }
+                </div>
+            }
             @if (g.Titulo == "Compras" && avisosPagos.Count > 0 && !arreglando)
             {
                 @* 17/11/2026: pagos a proveedores programados (atrasado · hoy · semana) → ¿A quién le debo?. Solo admin. *@
@@ -198,6 +208,34 @@
         try { if ((await Api.GetMeAsync())?.Permissions is { } p) permisos = p; } catch { }
         Armar();
         await CargarAvisosPagos();
+        await CargarAvisosImpuestos();
+    }
+
+    // 17/11/2026: avisos de impuestos / VEP en la tarjeta Plata (solo admin).
+    private List<(string Txt, string Css)> avisosImpuestos = new();
+    private async Task CargarAvisosImpuestos()
+    {
+        try
+        {
+            var u = await Auth.GetUserAsync();
+            if (!string.Equals(u?.Role, "admin", StringComparison.OrdinalIgnoreCase)) return;
+            var a = await Api.GetImpuestosAvisosAsync();
+            if (a is null) return;
+            var ar = CultureInfo.GetCultureInfo("es-AR");
+            string P(decimal v) => "$" + v.ToString("N0", ar);
+            var r = new List<(string, string)>();
+            if (a.VencidosSinPago > 0) r.Add(($"🧾 {a.VencidosSinPago} VEP vencido{(a.VencidosSinPago == 1 ? "" : "s")} sin pago", "atr"));
+            if (a.Pendientes > 0)
+            {
+                var vence = a.ProximoVence is { } pv ? (pv.Date == FechaPalabras.HoyAr ? " · vence HOY" : " · vence " + FechaPalabras.Corta(pv)) : "";
+                r.Add(($"🧾 {a.Pendientes} sin pagar {P(a.PendientesImporte)}{vence}", a.ProximoVence is { } pv2 && pv2.Date <= FechaPalabras.HoyAr.AddDays(2) ? "atr" : "hoy"));
+            }
+            if (a.SinVepsEsteMes) r.Add(("🧾 María no mandó los VEP del mes", "atr"));
+            if (a.PagadosMes > 0) r.Add(($"impuestos del mes {P(a.PagadosMesImporte)} ✓", ""));
+            avisosImpuestos = r;
+            StateHasChanged();
+        }
+        catch { }
     }
 
     // 17/11/2026: avisos de pagos a proveedores programados en la tarjeta Compras (como el 💲 del equipo).
