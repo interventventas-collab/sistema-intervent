@@ -8921,3 +8921,14 @@ IF OBJECT_ID('Impuestos_Veps') IS NULL
         UpdatedAt DATETIME2 NULL
     );
 GO
+
+-- 17/11/2026: pagos programados "todos los meses" + alias/CBU del proveedor.
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+IF COL_LENGTH('Cafe_PagosProgramados','DiaMes') IS NULL
+    ALTER TABLE Cafe_PagosProgramados ADD DiaMes INT NULL, SerieId INT NULL,
+        ImporteUltimaFactura BIT NOT NULL CONSTRAINT DF_CafePagProg_UltFac DEFAULT 0,
+        TransferidoAt DATETIME2 NULL, AvisoVistoAt DATETIME2 NULL;
+GO
+IF COL_LENGTH('Cafe_Proveedores','Alias') IS NULL
+    ALTER TABLE Cafe_Proveedores ADD Alias NVARCHAR(100) NULL, Cbu NVARCHAR(30) NULL;
+GO

@@ -8666,7 +8666,12 @@ public class ApiClient
 
     // ===== 17/11/2026: Pagos a proveedores PROGRAMADOS =====
     public record PagoProgramadoDto(int Id, int ProveedorId, string ProveedorNombre, DateTime Fecha, decimal Importe,
-        string Medio, List<string> Claves, string? Nota, int Parte, int Partes, string Estado, int? PagoId, string? Operador);
+        string Medio, List<string> Claves, string? Nota, int Parte, int Partes, string Estado, int? PagoId, string? Operador,
+        int? DiaMes = null, bool ImporteUltimaFactura = false, DateTime? TransferidoAt = null,
+        string? Cuit = null, string? Alias = null, string? Cbu = null, string? FacturaTexto = null,
+        int? BancoMovId = null, DateTime? BancoFecha = null, decimal? BancoImporte = null,
+        DateTime? PagadoFecha = null, bool PagadoPorBanco = false);
+    public record ProveedorBancoDto(int Id, string Nombre, string? Cuit, string? Alias, string? Cbu, decimal? UltimaFacturaImporte, string? UltimaFacturaTexto);
     public record PagoProgramadoParte(DateTime Fecha, decimal Importe);
     public async Task<List<PagoProgramadoDto>> GetPagosProgramadosAsync(DateTime? desde = null, DateTime? hasta = null, string estado = "PENDIENTE")
     {
@@ -8677,8 +8682,27 @@ public class ApiClient
     }
     public async Task<PagoProgramadoDto?> GetPagoProgramadoAsync(int id)
         => await GetAsync<PagoProgramadoDto>($"/api/cafe/pagos-programados/{id}");
-    public async Task<bool> CrearPagoProgramadoAsync(int proveedorId, string medio, List<string> claves, string? nota, List<PagoProgramadoParte> partes)
-        => await PostAsync<object>("/api/cafe/pagos-programados", new { proveedorId, medio, claves, nota, partes }) is not null;
+    public async Task<bool> CrearPagoProgramadoAsync(int proveedorId, string medio, List<string> claves, string? nota, List<PagoProgramadoParte> partes,
+        int? diaMes = null, bool importeUltimaFactura = false, string? alias = null, string? cbu = null)
+        => await PostAsync<object>("/api/cafe/pagos-programados", new { proveedorId, medio, claves, nota, partes, diaMes, importeUltimaFactura, alias, cbu }) is not null;
+    public async Task<List<PagoProgramadoDto>> GetPagosProgramadosRecienPagadosAsync(int dias = 7)
+        => await GetAsync<List<PagoProgramadoDto>>($"/api/cafe/pagos-programados/recien-pagados?dias={dias}") ?? new();
+    public async Task<ProveedorBancoDto?> GetProveedorBancoAsync(int proveedorId)
+        => await GetAsync<ProveedorBancoDto>($"/api/cafe/pagos-programados/proveedor/{proveedorId}");
+    public async Task<bool> GuardarProveedorBancoAsync(int proveedorId, string? alias, string? cbu)
+        => await PutAsync<object>($"/api/cafe/pagos-programados/proveedor/{proveedorId}/banco", new { alias, cbu }) is not null;
+    public async Task<bool> AnularPagoProgramadoTodosAsync(int id)
+        => await DeleteAsync($"/api/cafe/pagos-programados/{id}?todos=true");
+    public async Task<bool> MarcarPagoProgramadoTransferidoAsync(int id, bool deshacer = false)
+        => await PostAsync<object>($"/api/cafe/pagos-programados/{id}/transferido?deshacer={(deshacer ? "true" : "false")}", new { }) is not null;
+    public async Task<(bool ok, string? error)> TomarPagoProgramadoDelBancoAsync(int id, int movId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/pagos-programados/{id}/tomar-banco", new { movId });
+        if (resp.IsSuccessStatusCode) return (true, null);
+        try { var err = await resp.Content.ReadFromJsonAsync<ErrorResp>(); return (false, err?.Error ?? "No se pudo"); }
+        catch { return (false, "No se pudo"); }
+    }
     public async Task<bool> EditarPagoProgramadoAsync(int id, DateTime fecha, decimal importe, string medio, string? nota)
         => await PutAsync<object>($"/api/cafe/pagos-programados/{id}", new { fecha, importe, medio, nota }) is not null;
     public async Task<bool> AnularPagoProgramadoAsync(int id)

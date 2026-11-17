@@ -393,6 +393,26 @@ public class MisAlertasController : ControllerBase
                 lista.Add(new AlertaDisparadaDto(a.Id, a.Tipo, a.Mensaje, a.UltimoDetalle, a.DisparadaAt, a.Vista));
             }
         }
+        // 17/11/2026: pagos a proveedores programados para hoy/mañana o atrasados (solo admin).
+        // Id negativo = -Id del pago programado (tocarlo abre la ventana "Transferir a ...").
+        if (bucket == "admin")
+        {
+            var hoy = DateTime.UtcNow.AddHours(-3).Date;
+            var manana = hoy.AddDays(1);
+            var progs = await _db.CafePagosProgramados.AsNoTracking().Include(p => p.Proveedor)
+                .Where(p => p.Estado == "PENDIENTE" && p.TransferidoAt == null && p.Fecha <= manana)
+                .OrderBy(p => p.Fecha).ToListAsync();
+            var ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+            foreach (var p in progs)
+            {
+                var cuando = p.Fecha < hoy ? $"ATRASADO desde el {p.Fecha:dd/MM}" : p.Fecha == hoy ? "Hoy" : "Mañana";
+                var vista = p.AvisoVistoAt.HasValue && p.AvisoVistoAt.Value.AddHours(-3).Date >= hoy;
+                lista.Insert(0, new AlertaDisparadaDto(-p.Id, p.Fecha < hoy ? "PAGO_PROG_ATRASADO" : "PAGO_PROGRAMADO",
+                    $"{cuando} pagás a {p.Proveedor?.Nombre ?? "proveedor"} " + p.Importe.ToString("$#,0", ar),
+                    p.Medio == "TRANSFERENCIA" ? "Tocá para ver alias, CBU e importe y transferir" : "Tocá para pagarlo",
+                    DateTime.UtcNow, vista));
+            }
+        }
         lista = lista.OrderByDescending(x => x.DisparadaAt ?? DateTime.MinValue).ToList();
         return Ok(new AlertasBellDto(lista.Count(a => !a.Vista), lista));
     }
@@ -406,8 +426,18 @@ public class MisAlertasController : ControllerBase
             .Where(a => a.EstaDisparada && !a.Vista && a.Alcance.Contains(bucket))
             .ToListAsync();
         foreach (var a in rows) a.Vista = true;
-        if (rows.Count > 0) await _db.SaveChangesAsync();
-        return Ok(new { marcadas = rows.Count });
+        var n = rows.Count;
+        if (bucket == "admin")
+        {
+            // 17/11/2026: los avisos de pagos programados se dan por vistos HOY (mañana vuelven a titilar si siguen).
+            var manana = DateTime.UtcNow.AddHours(-3).Date.AddDays(1);
+            var progs = await _db.CafePagosProgramados
+                .Where(p => p.Estado == "PENDIENTE" && p.TransferidoAt == null && p.Fecha <= manana).ToListAsync();
+            foreach (var p in progs) p.AvisoVistoAt = DateTime.UtcNow;
+            n += progs.Count;
+        }
+        if (_db.ChangeTracker.HasChanges()) await _db.SaveChangesAsync();
+        return Ok(new { marcadas = n });
     }
 
     // ---------- Card "Correos importantes" del Dashboard ----------

@@ -227,6 +227,7 @@ builder.Services.AddScoped<GaliciaAccountService>();
 builder.Services.AddSingleton<GaliciaScrapingService>();
 builder.Services.AddScoped<ExtractoBancoImportService>();
 builder.Services.AddScoped<ImpuestosService>(); // 17/11/2026 impuestos / VEP
+builder.Services.AddScoped<PagosProgramadosService>(); // 17/11/2026 pagos programados todos los meses + cruce banco
 builder.Services.AddScoped<ChequesBancoImportService>();
 builder.Services.AddScoped<GaliciaSyncService>();
 builder.Services.AddScoped<ShellAccountService>();
@@ -330,6 +331,7 @@ builder.Services.AddHostedService<ResumenFinancieroDiarioService>();
 // 2026-07-23: Centro de Automatizaciones — despachador multi-canal (campanita/Telegram/WhatsApp/correo)
 builder.Services.AddScoped<AutoAvisoSender>();
 builder.Services.AddHostedService<MeliCodigoColectaBackgroundService>();
+builder.Services.AddHostedService<PagosProgramadosBackgroundService>(); // 17/11/2026
 builder.Services.AddHostedService<ImpuestosBackgroundService>(); // 17/11/2026 lee VEP de la contadora + cruza con Galicia
 // 2026-06-12: reactivado. Solo LECTURA informativa: pobla Cafe_StockPorDeposito[Full MeLi]
 // con lo que MeLi reporta en su bodega. No toca stock propio (9 de Abril) ni pushes.

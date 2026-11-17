@@ -65,6 +65,12 @@ public class CafeProveedor
     /// por pagado; lo que se debía ese día se carga como saldo inicial.</summary>
     public DateTime? CuentaCorrienteDesde { get; set; }
 
+    /// <summary>17/11/2026 — Datos para transferirle (ventana "Transferir a ..." de los pagos programados).</summary>
+    [MaxLength(100)]
+    public string? Alias { get; set; }
+    [MaxLength(30)]
+    public string? Cbu { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

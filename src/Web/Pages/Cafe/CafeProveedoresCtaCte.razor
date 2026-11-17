@@ -35,6 +35,15 @@
     .pg .acc { text-align: right; white-space: nowrap; width: 1%; }
     .pg .acc button { margin-left: 0.25rem; }
     .pg-pie { padding: 0.55rem 1rem; font-size: 0.85rem; color: #6b7280; }
+    /* 17/11/2026: todos los meses + transferir + banco */
+    .pg .banco { background: #fef3c7; border-radius: 4px; padding: 0.2rem 0.45rem; margin-top: 0.25rem; font-size: 0.82rem; display: inline-block; }
+    .pg .ok { color: #15803d; font-weight: 600; }
+    .tr-dato { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid #f3f4f6; }
+    .tr-dato .k { color: #6b7280; font-size: 0.85rem; }
+    .tr-dato .v { text-align: right; word-break: break-all; }
+    .tr-nota { margin: 0.6rem 0 0; color: #6b7280; font-size: 0.82rem; text-align: left; line-height: 1.45; word-spacing: normal; letter-spacing: normal; }
+    .tr-link { color: #6b7280; font-size: 0.8rem; text-decoration: underline; }
+    .tr-copy { border: 1px solid #d1d5db; background: #fff; border-radius: 5px; padding: 0.05rem 0.45rem; font-size: 0.75rem; margin-left: 0.4rem; cursor: pointer; }
 </style>
 
 @* 17/09/2026 — Cuenta corriente de proveedores: a quién le debemos y cuánto.
@@ -53,7 +62,7 @@
         {
             <p class="text-muted" style="padding:1rem;">Cargando...</p>
         }
-        else if (programados.Count == 0)
+        else if (programados.Count == 0 && pagadosRecien.Count == 0)
         {
             <p class="text-muted" style="padding:0.8rem 1rem; margin:0;">No hay pagos programados. Tocá <b>📅 Programar pago</b> para anotar cuándo le pagás a un proveedor.</p>
         }
@@ -84,15 +93,45 @@
                                     <b>@p.ProveedorNombre</b>
                                     @if (p.Partes > 1) { <span class="gris"> · @p.Parte de @p.Partes</span> }
                                     @if (p.Claves.Count > 0) { <span class="gris"> · @p.Claves.Count comprobante@(p.Claves.Count == 1 ? "" : "s")</span> }
+                                    @if (p.DiaMes is int dm) { <span class="gris"> · 🔁 todos los @dm</span> }
+                                    @if (!string.IsNullOrWhiteSpace(p.FacturaTexto)) { <span class="gris"> · paga @p.FacturaTexto</span> }
                                     @if (!string.IsNullOrWhiteSpace(p.Nota)) { <div class="gris">@p.Nota</div> }
+                                    @if (p.TransferidoAt.HasValue) { <div class="gris">⏳ transferida, esperando que aparezca en el banco</div> }
+                                    @if (p.BancoMovId is int mid && p.BancoImporte is decimal bi)
+                                    {
+                                        <div class="banco">🏦 El banco muestra @Plata0(bi) el @p.BancoFecha?.ToString("dd/MM") a este CUIT
+                                            <button class="btn btn-secondary" style="font-size:0.75rem; padding:0.1rem 0.5rem; margin-left:0.3rem;" @onclick="() => TomarBanco(p, mid, bi)">Tomarlo</button>
+                                        </div>
+                                    }
                                 </td>
                                 <td class="gris">@MedioTexto(p.Medio)</td>
                                 <td class="num @(p.Fecha.Date < hoy ? "rojo" : "")">@Plata0(p.Importe)</td>
                                 <td class="acc">
-                                    <button class="btn btn-secondary" style="font-size:0.8rem; padding:0.2rem 0.6rem;" @onclick="() => Pagar(p)">Pagar</button>
+                                    @if (p.Medio == "TRANSFERENCIA")
+                                    {
+                                        <button class="btn btn-secondary" style="font-size:0.8rem; padding:0.2rem 0.6rem;" @onclick="() => AbrirTransferir(p)">💸 Transferir</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-secondary" style="font-size:0.8rem; padding:0.2rem 0.6rem;" @onclick="() => Pagar(p)">Pagar</button>
+                                    }
                                     <button class="btn-icon" title="Cambiar fecha o importe" @onclick="() => AbrirEditar(p)">✏</button>
                                     <button class="btn-icon" title="Sacarlo de la lista (no se paga así)" @onclick="() => Quitar(p)">✕</button>
                                 </td>
+                            </tr>
+                        }
+                    }
+                    @if (pagadosRecien.Count > 0)
+                    {
+                        <tr class="grupo"><td colspan="5">Pagados estos días</td></tr>
+                        @foreach (var p in pagadosRecien)
+                        {
+                            <tr>
+                                <td class="gris" style="white-space:nowrap;">@FechaPalabras.Corta(p.Fecha)</td>
+                                <td><b>@p.ProveedorNombre</b>@if (p.DiaMes is int dm2) { <span class="gris"> · 🔁 todos los @dm2</span> }</td>
+                                <td class="gris">@MedioTexto(p.Medio)</td>
+                                <td class="num">@Plata0(p.Importe)</td>
+                                <td class="acc ok">✓ pagado@(p.PagadoPorBanco ? " (vino en el banco)" : "")</td>
                             </tr>
                         }
                     }
@@ -251,6 +290,84 @@
     <ProgramarPagoProveedor ProveedorId="programarProveedorId" OnCerrar="() => programando = false" OnGuardado="Programado" />
 }
 
+@if (transfiriendo is not null)
+{
+    var t = transfiriendo;
+    <div class="modal-overlay" @onclick="() => transfiriendo = null">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:440px; width:95vw;">
+            <div class="modal-header">
+                <h4 style="margin:0;">💸 Transferir a @t.ProveedorNombre</h4>
+                <button class="btn-close" @onclick="() => transfiriendo = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                @if (editandoBanco || (string.IsNullOrWhiteSpace(t.Alias) && string.IsNullOrWhiteSpace(t.Cbu)))
+                {
+                    <div class="pp-sub" style="margin-bottom:0.4rem; color:#6b7280; font-size:0.82rem;">Cargá el alias o el CBU (queda guardado en su ficha):</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">
+                        <input class="form-input" @bind="trAlias" placeholder="Alias" maxlength="100" />
+                        <input class="form-input" @bind="trCbu" placeholder="CBU / CVU" inputmode="numeric" maxlength="30" />
+                    </div>
+                    <div style="text-align:right; margin-top:0.4rem;"><button class="btn btn-secondary" style="font-size:0.8rem;" @onclick="GuardarBanco">Guardar</button></div>
+                }
+                else
+                {
+                    @if (!string.IsNullOrWhiteSpace(t.Alias))
+                    {
+                        <div class="tr-dato"><span class="k">Alias</span><span class="v"><b>@t.Alias</b><button class="tr-copy" @onclick="() => Copiar(t.Alias!)">copiar</button></span></div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(t.Cbu))
+                    {
+                        <div class="tr-dato"><span class="k">CBU</span><span class="v">@t.Cbu<button class="tr-copy" @onclick="() => Copiar(t.Cbu!)">copiar</button></span></div>
+                    }
+                }
+                @if (!string.IsNullOrWhiteSpace(t.Cuit))
+                {
+                    <div class="tr-dato"><span class="k">CUIT</span><span class="v">@CuitLindo(t.Cuit)<button class="tr-copy" @onclick="() => Copiar(t.Cuit!)">copiar</button></span></div>
+                }
+                <div class="tr-dato"><span class="k">Importe</span><span class="v"><b>@Plata0(t.Importe)</b><button class="tr-copy" @onclick="() => Copiar(ImporteParaCopiar(t.Importe))">copiar</button></span></div>
+                @if (!string.IsNullOrWhiteSpace(t.FacturaTexto))
+                {
+                    <div class="tr-dato"><span class="k">Paga</span><span class="v">@t.FacturaTexto</span></div>
+                }
+                @if (!editandoBanco && !(string.IsNullOrWhiteSpace(t.Alias) && string.IsNullOrWhiteSpace(t.Cbu)))
+                {
+                    <div style="text-align:right; margin-top:0.3rem;"><a href="" class="tr-link" @onclick="() => { editandoBanco = true; trAlias = t.Alias; trCbu = t.Cbu; }" @onclick:preventDefault="true">✏ cambiar alias/CBU</a></div>
+                }
+                <p class="tr-nota">"Ya la hice" la deja <b>esperando el banco</b>: cuando la transferencia aparezca en el extracto del Galicia, el pago se carga solo.</p>
+                <p class="tr-nota"><a href="" class="tr-link" @onclick="() => Pagar(t)" @onclick:preventDefault="true">O cargar el pago a mano</a></p>
+            </div>
+            <div class="modal-footer" style="justify-content:space-between;">
+                <a class="btn btn-secondary" href="https://empresas.bancogalicia.com.ar/login" target="_blank" rel="noopener">Abrir Galicia Office ↗</a>
+                @if (t.TransferidoAt.HasValue)
+                {
+                    <button class="btn btn-secondary" @onclick="() => YaLaHice(t, true)">No, todavía no la hice</button>
+                }
+                else
+                {
+                    <button class="btn btn-primary" style="white-space:nowrap;" @onclick="() => YaLaHice(t, false)">✓ Ya la hice</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@if (quitando is not null)
+{
+    <div class="modal-overlay" @onclick="() => quitando = null">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:420px; width:95vw;">
+            <div class="modal-header">
+                <h4 style="margin:0;">✕ @quitando.ProveedorNombre · todos los @quitando.DiaMes</h4>
+                <button class="btn-close" @onclick="() => quitando = null">&times;</button>
+            </div>
+            <div class="modal-body">No toca ningún pago hecho. ¿Qué querés sacar?</div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="() => QuitarMensual(false)">Solo este mes</button>
+                <button class="btn btn-danger" @onclick="() => QuitarMensual(true)">Dejar de pagarle todos los meses</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (editando is not null)
 {
     <div class="modal-overlay" @onclick="() => editando = null">
@@ -312,12 +429,84 @@
         : lista.Where(c => c.Nombre.Contains(filtro.Trim(), StringComparison.OrdinalIgnoreCase) || (c.Cuit ?? "").Contains(filtro.Trim()));
 
     [Parameter, SupplyParameterFromQuery(Name = "programar")] public int? PreProgramar { get; set; }
+    /// <summary>17/11/2026: ?transferir=ID (desde la campanita) abre la ventana "Transferir a ...".</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "transferir")] public int? PreTransferir { get; set; }
+
+    private List<ApiClient.PagoProgramadoDto> pagadosRecien = new();
+    private ApiClient.PagoProgramadoDto? transfiriendo, quitando;
+    private bool editandoBanco;
+    private string? trAlias, trCbu;
+    private int? ultimoTransferirAbierto;
 
     protected override async Task OnInitializedAsync()
     {
         await Task.WhenAll(Cargar(), CargarProgramados());
         // ?programar=0 abre la ventana vacía; ?programar=ID la abre con ese proveedor (desde su cuenta).
         if (PreProgramar.HasValue) AbrirProgramar(PreProgramar > 0 ? PreProgramar : null);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // La campanita navega a esta misma página con otro ?transferir=: abrir esa ventana cada vez.
+        if (PreTransferir is int tid && tid != ultimoTransferirAbierto)
+        {
+            ultimoTransferirAbierto = tid;
+            var p = programados?.FirstOrDefault(x => x.Id == tid) ?? await Api.GetPagoProgramadoAsync(tid);
+            if (p is not null && p.Estado == "PENDIENTE")
+            {
+                if (p.Medio == "TRANSFERENCIA") AbrirTransferir(p);
+                else Pagar(p);
+            }
+        }
+    }
+
+    private void AbrirTransferir(ApiClient.PagoProgramadoDto p) { transfiriendo = p; editandoBanco = false; trAlias = p.Alias; trCbu = p.Cbu; }
+
+    private async Task Copiar(string texto)
+    {
+        try { await JS.InvokeVoidAsync("copyToClipboard", texto); ToastService.Success("Copiado: " + texto); }
+        catch { ToastService.Error("No se pudo copiar"); }
+    }
+
+    private static string ImporteParaCopiar(decimal v) => v.ToString("0.##", CultureInfo.GetCultureInfo("es-AR"));
+    private static string CuitLindo(string c) => c.Length == 11 ? $"{c[..2]}-{c[2..10]}-{c[10]}" : c;
+
+    private async Task GuardarBanco()
+    {
+        if (transfiriendo is null) return;
+        if (!await Api.GuardarProveedorBancoAsync(transfiriendo.ProveedorId, trAlias, trCbu)) { ToastService.Error("No se pudo guardar"); return; }
+        var cbuLimpio = string.IsNullOrWhiteSpace(trCbu) ? null : new string(trCbu.Where(char.IsDigit).ToArray());
+        transfiriendo = transfiriendo with { Alias = string.IsNullOrWhiteSpace(trAlias) ? null : trAlias.Trim(), Cbu = string.IsNullOrEmpty(cbuLimpio) ? null : cbuLimpio };
+        editandoBanco = false;
+        await CargarProgramados();
+    }
+
+    private async Task YaLaHice(ApiClient.PagoProgramadoDto p, bool deshacer)
+    {
+        if (!await Api.MarcarPagoProgramadoTransferidoAsync(p.Id, deshacer)) { ToastService.Error("No se pudo"); return; }
+        ToastService.Success(deshacer ? "Vuelve a quedar pendiente" : "Listo: cuando aparezca en el banco se carga el pago solo");
+        transfiriendo = null;
+        await CargarProgramados();
+    }
+
+    private async Task TomarBanco(ApiClient.PagoProgramadoDto p, int movId, decimal importeBanco)
+    {
+        var falta = p.Importe - importeBanco;
+        var msg = $"¿Lo tomo como pago a {p.ProveedorNombre} por {Plata0(importeBanco)} (lo que salió del banco el {p.BancoFecha:dd/MM})?"
+            + (falta > 0.005m ? $"\n\nQueda pendiente {Plata0(falta)} para hoy." : "");
+        if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
+        var (ok, error) = await Api.TomarPagoProgramadoDelBancoAsync(p.Id, movId);
+        if (!ok) { ToastService.Error(error ?? "No se pudo"); return; }
+        ToastService.Success("Pago cargado con la transferencia del banco");
+        await CargarProgramados();
+    }
+
+    private async Task QuitarMensual(bool todos)
+    {
+        if (quitando is null) return;
+        var ok = todos ? await Api.AnularPagoProgramadoTodosAsync(quitando.Id) : await Api.AnularPagoProgramadoAsync(quitando.Id);
+        quitando = null;
+        if (ok) await CargarProgramados(); else ToastService.Error("No se pudo sacar");
     }
 
     private async Task Cargar()
@@ -330,6 +519,8 @@
     {
         try { programados = await Api.GetPagosProgramadosAsync(); }
         catch { programados = new(); }
+        try { pagadosRecien = await Api.GetPagosProgramadosRecienPagadosAsync(7); }
+        catch { pagadosRecien = new(); }
     }
 
     private void AbrirProgramar(int? proveedorId) { programarProveedorId = proveedorId; programando = true; }
@@ -358,6 +549,7 @@
 
     private async Task Quitar(ApiClient.PagoProgramadoDto p)
     {
+        if (p.DiaMes.HasValue) { quitando = p; return; }
         if (!await JS.InvokeAsync<bool>("confirm", $"¿Sacar de la lista el pago a {p.ProveedorNombre} del {FechaPalabras.Corta(p.Fecha)} por {Plata0(p.Importe)}? No toca ningún pago hecho."))
             return;
         if (await Api.AnularPagoProgramadoAsync(p.Id)) await CargarProgramados();
