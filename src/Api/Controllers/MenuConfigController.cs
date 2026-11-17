@@ -152,6 +152,66 @@ WHEN NOT MATCHED THEN INSERT (Id, Json, ActualizadoPor) VALUES (3, {json}, {quie
 
     private static readonly SemaphoreSlim _lockFlot = new(1, 1);
 
+    // ───── 2026-11-17: NOTAS FRECUENTES de la venta, cada persona las suyas. ─────
+    // Fila Id = 4: { "<persona>": ["Carga Gabriel hoy", ...] }. Persona = operador (admin, por PIN) o "U:usuario".
+    // Quien todavía no armó su lista ve las de fábrica (NOTAS_FABRICA).
+    public static readonly List<string> NOTAS_FABRICA = new() { "Carga Gabriel hoy" };
+    public const int MAX_NOTAS = 30;
+    public record NotasPut(string? Persona, List<string>? Notas);
+
+    private string ClaveNotas(string? persona)
+    {
+        var quien = User.FindFirstValue(ClaimTypes.Name) ?? "";
+        return User.IsInRole("admin")
+            ? (persona ?? "").Trim().ToUpperInvariant()
+            : "U:" + quien.Trim().ToUpperInvariant();
+    }
+
+    [HttpGet("notas")]
+    public async Task<IActionResult> GetNotas([FromQuery] string? persona)
+    {
+        await AsegurarTablaAsync();
+        var todo = await LeerNotasAsync();
+        return Ok(todo.TryGetValue(ClaveNotas(persona), out var l) ? l : NOTAS_FABRICA);
+    }
+
+    [HttpPut("notas")]
+    public async Task<IActionResult> PutNotas([FromBody] NotasPut req)
+    {
+        await AsegurarTablaAsync();
+        var clave = ClaveNotas(req.Persona);
+        if (clave.Length > 60) return BadRequest("Persona inválida");
+        var notas = (req.Notas ?? new())
+            .Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim())
+            .Where(x => x.Length <= 300)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(MAX_NOTAS).ToList();
+        await _lockFlot.WaitAsync();
+        try
+        {
+            var todo = await LeerNotasAsync();
+            todo[clave] = notas;
+            var json = JsonSerializer.Serialize(todo);
+            if (json.Length > 200_000) return BadRequest("Demasiado grande");
+            var quien = User.FindFirstValue(ClaimTypes.Name) ?? "";
+            await _db.Database.ExecuteSqlInterpolatedAsync($@"
+MERGE Menu_Config AS t USING (SELECT 4 AS Id) AS s ON t.Id = s.Id
+WHEN MATCHED THEN UPDATE SET Json = {json}, ActualizadoAt = SYSUTCDATETIME(), ActualizadoPor = {quien}
+WHEN NOT MATCHED THEN INSERT (Id, Json, ActualizadoPor) VALUES (4, {json}, {quien});");
+            return Ok(notas);
+        }
+        finally { _lockFlot.Release(); }
+    }
+
+    private async Task<Dictionary<string, List<string>>> LeerNotasAsync()
+    {
+        var json = (await _db.Database
+            .SqlQueryRaw<string>("SELECT TOP 1 Json AS Value FROM Menu_Config WHERE Id = 4")
+            .ToListAsync()).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try { return JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json) ?? new(); }
+        catch { return new(); }
+    }
+
     private async Task<Dictionary<string, FlotantePersona>> LeerFlotanteAsync()
     {
         var json = (await _db.Database

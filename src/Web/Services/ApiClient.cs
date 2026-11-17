@@ -7498,6 +7498,11 @@ public class ApiClient
     public async Task ResetDepositoTabsConfigAsync() => await DeleteAsync("/api/menu-config/deposito");
 
     // 2026-11-11: botón de abajo de cada persona (qué tiene y dónde está).
+    /// <summary>2026-11-17: notas frecuentes de la venta de esta persona (operador o usuario).</summary>
+    public async Task<List<string>?> GetNotasFrecuentesAsync(string? persona)
+        => await GetAsync<List<string>>($"/api/menu-config/notas?persona={Uri.EscapeDataString(persona ?? "")}");
+    public async Task<List<string>?> SaveNotasFrecuentesAsync(string? persona, List<string> notas)
+        => await PutAsync<List<string>>("/api/menu-config/notas", new { persona, notas });
     public async Task<Dictionary<string, FlotantePersonaDto>?> GetFlotanteAsync()
         => await GetAsync<Dictionary<string, FlotantePersonaDto>>("/api/menu-config/flotante");
     public async Task<Dictionary<string, FlotantePersonaDto>?> SaveFlotanteAsync(string? persona, FlotantePersonaDto? config)
