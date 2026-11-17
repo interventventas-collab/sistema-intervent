@@ -1438,8 +1438,8 @@
         <div id="nv-comentario-flotante-head"
              style="display:flex; align-items:center; gap:0.4rem; padding:0.45rem 0.6rem; cursor:move;
                     background:#fde68a; border-bottom:1px solid #f59e0b; border-radius: 8px 8px 0 0; user-select:none;">
-            <span style="font-size:0.95rem;">📌</span>
-            <strong style="font-size:0.72rem; color:#92400e; text-transform:uppercase; letter-spacing:0.04em; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Comentario para armado</strong>
+            <span style="font-size:0.95rem;">📦</span>
+            <strong style="font-size:0.72rem; color:#92400e; text-transform:uppercase; letter-spacing:0.04em; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Solo depósito · no sale en la factura</strong>
             @* 2026-09-17: MARCADOR — elegís un color y seleccionás con el mouse lo que ya cargaste. Solo
                visual y solo para quien carga: no se guarda y el que arma no lo ve (ver js/nv-marcador.js). *@
             @* 2026-10-27: TAMAÑO DE LETRA — A− / A+ agrandan o achican el comentario y queda guardado en esta computadora (js/nv-marcador.js). *@
@@ -3227,19 +3227,94 @@
                 <div class="nv-card" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem;">
 
                     <div>
-                        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; flex-wrap: wrap;">
-                            <strong style="font-size: 0.78rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em;">📄 Notas internas de la venta</strong>
-                            <span style="font-size: 0.7rem; color: #c2410c; font-weight: 600;">⚠ se ven en el comprobante</span>
+                        @* 2026-11-17: títulos que dicen PARA QUIÉN es cada caja (antes "Notas internas" / "Comentario para armado"). *@
+                        <div style="margin-bottom: 0.3rem;">
+                            <div style="font-size: 0.95rem; font-weight: 800; color: #b91c1c; letter-spacing: 0.02em;">🧾 LO VE EL CLIENTE</div>
+                            <div style="font-size: 0.78rem; color: #4b5563;">Sale impreso en la factura / remito</div>
                         </div>
                         <textarea id="nv-notas" class="form-input" rows="3" @bind="formObservaciones"
-                                  placeholder="Esto se visualizará en el comprobante que recibirá el cliente"
+                                  placeholder="Ej: Abona al recibir · Se entrega miércoles am"
                                   style="resize: vertical; min-height: 80px;"></textarea>
+                        @* 2026-11-17: si en la nota del cliente hay un renglón que parece de armado, aviso + botón para pasarlo. *@
+                        @foreach (var rd in RenglonesParaDeposito())
+                        {
+                            var rdx = rd;
+                            <div style="margin-top: 0.35rem; font-size: 0.8rem; background: #fef3c7; border-radius: 6px; padding: 0.3rem 0.6rem; color: #78350f;">
+                                ⚠ "@rdx" parece para el depósito: el cliente lo va a ver.
+                                <a href="javascript:void(0)" @onclick="() => PasarRenglonADeposito(rdx)" @onclick:preventDefault
+                                   style="color: #1d4ed8; font-weight: 600; text-decoration: none; margin-left: 0.4rem; white-space: nowrap;">Pasarlo a Solo depósito →</a>
+                                <a href="javascript:void(0)" @onclick="() => renglonesDejarAsi.Add(rdx)" @onclick:preventDefault
+                                   style="color: #9ca3af; text-decoration: none; margin-left: 0.5rem; white-space: nowrap;">dejar así</a>
+                            </div>
+                        }
+                        @* 2026-11-17: NOTAS FRECUENTES de cada persona. Tocás una y se agrega a la nota (en otro renglón).
+                           Se guardan por operador/usuario en Menu_Config Id 4; sin lista propia = "Carga Gabriel hoy". *@
+                        <div style="margin-top: 0.35rem; font-size: 0.8rem; line-height: 1.8; color: #374151;">
+                            <span style="color: #9ca3af; font-size: 0.74rem; margin-right: 0.3rem;">Frecuentes:</span>
+                            @for (var i = 0; i < notasFrecuentes.Count; i++)
+                            {
+                                var nf = notasFrecuentes[i];
+                                if (i > 0) { <span style="color: #9ca3af; margin: 0 0.35rem;">·</span> }
+                                <a href="javascript:void(0)" @onclick="() => PonerNotaFrecuente(nf)" @onclick:preventDefault
+                                   title="Agregar a la nota" style="color: #1d4ed8; text-decoration: none;">@nf</a>
+                            }
+                            <span style="color: #6b7280; font-size: 0.74rem; margin-left: 0.6rem; white-space: nowrap;">
+                                <a href="javascript:void(0)" @onclick="GuardarNotaEscrita" @onclick:preventDefault
+                                   title="Guarda lo que está escrito en la nota como frecuente" style="color: #6b7280; text-decoration: none;">＋ guardar lo escrito</a>
+                                ·
+                                <a href="javascript:void(0)" @onclick="() => notasEditando = !notasEditando" @onclick:preventDefault
+                                   style="color: #6b7280; text-decoration: none;">✏ editar</a>
+                            </span>
+                        </div>
+                        @if (notasEditando)
+                        {
+                            <div style="margin-top: 0.3rem; background: #fff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.12); padding: 0.6rem 0.75rem; max-width: 460px; font-size: 0.85rem;">
+                                @if (notasFrecuentes.Count == 0)
+                                {
+                                    <div style="color: #9ca3af; padding: 0.3rem 0;">No tenés notas frecuentes.</div>
+                                }
+                                @for (var i = 0; i < notasFrecuentes.Count; i++)
+                                {
+                                    var idx = i;
+                                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.25rem 0; border-bottom: 1px solid #f3f4f6;">
+                                        @if (notaEditIdx == idx)
+                                        {
+                                            <input class="form-input" style="flex: 1; padding: 0.2rem 0.4rem; font-size: 0.85rem;" @bind="notaEditTexto" @bind:event="oninput"
+                                                   @onkeydown="@(e => { if (e.Key == "Enter") _ = CambiarNotaFrecuente(idx); })" />
+                                            <span style="white-space: nowrap;">
+                                                <a href="javascript:void(0)" @onclick="() => CambiarNotaFrecuente(idx)" @onclick:preventDefault style="color: #1d4ed8; text-decoration: none; font-weight: 600;">OK</a>
+                                                <a href="javascript:void(0)" @onclick="() => notaEditIdx = -1" @onclick:preventDefault style="color: #9ca3af; text-decoration: none; margin-left: 0.4rem;">cancelar</a>
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span>@notasFrecuentes[idx]</span>
+                                            <span style="white-space: nowrap; color: #6b7280;">
+                                                <a href="javascript:void(0)" @onclick="() => MoverNotaFrecuente(idx, -1)" @onclick:preventDefault title="Subir" style="color: #6b7280; text-decoration: none; padding: 0 0.2rem;">↑</a>
+                                                <a href="javascript:void(0)" @onclick="() => MoverNotaFrecuente(idx, 1)" @onclick:preventDefault title="Bajar" style="color: #6b7280; text-decoration: none; padding: 0 0.2rem;">↓</a>
+                                                <a href="javascript:void(0)" @onclick="() => { notaEditIdx = idx; notaEditTexto = notasFrecuentes[idx]; }" @onclick:preventDefault title="Cambiar el texto" style="color: #6b7280; text-decoration: none; padding: 0 0.2rem;">✏</a>
+                                                <a href="javascript:void(0)" @onclick="() => BorrarNotaFrecuente(idx)" @onclick:preventDefault title="Borrar" style="color: #6b7280; text-decoration: none; padding: 0 0.2rem;">✕</a>
+                                            </span>
+                                        }
+                                    </div>
+                                }
+                                <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: center;">
+                                    <input class="form-input" style="flex: 1; padding: 0.25rem 0.45rem; font-size: 0.85rem;" placeholder="Escribí una nota nueva…"
+                                           @bind="notaNuevaTexto" @bind:event="oninput"
+                                           @onkeydown="@(e => { if (e.Key == "Enter") _ = AgregarNotaFrecuente(notaNuevaTexto); })" />
+                                    <a href="javascript:void(0)" @onclick="() => AgregarNotaFrecuente(notaNuevaTexto)" @onclick:preventDefault style="color: #1d4ed8; text-decoration: none; font-weight: 600;">Agregar</a>
+                                    <a href="javascript:void(0)" @onclick="() => notasEditando = false" @onclick:preventDefault style="color: #9ca3af; text-decoration: none;">cerrar</a>
+                                </div>
+                            </div>
+                        }
                     </div>
 
                     <div>
-                        <div style="display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.3rem; flex-wrap: wrap;">
-                            <strong style="font-size: 0.78rem; color: #92400e; text-transform: uppercase; letter-spacing: 0.04em;">📌 Comentario para armado</strong>
-                            <span style="font-size: 0.7rem; color: #78350f; font-style: italic;">solo lo ve quien arma</span>
+                        <div style="display: flex; align-items: flex-start; gap: 0.4rem; margin-bottom: 0.3rem; flex-wrap: wrap;">
+                            <div>
+                                <div style="font-size: 0.95rem; font-weight: 800; color: #92400e; letter-spacing: 0.02em;">📦 SOLO DEPÓSITO</div>
+                                <div style="font-size: 0.78rem; color: #4b5563;">No sale en la factura. Lo ve quien arma el pedido</div>
+                            </div>
                             @* 2026-09-17: MARCADOR — elegís un color y seleccionás con el mouse lo que ya cargaste. Solo
                                visual y solo para quien carga: no se guarda y el que arma no lo ve (ver js/nv-marcador.js). *@
                             @* 2026-10-27: TAMAÑO DE LETRA — A− / A+ agrandan o achican el comentario y queda guardado en esta computadora (js/nv-marcador.js). *@
@@ -3266,7 +3341,7 @@
                             <div style="position: relative;">
                                 <div class="nvm-back" data-nvm-bg="#fefce8"></div>
                                 <textarea id="nv-comentario-armado" class="form-input" data-nvm-key="nv-com" rows="3" @bind="formComentarioArmado"
-                                          placeholder="Ej: SOBRES CORTESIA"
+                                          placeholder="Ej: Doypack nuevos · Sobres cortesía · Viaja con otro pedido"
                                           style="background: transparent; position: relative; z-index: 1; border: 2px dashed #facc15; resize: vertical; min-height: 80px;"></textarea>
                             </div>
                         }
@@ -7819,6 +7894,7 @@
         await Operator.LoadAsync();
         Operator.OnChange += OnOperatorChange;
         Navigation.LocationChanged += OnLocationChanged;
+        await CargarNotasFrecuentesAsync();
         NuevaVentaSignal.OnRequest += OnNuevaVentaSignal;
         editandoTimer = new System.Threading.Timer(_ => InvokeAsync(AvisarEditandoAsync), null, 3000, 3000);
         try { deleteSettings = await Api.GetCafeDeleteSettingsAsync(); }
@@ -7855,7 +7931,130 @@
         await RefrescarPedidoWACount();
     }
 
-    private void OnOperatorChange() => InvokeAsync(StateHasChanged);
+    private void OnOperatorChange() => InvokeAsync(async () => { await CargarNotasFrecuentesAsync(); StateHasChanged(); });
+
+    // ───── 2026-11-17: aviso "esto parece para el depósito" en la nota que ve el cliente ─────
+    private static readonly string[] PalabrasDeposito = {
+        "armar", "armado", "arma", "armen", "doypack", "doy pack", "sobre", "sobres", "cortesia", "regalo", "muestra", "muestras",
+        "envase", "envases", "bolsa", "bolsas", "caja", "cajas", "separar", "separado", "etiqueta", "etiquetar", "rotular",
+        "embalar", "deposito", "preparar" };
+    private readonly HashSet<string> renglonesDejarAsi = new(StringComparer.OrdinalIgnoreCase);
+
+    private static string SinAcentos(string t)
+    {
+        var n = t.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder(n.Length);
+        foreach (var ch in n)
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) != System.Globalization.UnicodeCategory.NonSpacingMark) sb.Append(ch);
+        return sb.ToString().ToLowerInvariant();
+    }
+
+    private IEnumerable<string> RenglonesParaDeposito()
+    {
+        if (string.IsNullOrWhiteSpace(formObservaciones)) yield break;
+        foreach (var r0 in formObservaciones.Replace("\r", "").Split('\n'))
+        {
+            var r = r0.Trim();
+            if (r.Length == 0 || renglonesDejarAsi.Contains(r) || r.StartsWith("Saldo anterior", StringComparison.OrdinalIgnoreCase)) continue;
+            var palabras = System.Text.RegularExpressions.Regex.Split(SinAcentos(r), @"[^a-z0-9]+");
+            var texto = " " + string.Join(" ", palabras) + " ";
+            if (PalabrasDeposito.Any(p => texto.Contains(" " + p + " "))) yield return r;
+        }
+    }
+
+    private void PasarRenglonADeposito(string renglon)
+    {
+        var lineas = (formObservaciones ?? "").Replace("\r", "").Split('\n').ToList();
+        var i = lineas.FindIndex(l => l.Trim() == renglon);
+        if (i >= 0) lineas.RemoveAt(i);
+        formObservaciones = string.Join("\n", lineas).Trim('\n');
+        var com = (formComentarioArmado ?? "").TrimEnd();
+        formComentarioArmado = com.Length == 0 ? renglon : com + "\n" + renglon;
+        ToastService.Success("Pasado a Solo depósito: el cliente no lo ve");
+    }
+
+    // ───── 2026-11-17: notas frecuentes de cada persona (debajo de "Notas internas de la venta") ─────
+    private List<string> notasFrecuentes = new() { "Carga Gabriel hoy" };
+    private bool notasEditando;
+    private int notaEditIdx = -1;
+    private string notaEditTexto = "";
+    private string notaNuevaTexto = "";
+    private string? PersonaNotas() => Operator.HasOperator ? Operator.Current : "";
+
+    private async Task CargarNotasFrecuentesAsync()
+    {
+        try { notasFrecuentes = await Api.GetNotasFrecuentesAsync(PersonaNotas()) ?? notasFrecuentes; }
+        catch { }
+    }
+
+    private void PonerNotaFrecuente(string nota)
+    {
+        var actual = (formObservaciones ?? "").TrimEnd();
+        formObservaciones = actual.Length == 0 ? nota : actual + "\n" + nota;
+    }
+
+    private async Task GuardarNotasFrecuentesAsync(List<string> nuevas)
+    {
+        try
+        {
+            var r = await Api.SaveNotasFrecuentesAsync(PersonaNotas(), nuevas);
+            if (r != null) notasFrecuentes = r;
+        }
+        catch { ToastService.Error("No se pudieron guardar las notas frecuentes"); }
+    }
+
+    private async Task GuardarNotaEscrita()
+    {
+        // Lo que está escrito, sin el renglón automático del saldo anterior. Cada renglón es una nota.
+        var renglones = (formObservaciones ?? "").Replace("\r", "").Split('\n')
+            .Select(x => x.Trim()).Where(x => x.Length > 0 && !x.StartsWith("Saldo anterior", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (renglones.Count == 0) { ToastService.Warning("Escribí algo en la nota primero"); return; }
+        var nuevas = notasFrecuentes.ToList();
+        var agregadas = 0;
+        foreach (var r in renglones)
+            if (!nuevas.Any(n => string.Equals(n, r, StringComparison.OrdinalIgnoreCase))) { nuevas.Add(r); agregadas++; }
+        if (agregadas == 0) { ToastService.Info("Ya estaba en tus frecuentes"); return; }
+        await GuardarNotasFrecuentesAsync(nuevas);
+        ToastService.Success(agregadas == 1 ? "Guardada en tus frecuentes" : $"{agregadas} notas guardadas en tus frecuentes");
+    }
+
+    private async Task AgregarNotaFrecuente(string texto)
+    {
+        var t = (texto ?? "").Trim();
+        if (t.Length == 0) return;
+        if (notasFrecuentes.Any(n => string.Equals(n, t, StringComparison.OrdinalIgnoreCase))) { notaNuevaTexto = ""; return; }
+        await GuardarNotasFrecuentesAsync(notasFrecuentes.Append(t).ToList());
+        notaNuevaTexto = "";
+        StateHasChanged();
+    }
+
+    private async Task CambiarNotaFrecuente(int idx)
+    {
+        if (idx < 0 || idx >= notasFrecuentes.Count) return;
+        var t = (notaEditTexto ?? "").Trim();
+        var nuevas = notasFrecuentes.ToList();
+        if (t.Length == 0) nuevas.RemoveAt(idx); else nuevas[idx] = t;
+        notaEditIdx = -1;
+        await GuardarNotasFrecuentesAsync(nuevas);
+        StateHasChanged();
+    }
+
+    private async Task MoverNotaFrecuente(int idx, int delta)
+    {
+        var j = idx + delta;
+        if (idx < 0 || j < 0 || j >= notasFrecuentes.Count) return;
+        var nuevas = notasFrecuentes.ToList();
+        (nuevas[idx], nuevas[j]) = (nuevas[j], nuevas[idx]);
+        await GuardarNotasFrecuentesAsync(nuevas);
+    }
+
+    private async Task BorrarNotaFrecuente(int idx)
+    {
+        if (idx < 0 || idx >= notasFrecuentes.Count) return;
+        var nuevas = notasFrecuentes.ToList();
+        nuevas.RemoveAt(idx);
+        await GuardarNotasFrecuentesAsync(nuevas);
+    }
 
     /// <summary>Cuando el FAB navega con un nuevo timestamp en ?nueva=...,
     /// estando ya en /cafe/ventas, Blazor NO re-ejecuta OnInitializedAsync.
