@@ -79,7 +79,7 @@ else
                         {
                             <div class="ppv-sub" style="margin-top:0.35rem; color:#374151;">
                                 ¿Qué es?
-                                @foreach (var m in PlataAcciones.MotivosNoEsCobro)
+                                @foreach (var m in PlataAcciones.Motivos(i))
                                 {
                                     var mot = m;
                                     <button class="ppv-lnk" style="color:#111827;" @onclick="() => Apartar(i, mot)">@mot</button>
@@ -98,6 +98,10 @@ else
                             {
                                 <button class="ppv-lnk" @onclick="() => AbrirElegir(i)">@(i.ClienteId is null ? "elegir cliente" : "otro cliente")</button>
                                 <button class="ppv-lnk" @onclick="() => { apartando = i.Key; eligiendo = null; }">no es cobro</button>
+                            }
+                            else if (i.Tipo == "CHEQUE")
+                            {
+                                <button class="ppv-lnk" @onclick="() => { apartando = i.Key; eligiendo = null; }">ignorar</button>
                             }
                         </div>
                     </td>
@@ -151,7 +155,7 @@ else
 
     private async Task Apartar(PlataItemDto i, string motivo)
     {
-        if (await Api.IgnorarMovimientoExtractoAsync(i.Id, motivo, Operator.Current))
+        if (await PlataAcciones.Apartar(Api, i, motivo, Operator.Current))
         {
             Items.Remove(i); apartando = null;
             ToastService.Success("Apartada. Está en Plata que entró → \"No eran cobros\" por si te equivocaste.");

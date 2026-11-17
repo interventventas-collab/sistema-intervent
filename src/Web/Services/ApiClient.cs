@@ -1972,8 +1972,9 @@ public class ApiClient
     public async Task<bool> DesignorarMovimientoExtractoAsync(int id)
         => await DeleteAsync($"/api/cafe/extracto-banco/{id}/ignorar");
 
-    public async Task<List<MovimientoDisponibleDto>?> GetMovimientosAsociadosSinCobrarAsync(int clienteId)
-        => await GetAsync<List<MovimientoDisponibleDto>>($"/api/cafe/extracto-banco/asociados-sin-cobrar/{clienteId}");
+    public async Task<List<MovimientoDisponibleDto>?> GetMovimientosAsociadosSinCobrarAsync(int clienteId, int? incluir = null)
+        => await GetAsync<List<MovimientoDisponibleDto>>($"/api/cafe/extracto-banco/asociados-sin-cobrar/{clienteId}"
+                                                         + (incluir is int i ? $"?incluir={i}" : ""));
 
     public async Task<bool> MarcarMovimientosUsadosAsync(List<int> ids, int cobranzaId)
     {
@@ -2099,6 +2100,16 @@ public class ApiClient
         => await GetAsync<PlataResumenDto>("/api/plata-que-entro/resumen");
     public async Task<List<PlataItemDto>> GetPlataListaAsync(string tab = "por-volcar")
         => await GetAsync<List<PlataItemDto>>($"/api/plata-que-entro?tab={Uri.EscapeDataString(tab)}") ?? new();
+
+    // 2026-11-17: ignorar un cheque cargado que no es cobro (el cliente lo anuló, vino repetido…).
+    public async Task<bool> IgnorarChequePlataAsync(int chequeId, string motivo, string? operador = null)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync($"/api/plata-que-entro/cheque/{chequeId}/ignorar", new { Motivo = motivo, Operador = operador });
+        return resp.IsSuccessStatusCode;
+    }
+    public async Task<bool> DesignorarChequePlataAsync(int chequeId)
+        => await DeleteAsync($"/api/plata-que-entro/cheque/{chequeId}/ignorar");
 
     // 2026-06-18: dropdown hover de la topbar — próximos cheques EMITIDOS por pagar.
     public record ChequeProximoDto(int Id, string Numero, DateTime? FechaPago, decimal Importe,
