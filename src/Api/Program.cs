@@ -226,6 +226,7 @@ builder.Services.AddSingleton<ArcaScrapingService>();
 builder.Services.AddScoped<GaliciaAccountService>();
 builder.Services.AddSingleton<GaliciaScrapingService>();
 builder.Services.AddScoped<ExtractoBancoImportService>();
+builder.Services.AddScoped<ImpuestosService>(); // 17/11/2026 impuestos / VEP
 builder.Services.AddScoped<ChequesBancoImportService>();
 builder.Services.AddScoped<GaliciaSyncService>();
 builder.Services.AddScoped<ShellAccountService>();
@@ -329,6 +330,7 @@ builder.Services.AddHostedService<ResumenFinancieroDiarioService>();
 // 2026-07-23: Centro de Automatizaciones — despachador multi-canal (campanita/Telegram/WhatsApp/correo)
 builder.Services.AddScoped<AutoAvisoSender>();
 builder.Services.AddHostedService<MeliCodigoColectaBackgroundService>();
+builder.Services.AddHostedService<ImpuestosBackgroundService>(); // 17/11/2026 lee VEP de la contadora + cruza con Galicia
 // 2026-06-12: reactivado. Solo LECTURA informativa: pobla Cafe_StockPorDeposito[Full MeLi]
 // con lo que MeLi reporta en su bodega. No toca stock propio (9 de Abril) ni pushes.
 // Lo usan /cafe/stock-comparado, /cafe/stock-masivo y el cartelito "Stock Full" de la ficha.

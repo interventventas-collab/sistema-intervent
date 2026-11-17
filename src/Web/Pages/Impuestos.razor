@@ -1,0 +1,349 @@
+@page "/impuestos"
+@attribute [Authorize(Roles = "admin")]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+@* 17/11/2026 — Impuestos y VEP. Pedido del dueño: "no colgarme de pagar los VEP".
+   Los VEP los manda la contadora por mail (PDF o montos escritos). Un robot lee esos mails cada
+   30 min y los cruza con los débitos "IMP.AFIP" del Galicia: mismo importe = pagado solo. *@
+
+<style>
+    .im-top { display:flex; justify-content:space-between; align-items:flex-start; gap:0.8rem; flex-wrap:wrap; }
+    .im-sub { color:#6b7280; font-size:0.88rem; margin-top:0.2rem; max-width:640px; line-height:1.4; }
+    .im-acc { display:flex; gap:0.4rem; flex-wrap:wrap; align-items:center; }
+    .im-btn { border:1px solid #d1d5db; background:#fff; border-radius:6px; padding:0.35rem 0.7rem; font-size:0.85rem; cursor:pointer; white-space:nowrap; color:#374151; }
+    .im-btn:hover { border-color:#9ca3af; }
+    .im-btn.chico { padding:0.15rem 0.5rem; font-size:0.78rem; }
+    .im-btn:disabled { opacity:0.5; cursor:default; }
+    .im-sec { font-size:0.72rem; font-weight:700; color:#6b7280; letter-spacing:0.04em; text-transform:uppercase; margin:1.1rem 0 0.2rem; }
+    .im-sec.alarma { color:#b91c1c; }
+    .im-row { display:grid; grid-template-columns: minmax(170px,1.3fr) minmax(120px,1fr) 140px minmax(120px,1fr) 200px; gap:0.7rem;
+              align-items:center; padding:0.5rem 0; border-bottom:1px solid #f0f1f3; font-size:0.92rem; }
+    .im-c b { font-weight:600; }
+    .im-c .det { font-size:0.75rem; color:#9ca3af; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:320px; }
+    .im-q { color:#6b7280; font-size:0.85rem; }
+    .im-m { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
+    .im-e { color:#6b7280; font-size:0.85rem; }
+    .im-e.alarma { color:#b91c1c; font-weight:600; }
+    .im-e.ok { color:#15803d; }
+    .im-b { display:flex; gap:0.3rem; justify-content:flex-end; flex-wrap:wrap; }
+    .im-aviso { color:#b91c1c; font-weight:600; font-size:0.9rem; margin-top:0.8rem; }
+    .im-vacio { color:#6b7280; font-size:0.9rem; padding:0.4rem 0; }
+    .im-pagar { display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap; padding:0.45rem 0 0.6rem; border-bottom:1px solid #f0f1f3; font-size:0.85rem; }
+    .im-tot { color:#6b7280; font-size:0.85rem; font-weight:400; text-transform:none; letter-spacing:0; }
+    @@media (max-width: 760px) {
+        .im-row { grid-template-columns: 1fr auto; }
+        .im-q, .im-e { grid-column: 1 / 2; }
+        .im-b { grid-column: 1 / -1; justify-content:flex-start; }
+    }
+</style>
+
+<div class="card">
+    <div class="card-body">
+        <div class="im-top">
+            <div>
+                <h3 style="margin:0;">🧾 Impuestos y VEP</h3>
+                <div class="im-sub">Lo que manda María por mail y lo que sale del Galicia. Cuando el banco muestra un pago de AFIP por el mismo importe, el VEP queda pagado solo.</div>
+            </div>
+            <div class="im-acc">
+                <button class="im-btn" disabled="@revisando" @onclick="Revisar">@(revisando ? "Revisando..." : "↻ Revisar mails y banco")</button>
+                <label class="im-btn" style="margin:0;">📎 Subir VEP (PDF)
+                    <InputFile OnChange="SubirPdf" accept="application/pdf" multiple style="display:none;" />
+                </label>
+                <button class="im-btn" @onclick="() => pegando = !pegando">📋 Pegar texto</button>
+            </div>
+        </div>
+
+        @if (pegando)
+        {
+            <div style="margin-top:0.8rem;">
+                <textarea class="form-input" rows="5" style="width:100%; font-size:0.88rem;" @bind="textoPegado"
+                          placeholder="Pegá acá lo que mandó María por WhatsApp. Ej: IVA $ 2.351.384,04 · Ingresos brutos $ 63.987,11"></textarea>
+                <div style="display:flex; gap:0.4rem; margin-top:0.4rem;">
+                    <button class="btn btn-primary" disabled="@string.IsNullOrWhiteSpace(textoPegado)" @onclick="GuardarTexto">Cargar</button>
+                    <button class="im-btn" @onclick="() => { pegando = false; textoPegado = null; }">Cancelar</button>
+                </div>
+            </div>
+        }
+
+        @if (avisos?.SinVepsEsteMes == true)
+        {
+            <div class="im-aviso">Este mes María todavía no mandó los VEP.</div>
+        }
+
+        @if (lista is null)
+        {
+            <p class="text-muted" style="margin-top:1rem;">Cargando...</p>
+        }
+        else
+        {
+            var hoy = FechaPalabras.HoyAr;
+            var pend = lista.Where(v => v.Estado == "PENDIENTE").ToList();
+            var vigentes = pend.Where(v => VenceEf(v) >= hoy).OrderBy(v => VenceEf(v)).ToList();
+            var vencidos = pend.Where(v => VenceEf(v) < hoy).OrderByDescending(v => VenceEf(v)).ToList();
+
+            <div class="im-sec">Para pagar
+                @if (vigentes.Count > 0) { <span class="im-tot"> · @Plata(vigentes.Sum(v => v.Importe))</span> }
+            </div>
+            @if (vigentes.Count == 0)
+            {
+                <div class="im-vacio">Nada pendiente.</div>
+            }
+            @foreach (var v in vigentes) { @Fila(v) }
+
+            @if (vencidos.Count > 0)
+            {
+                <div class="im-sec alarma">Vencieron sin ver el pago</div>
+                <div class="im-vacio" style="font-size:0.8rem;">Si los pagaste por otro lado (QR de Mercado Pago, Rapipago, otra cuenta), tocá ✓ Pagado.</div>
+                @foreach (var v in vencidos) { @Fila(v) }
+            }
+
+            var pagados = lista.Where(v => v.Estado == "PAGADO" && v.PagadoFecha.HasValue)
+                .GroupBy(v => new DateTime(v.PagadoFecha!.Value.Year, v.PagadoFecha.Value.Month, 1))
+                .OrderByDescending(g => g.Key).ToList();
+            foreach (var g in pagados.Take(verMeses))
+            {
+                <div class="im-sec">Pagados · @g.Key.ToString("MMMM yyyy", Ar)
+                    <span class="im-tot"> · @g.Count() · @Plata(g.Sum(v => v.Importe))</span>
+                </div>
+                @foreach (var v in g.OrderByDescending(v => v.PagadoFecha).ThenByDescending(v => v.Importe)) { @Fila(v) }
+            }
+            @if (pagados.Count > verMeses)
+            {
+                <button class="im-btn" style="margin-top:0.8rem;" @onclick="() => verMeses += 6">Ver meses anteriores</button>
+            }
+        }
+    </div>
+</div>
+
+@if (editando is not null)
+{
+    <div class="modal-overlay" @onclick="() => editando = null">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width:460px; width:95vw;">
+            <div class="modal-header">
+                <h4 style="margin:0;">✏ @editando.Concepto · @editando.Entidad</h4>
+                <button class="btn-close" @onclick="() => editando = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Qué impuesto es</label>
+                    <input class="form-input" list="im-conceptos" @bind="eConcepto" />
+                    <datalist id="im-conceptos">
+                        @foreach (var c in Conceptos) { <option value="@c"></option> }
+                    </datalist>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">De quién</label>
+                    <input class="form-input" list="im-entidades" @bind="eEntidad" />
+                    <datalist id="im-entidades">
+                        @foreach (var c in Entidades) { <option value="@c"></option> }
+                    </datalist>
+                </div>
+                @if (editando.Origen != "BANCO")
+                {
+                    <div class="form-group">
+                        <label class="form-label">Importe</label>
+                        <input class="form-input" type="number" step="0.01" @bind="eImporte" />
+                    </div>
+                }
+                <div class="form-group">
+                    <label class="form-label">Vence</label>
+                    <input class="form-input" type="date" @bind="eVence" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nota</label>
+                    <input class="form-input" @bind="eNota" />
+                </div>
+                @if (!string.IsNullOrWhiteSpace(editando.Detalle))
+                {
+                    <div style="color:#6b7280; font-size:0.8rem;">@editando.Detalle</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(editando.MailAsunto))
+                {
+                    <div style="color:#9ca3af; font-size:0.78rem; margin-top:0.3rem;">De: @editando.MailAsunto@(editando.MailFecha is { } mf ? " · " + mf.ToArTime().ToString("dd/MM/yyyy") : "")</div>
+                }
+            </div>
+            <div class="modal-footer" style="display:flex; justify-content:space-between; gap:0.4rem;">
+                <button class="im-btn" @onclick="Descartar" title="No es un impuesto o está repetido">✕ Sacar de la lista</button>
+                <button class="btn btn-primary" @onclick="GuardarEdicion">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
+    private static readonly string[] Conceptos = { "IVA", "Ingresos brutos", "Aportes empleados", "Ganancias", "Monotributo", "Bienes personales", "Autónomos", "Honorarios contadora", "Otro" };
+    private static readonly string[] Entidades = { "SRL", "SH", "Gabriel", "German", "Chicho", "Nacho" };
+    private static readonly string[] Comos = { "Galicia", "QR Mercado Pago", "Rapipago / Pago Fácil", "Otra cuenta", "Efectivo" };
+
+    private List<ApiClient.ImpuestoDto>? lista;
+    private ApiClient.ImpuestosAvisosDto? avisos;
+    private bool revisando, pegando;
+    private string? textoPegado;
+    private int verMeses = 6;
+
+    private int? pagandoId;
+    private DateTime pFecha = FechaPalabras.HoyAr;
+    private string pComo = "Galicia";
+
+    private ApiClient.ImpuestoDto? editando;
+    private string eConcepto = "", eEntidad = "";
+    private decimal eImporte;
+    private DateTime? eVence;
+    private string? eNota;
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        try
+        {
+            lista = await Api.GetImpuestosAsync();
+            avisos = await Api.GetImpuestosAvisosAsync();
+        }
+        catch (Exception ex) { lista ??= new(); ToastService.Error(ex.Message); }
+    }
+
+    private static DateTime VenceEf(ApiClient.ImpuestoDto v)
+        => v.Vence?.Date ?? (v.MailFecha?.ToArTime().Date.AddDays(30) ?? FechaPalabras.HoyAr);
+
+    private static string Plata(decimal v) => "$ " + v.ToString("N2", Ar);
+
+    private RenderFragment Fila(ApiClient.ImpuestoDto v) => __builder =>
+    {
+        var hoy = FechaPalabras.HoyAr;
+        var pagado = v.Estado == "PAGADO";
+        var vencido = !pagado && VenceEf(v) < hoy;
+        string cuando;
+        if (pagado) cuando = $"{v.PagadoFecha:dd/MM} {v.PagadoComo}";
+        else if (v.Vence.HasValue) cuando = (v.Vence.Value.Date == hoy ? "vence HOY" : "vence " + FechaPalabras.Corta(v.Vence.Value));
+        else cuando = v.MailFecha.HasValue ? "llegó " + v.MailFecha.Value.ToArTime().ToString("dd/MM") : "sin fecha";
+        var periodo = string.IsNullOrWhiteSpace(v.Periodo) ? "" : " · " + v.Periodo;
+        <div class="im-row">
+            <div class="im-c">
+                <b>@v.Concepto · @v.Entidad</b>
+                @if (!string.IsNullOrWhiteSpace(v.Nota)) { <div class="det">@v.Nota</div> }
+                else if (v.Origen == "BANCO") { <div class="det">el banco no dice qué impuesto fue</div> }
+            </div>
+            <div class="im-q">@cuando@periodo</div>
+            <div class="im-m">@Plata(v.Importe)</div>
+            @if (pagado)
+            {
+                <div class="im-e ok">✓ pagado</div>
+            }
+            else
+            {
+                <div class="im-e alarma">@(vencido ? "venció sin pago visto" : "sin pagar")</div>
+            }
+            <div class="im-b">
+                @if (v.TienePdf) { <a class="im-btn chico" href="api/impuestos/@v.Id/pdf" target="_blank" style="text-decoration:none;">Ver VEP</a> }
+                @if (!pagado) { <button class="im-btn chico" @onclick="() => AbrirPagar(v)">✓ Pagado</button> }
+                else if (!v.DelBanco) { <button class="im-btn chico" title="Volver a sin pagar" @onclick="() => Desmarcar(v)">↩</button> }
+                <button class="im-btn chico" title="Corregir" @onclick="() => AbrirEditar(v)">✏</button>
+            </div>
+        </div>
+        @if (pagandoId == v.Id)
+        {
+            <div class="im-pagar">
+                Lo pagué el <input type="date" class="form-input" style="width:auto; padding:0.15rem 0.4rem;" @bind="pFecha" />
+                con
+                <select class="form-input" style="width:auto; padding:0.15rem 0.4rem;" @bind="pComo">
+                    @foreach (var c in Comos) { <option value="@c">@c</option> }
+                </select>
+                <button class="btn btn-primary" style="padding:0.2rem 0.7rem;" @onclick="() => ConfirmarPagado(v)">Listo</button>
+                <button class="im-btn chico" @onclick="() => pagandoId = null">Cancelar</button>
+            </div>
+        }
+    };
+
+    private async Task Revisar()
+    {
+        revisando = true;
+        try
+        {
+            var r = await Api.RevisarImpuestosAsync();
+            if (r?.Error is { } err) ToastService.Error(err);
+            else ToastService.Success(r is null ? "Listo" :
+                $"Listo · {r.Nuevos} VEP nuevo{(r.Nuevos == 1 ? "" : "s")} · {r.Pagados} pagado{(r.Pagados == 1 ? "" : "s")} con el banco");
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { revisando = false; }
+    }
+
+    private async Task SubirPdf(InputFileChangeEventArgs e)
+    {
+        int nuevos = 0, pagados = 0;
+        foreach (var f in e.GetMultipleFiles(10))
+        {
+            try
+            {
+                using var ms = new MemoryStream();
+                await f.OpenReadStream(5_000_000).CopyToAsync(ms);
+                var r = await Api.SubirVepAsync(f.Name, Convert.ToBase64String(ms.ToArray()), null);
+                nuevos += r?.Nuevos ?? 0; pagados += r?.Pagados ?? 0;
+            }
+            catch (Exception ex) { ToastService.Error($"{f.Name}: {ex.Message}"); }
+        }
+        if (nuevos > 0 || pagados > 0) ToastService.Success($"{nuevos} VEP cargado{(nuevos == 1 ? "" : "s")}{(pagados > 0 ? $" · {pagados} ya estaba{(pagados == 1 ? "" : "n")} pagado{(pagados == 1 ? "" : "s")}" : "")}");
+        await Cargar();
+    }
+
+    private async Task GuardarTexto()
+    {
+        try
+        {
+            var r = await Api.SubirVepAsync(null, null, textoPegado);
+            ToastService.Success($"{r?.Leidos ?? 0} monto{(r?.Leidos == 1 ? "" : "s")} leído{(r?.Leidos == 1 ? "" : "s")}");
+            pegando = false; textoPegado = null;
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private void AbrirPagar(ApiClient.ImpuestoDto v)
+    {
+        pagandoId = v.Id; pFecha = FechaPalabras.HoyAr;
+        pComo = v.Entidad == "SH" ? "QR Mercado Pago" : "Galicia";
+    }
+
+    private async Task ConfirmarPagado(ApiClient.ImpuestoDto v)
+    {
+        try
+        {
+            if (await Api.MarcarImpuestoPagadoAsync(v.Id, pFecha, pComo)) { pagandoId = null; await Cargar(); }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task Desmarcar(ApiClient.ImpuestoDto v)
+    {
+        try { if (await Api.DesmarcarImpuestoPagadoAsync(v.Id)) await Cargar(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private void AbrirEditar(ApiClient.ImpuestoDto v)
+    {
+        editando = v; eConcepto = v.Concepto; eEntidad = v.Entidad; eImporte = v.Importe; eVence = v.Vence; eNota = v.Nota;
+    }
+
+    private async Task GuardarEdicion()
+    {
+        if (editando is null) return;
+        try
+        {
+            if (await Api.EditarImpuestoAsync(editando.Id, eConcepto, eEntidad, eImporte, eVence, eNota)) { editando = null; await Cargar(); }
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task Descartar()
+    {
+        if (editando is null) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"¿Sacar {editando.Concepto} {Plata(editando.Importe)} de la lista?")) return;
+        try { if (await Api.DescartarImpuestoAsync(editando.Id)) { editando = null; await Cargar(); } }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+}

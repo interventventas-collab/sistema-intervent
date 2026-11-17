@@ -133,6 +133,7 @@ public static class MenuNuevoCatalogo
             new("Cobranzas a aprobar", "/cafe/cobranzas-pendientes", "cafe-tesoreria"),
             new("Pagos a confirmar", "/tesoreria/pagos-pendientes", "cafe-tesoreria"),
             new("Extracto banco", "/cafe/tesoreria/extracto-banco", "cafe-tesoreria"),
+            new("Impuestos y VEP", "/impuestos"),
             new("Resumen tesorería", "/cafe/tesoreria/resumen", "cafe-tesoreria"),
             new("Bóveda de claves", "/vault"),
         }),

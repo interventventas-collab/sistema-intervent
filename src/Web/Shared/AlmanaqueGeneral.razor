@@ -184,6 +184,7 @@
     {
         new("chp", "Cheques a pagar", "#dc2626", "💸"),
         new("pgp", "Pagos a proveedores", "#b45309", "📅"),
+        new("imp", "Impuestos (VEP)", "#be123c", "🧾"),
         new("chc", "Cheques a cobrar", "#16a34a", "💰"),
         new("ent", "Entregas de alquiler", "#7c3aed", "🎪"),
         new("ret", "Retiros de alquiler", "#ea580c", "🔁"),
@@ -199,7 +200,7 @@
     private string vista = "sem";
     private DateTime cursor = DateTimeExt.AhoraAr().Date;
     private static DateTime Hoy => DateTimeExt.AhoraAr().Date;
-    private readonly HashSet<string> activos = new() { "chp", "pgp", "chc", "ent", "ret", "ven", "not" };
+    private readonly HashSet<string> activos = new() { "chp", "pgp", "imp", "chc", "ent", "ret", "ven", "not" };
     private List<Ev> eventos = new();
     private bool cargando;
     private (DateTime, DateTime)? cargado;
@@ -263,6 +264,14 @@
                 foreach (var p in progs)
                     lista.Add(new Ev(p.Fecha.Date, "pgp", $"${p.Importe.ToString("N0", Ar)}",
                         p.ProveedorNombre + (p.Partes > 1 ? $" · {p.Parte} de {p.Partes}" : ""), p.Nota, "/cafe/proveedores-ctacte"));
+            }
+            catch { }
+            // 17/11/2026: VEP sin pagar con fecha de vencimiento (solo los ve el admin: la API es solo admin).
+            try
+            {
+                var imps = await Api.GetImpuestosAsync();
+                foreach (var v in imps.Where(v => v.Estado == "PENDIENTE" && v.Vence.HasValue && v.Vence.Value.Date >= desde && v.Vence.Value.Date <= hasta))
+                    lista.Add(new Ev(v.Vence!.Value.Date, "imp", $"${v.Importe.ToString("N0", Ar)}", $"VEP {v.Concepto} · {v.Entidad}", v.Periodo, "/impuestos"));
             }
             catch { }
             try

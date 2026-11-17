@@ -8891,3 +8891,33 @@ IF OBJECT_ID('Cafe_PagosProgramados') IS NULL
         UpdatedAt DATETIME2 NULL
     );
 GO
+
+-- 17/11/2026: Impuestos / VEP. Los lee un robot de los mails de la contadora y se cruzan con
+-- los débitos "IMP.AFIP" del extracto del Galicia. Pantalla /impuestos (solo admin).
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+IF OBJECT_ID('Impuestos_Veps') IS NULL
+    CREATE TABLE Impuestos_Veps (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        NroVep NVARCHAR(30) NULL,
+        Cuit NVARCHAR(13) NULL,
+        Entidad NVARCHAR(80) NOT NULL DEFAULT 'SRL',
+        Concepto NVARCHAR(80) NOT NULL DEFAULT 'Otro',
+        Detalle NVARCHAR(300) NULL,
+        Periodo NVARCHAR(20) NULL,
+        Importe DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Vence DATE NULL,
+        Origen NVARCHAR(10) NOT NULL DEFAULT 'MAIL',
+        MailMessageId NVARCHAR(300) NULL,
+        MailAsunto NVARCHAR(200) NULL,
+        MailFecha DATETIME2 NULL,
+        Estado NVARCHAR(12) NOT NULL DEFAULT 'PENDIENTE',
+        PagadoFecha DATE NULL,
+        PagadoComo NVARCHAR(40) NULL,
+        ExtractoMovimientoId INT NULL,
+        Pdf VARBINARY(MAX) NULL,
+        PdfNombre NVARCHAR(200) NULL,
+        Nota NVARCHAR(500) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NULL
+    );
+GO

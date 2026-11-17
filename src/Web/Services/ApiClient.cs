@@ -8686,6 +8686,36 @@ public class ApiClient
     public async Task<bool> MarcarPagoProgramadoPagadoAsync(int id, int pagoId)
         => await PostAsync<object>($"/api/cafe/pagos-programados/{id}/pagado", new { pagoId }) is not null;
 
+    // ===== 17/11/2026: Impuestos y VEP (los manda la contadora; se tildan solos con el Galicia) =====
+    public record ImpuestoDto(int Id, string? NroVep, string Entidad, string Concepto, string? Detalle, string? Periodo,
+        decimal Importe, DateTime? Vence, string Origen, string? MailAsunto, DateTime? MailFecha, string Estado,
+        DateTime? PagadoFecha, string? PagadoComo, bool TienePdf, string? Nota, bool DelBanco);
+    public record ImpuestosAvisosDto(int Pendientes, decimal PendientesImporte, DateTime? ProximoVence, string? ProximoTexto,
+        int VencidosSinPago, int PagadosMes, decimal PagadosMesImporte, bool SinVepsEsteMes);
+    public record ImpuestosRevisionDto(int MailsLeidos, int Nuevos, int Pagados, int DelBanco, string? Error);
+    public record ImpuestosSubidaDto(int Leidos, int Nuevos, int Pagados);
+    public async Task<List<ImpuestoDto>> GetImpuestosAsync()
+        => await GetAsync<List<ImpuestoDto>>("/api/impuestos") ?? new();
+    public async Task<ImpuestosAvisosDto?> GetImpuestosAvisosAsync()
+        => await GetAsync<ImpuestosAvisosDto>("/api/impuestos/avisos");
+    public async Task<ImpuestosRevisionDto?> RevisarImpuestosAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _httpLong.PostAsync("/api/impuestos/revisar", null);
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<ImpuestosRevisionDto>();
+    }
+    public async Task<ImpuestosSubidaDto?> SubirVepAsync(string? nombre, string? base64, string? texto)
+        => await PostAsync<ImpuestosSubidaDto>("/api/impuestos/subir", new { nombre, base64, texto });
+    public async Task<bool> EditarImpuestoAsync(int id, string concepto, string entidad, decimal importe, DateTime? vence, string? nota)
+        => await PutAsync<object>($"/api/impuestos/{id}", new { concepto, entidad, importe, vence, nota }) is not null;
+    public async Task<bool> MarcarImpuestoPagadoAsync(int id, DateTime fecha, string como)
+        => await PostAsync<object>($"/api/impuestos/{id}/pagado", new { fecha, como }) is not null;
+    public async Task<bool> DesmarcarImpuestoPagadoAsync(int id)
+        => await PostAsync<object>($"/api/impuestos/{id}/pendiente", new { }) is not null;
+    public async Task<bool> DescartarImpuestoAsync(int id)
+        => await DeleteAsync($"/api/impuestos/{id}");
+
     // ===== 17/09/2026: Cuenta corriente de proveedores =====
     public async Task<List<CtaCteResumenDto>> GetCtaCteProveedoresAsync()
         => await GetAsync<List<CtaCteResumenDto>>("/api/cafe/proveedores-ctacte") ?? new();
