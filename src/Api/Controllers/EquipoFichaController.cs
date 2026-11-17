@@ -41,7 +41,7 @@ public class EquipoFichaController : ControllerBase
     {
         if (!EsDueno) return Forbid();
         var hasta = DateTime.UtcNow.AddMinutes(1);
-        var movs = await CargarMovsAsync(hasta.AddDays(-7), hasta, null);
+        var movs = await CargarMovsAsync(_db, hasta.AddDays(-7), hasta, null);
         var res = movs.GroupBy(m => m.EmpId)
             .Select(g => g.OrderByDescending(m => m.CuandoUtc).First())
             .Select(m => new UltimoDto(m.EmpId, m.CuandoUtc, m.Texto, m.Donde))
@@ -66,7 +66,7 @@ public class EquipoFichaController : ControllerBase
         // Movimientos del día elegido + de los últimos 7 días (resumen de la semana).
         var semanaDesde = hoyAr.AddDays(-6).AddHours(3);
         var desde = diaUtc < semanaDesde ? diaUtc : semanaDesde;
-        var movs = await CargarMovsAsync(desde, DateTime.UtcNow.AddMinutes(1), empId);
+        var movs = await CargarMovsAsync(_db, desde, DateTime.UtcNow.AddMinutes(1), empId);
         var delDia = movs.Where(m => m.CuandoUtc >= diaUtc && m.CuandoUtc < diaUtc.AddDays(1))
             .OrderByDescending(m => m.CuandoUtc).ToList();
         var ritmo = new int[24];
@@ -123,6 +123,28 @@ public class EquipoFichaController : ControllerBase
         if (!string.IsNullOrEmpty(e.TareasToken))
             links.Add(new { Que = "Sus tareas del depósito", Ruta = $"/tareas/{e.TareasToken}" });
 
+        // 2026-11-16: fichaje de los últimos 14 días (pedido del dueño: verlo en el desplegable).
+        var fichadas = new List<object>();
+        if (ficha is not null)
+        {
+            var desdeF = hoyAr.AddDays(-13);
+            var regsF = await _db.HorasExtrasRegistros.AsNoTracking()
+                .Where(r => r.EmpleadoId == ficha.Id && r.Fecha >= desdeF && r.Fecha <= hoyAr)
+                .OrderByDescending(r => r.Fecha)
+                .Select(r => new { r.Fecha, r.HoraEntrada, r.HoraSalida }).ToListAsync();
+            foreach (var r in regsF)
+            {
+                TimeSpan? t = r.HoraEntrada is TimeSpan he && r.HoraSalida is TimeSpan hs && hs > he ? hs - he : null;
+                fichadas.Add(new
+                {
+                    Fecha = r.Fecha.Date,
+                    Entrada = r.HoraEntrada?.ToString(@"hh\:mm"),
+                    Salida = r.HoraSalida?.ToString(@"hh\:mm"),
+                    Horas = t is TimeSpan tt ? $"{(int)tt.TotalHours} h {tt.Minutes:00}" : null,
+                });
+            }
+        }
+
         string fichar = ficha is null ? "no está en el fichador"
             : !ficha.IsActive ? "dado de baja en el fichador"
             : ficha.MostrarEnFichador ? "ficha entrada y salida" : "no ficha";
@@ -139,6 +161,7 @@ public class EquipoFichaController : ControllerBase
             Ultimo = ultimo is null ? null : new { ultimo.CuandoUtc, ultimo.Texto, ultimo.Donde },
             UsaDesde = usaDesde,
             Fichar = fichar,
+            Fichadas = fichadas,
             MesActual = LiqDto(hoyAr.Year, hoyAr.Month),
             MesAnterior = LiqDto(mesAnt.Year, mesAnt.Month),
             Vacaciones = new
@@ -158,9 +181,9 @@ public class EquipoFichaController : ControllerBase
 
     /// <summary>Todo lo que hicieron los empleados entre <paramref name="desdeUtc"/> y <paramref name="hastaUtc"/>.
     /// Si <paramref name="soloEmp"/> viene, devuelve solo los de esa persona.</summary>
-    private async Task<List<MovDto>> CargarMovsAsync(DateTime desdeUtc, DateTime hastaUtc, int? soloEmp)
+    internal static async Task<List<MovDto>> CargarMovsAsync(AppDbContext db, DateTime desdeUtc, DateTime hastaUtc, int? soloEmp)
     {
-        var alias = await AliasAsync();
+        var alias = await AliasAsync(db);
         int? Quien(string? op)
         {
             var k = Clave(op);
@@ -169,9 +192,9 @@ public class EquipoFichaController : ControllerBase
         var res = new List<MovDto>();
 
         // 1) Historial de ventas: repartos, entregas, ediciones.
-        var hist = await _db.CafeVentaHistorial.AsNoTracking()
+        var hist = await db.CafeVentaHistorial.AsNoTracking()
             .Where(h => h.CreatedAt >= desdeUtc && h.CreatedAt < hastaUtc && h.Quien != null)
-            .Join(_db.CafeVentas, h => h.VentaId, v => v.Id,
+            .Join(db.CafeVentas, h => h.VentaId, v => v.Id,
                 (h, v) => new { h.Tipo, h.Quien, h.Desde, h.Detalle, h.CreatedAt, v.Numero, Cli = v.ClienteNombreSnapshot })
             .ToListAsync();
         foreach (var h in hist)
@@ -190,10 +213,10 @@ public class EquipoFichaController : ControllerBase
         }
 
         // 2) Preparación: cambios de estado (las entregas ya salen del historial).
-        var prep = await _db.CafeVentaPreparacionLogs.AsNoTracking()
+        var prep = await db.CafeVentaPreparacionLogs.AsNoTracking()
             .Where(p => p.CreatedAt >= desdeUtc && p.CreatedAt < hastaUtc && p.OperadorNombre != null
                         && p.EstadoNuevo != "ENTREGADO" && p.EstadoAnterior != p.EstadoNuevo)
-            .Join(_db.CafeVentas, p => p.VentaId, v => v.Id,
+            .Join(db.CafeVentas, p => p.VentaId, v => v.Id,
                 (p, v) => new { p.OperadorNombre, p.EstadoNuevo, p.CreatedAt, v.Numero, Cli = v.ClienteNombreSnapshot })
             .ToListAsync();
         foreach (var p in prep)
@@ -212,7 +235,7 @@ public class EquipoFichaController : ControllerBase
         }
 
         // 3) Auditoría: cobranzas, bajas, stock masivo… (sin las sincronizaciones automáticas).
-        var aud = await _db.AuditLogs.AsNoTracking()
+        var aud = await db.AuditLogs.AsNoTracking()
             .Where(a => a.CreatedAt >= desdeUtc && a.CreatedAt < hastaUtc && a.UserName != null && a.EntityType != "Sync")
             .Select(a => new { a.UserName, a.EntityType, a.Action, a.Changes, a.CreatedAt })
             .ToListAsync();
@@ -231,7 +254,7 @@ public class EquipoFichaController : ControllerBase
         }
 
         // 4) Stock cargado / contado a mano.
-        var stock = await _db.StockMovimientos.AsNoTracking()
+        var stock = await db.StockMovimientos.AsNoTracking()
             .Where(m => m.CreatedAt >= desdeUtc && m.CreatedAt < hastaUtc && m.OperadorNombreSnap != null && StockAMano.Contains(m.TipoMov))
             .Select(m => new { m.OperadorNombreSnap, m.TipoMov, m.Cantidad, m.StockDespues, m.CreatedAt, Prod = m.Producto!.Nombre, m.Producto.Sku })
             .ToListAsync();
@@ -252,10 +275,10 @@ public class EquipoFichaController : ControllerBase
         }
 
         // 5) Tareas del depósito hechas.
-        var tareas = await _db.DepTareaItems.AsNoTracking()
+        var tareas = await db.DepTareaItems.AsNoTracking()
             .Where(i => i.HechoAt != null && i.HechoAt >= desdeUtc && i.HechoAt < hastaUtc && i.HechoPor != null)
-            .Join(_db.DepTareas, i => i.TareaId, t => t.Id, (i, t) => new { i.HechoPor, i.HechoAt, i.ProductoId, t.Titulo })
-            .Join(_db.CafeProductos, x => x.ProductoId, p => p.Id, (x, p) => new { x.HechoPor, x.HechoAt, x.Titulo, p.Nombre, p.Sku })
+            .Join(db.DepTareas, i => i.TareaId, t => t.Id, (i, t) => new { i.HechoPor, i.HechoAt, i.ProductoId, t.Titulo })
+            .Join(db.CafeProductos, x => x.ProductoId, p => p.Id, (x, p) => new { x.HechoPor, x.HechoAt, x.Titulo, p.Nombre, p.Sku })
             .ToListAsync();
         foreach (var t in tareas)
         {
@@ -267,12 +290,41 @@ public class EquipoFichaController : ControllerBase
         // 6) Fichadas (la hora se guarda en hora argentina).
         var diaDesde = desdeUtc.AddHours(-3).Date;
         var diaHasta = hastaUtc.AddHours(-3).Date;
-        var fichas = await _db.HorasExtrasEmpleados.AsNoTracking()
+
+        // 7) 2026-11-16: envíos de MercadoLibre (Flex y ME1) entregados. Nadie los marca en el sistema
+        // (MeLi avisa solo que se entregó), así que van a nombre del repartidor que tenía la parada en el mapa.
+        var stopsMl = await db.MapeoStops.AsNoTracking()
+            .Where(s => (s.Origin == "flex" || s.Origin == "me1") && s.AssignedDriverId != null && s.OriginRefId != null
+                        && s.FechaReparto >= diaDesde && s.FechaReparto <= diaHasta)
+            .Join(db.MapeoDrivers, s => s.AssignedDriverId, d => (int?)d.Id,
+                (s, d) => new { s.Origin, s.OriginRefId, s.Alias, s.Direccion, d.CafeRepartidorId })
+            .Where(x => x.CafeRepartidorId != null)
+            .ToListAsync();
+        if (stopsMl.Count > 0)
+        {
+            var empPorRep = await db.CafeRepartidores.AsNoTracking().Where(r => r.NomEmpleadoId != null)
+                .ToDictionaryAsync(r => r.Id, r => r.NomEmpleadoId!.Value);
+            var shipIds = stopsMl.Select(x => long.TryParse(x.OriginRefId, out var v) ? v : 0L).Where(v => v != 0).Distinct().ToList();
+            var entregados = await db.MeliShipments.AsNoTracking()
+                .Where(m => shipIds.Contains(m.MeliShipmentId) && m.DateDelivered != null
+                            && m.DateDelivered >= desdeUtc && m.DateDelivered < hastaUtc)
+                .Select(m => new { m.MeliShipmentId, m.DateDelivered, m.ReceiverName })
+                .ToListAsync();
+            var porId = entregados.GroupBy(m => m.MeliShipmentId).ToDictionary(g => g.Key, g => g.First());
+            foreach (var x in stopsMl)
+            {
+                if (!long.TryParse(x.OriginRefId, out var sid) || !porId.TryGetValue(sid, out var m)) continue;
+                if (!empPorRep.TryGetValue(x.CafeRepartidorId!.Value, out var id) || (soloEmp != null && soloEmp != id)) continue;
+                var quien = !string.IsNullOrWhiteSpace(x.Alias) ? x.Alias : !string.IsNullOrWhiteSpace(m.ReceiverName) ? m.ReceiverName : x.Direccion;
+                res.Add(new MovDto(id, m.DateDelivered!.Value, $"Entregó un envío {(x.Origin == "flex" ? "Flex" : "ME1")} · {Corto(quien!, 60)}", "MercadoLibre", "entregas"));
+            }
+        }
+        var fichas = await db.HorasExtrasEmpleados.AsNoTracking()
             .Where(f => f.NomEmpleadoId != null && (soloEmp == null || f.NomEmpleadoId == soloEmp))
             .Select(f => new { f.Id, Emp = f.NomEmpleadoId!.Value }).ToListAsync();
         var empPorFicha = fichas.ToDictionary(f => f.Id, f => f.Emp);
         var fichaIds = empPorFicha.Keys.ToList();
-        var regs = await _db.HorasExtrasRegistros.AsNoTracking()
+        var regs = await db.HorasExtrasRegistros.AsNoTracking()
             .Where(r => r.Fecha >= diaDesde && r.Fecha <= diaHasta && fichaIds.Contains(r.EmpleadoId) && r.HoraEntrada != null)
             .Select(r => new { r.EmpleadoId, r.Fecha, r.HoraEntrada, r.HoraSalida }).ToListAsync();
         foreach (var r in regs)
@@ -292,12 +344,12 @@ public class EquipoFichaController : ControllerBase
 
     /// <summary>Cada forma de nombrar a un empleado (nombres de pila, apodo del fichador, nombre de
     /// repartidor) → su Id. Los nombres que comparten dos personas se descartan.</summary>
-    private async Task<Dictionary<string, int>> AliasAsync()
+    private static async Task<Dictionary<string, int>> AliasAsync(AppDbContext db)
     {
-        var emps = await _db.NomEmpleados.AsNoTracking().Where(e => e.IsActive).Select(e => new { e.Id, e.Nombre }).ToListAsync();
-        var fichas = await _db.HorasExtrasEmpleados.AsNoTracking().Where(f => f.NomEmpleadoId != null)
+        var emps = await db.NomEmpleados.AsNoTracking().Where(e => e.IsActive).Select(e => new { e.Id, e.Nombre }).ToListAsync();
+        var fichas = await db.HorasExtrasEmpleados.AsNoTracking().Where(f => f.NomEmpleadoId != null)
             .Select(f => new { Emp = f.NomEmpleadoId!.Value, f.Nombre }).ToListAsync();
-        var reps = await _db.CafeRepartidores.AsNoTracking().Where(r => r.NomEmpleadoId != null)
+        var reps = await db.CafeRepartidores.AsNoTracking().Where(r => r.NomEmpleadoId != null)
             .Select(r => new { Emp = r.NomEmpleadoId!.Value, r.Nombre }).ToListAsync();
 
         var pares = new List<(string, int)>();

@@ -341,7 +341,20 @@ public class DashboardController : ControllerBase
         // 2026-11-11 (2ª): lo que hay que pagarle HOY (o quedó atrasado) según la fecha de pago de
         // sus extras (feriado, horas extra, comisión, plus, aguinaldo).
         decimal PagarHoy = 0, string? PagarHoyDetalle = null, string? PagarHoyTipo = null,
-        int PagarHoyAnio = 0, int PagarHoyMes = 0, bool PagarHoyAtrasado = false);
+        int PagarHoyAnio = 0, int PagarHoyMes = 0, bool PagarHoyAtrasado = false,
+        // 2026-11-16: "Equipo hoy" sin contradicciones (pedido del dueño).
+        // ActivoHoy = hizo algo hoy en el sistema (o MeLi le marcó una entrega): si no fichó, NO es "no vino".
+        bool ActivoHoy = false,
+        // Último día de vacaciones aprobadas si hoy está de vacaciones.
+        DateTime? VacacionesHasta = null,
+        // Tareas del depósito a su nombre sin terminar (y sus títulos, para el cartelito).
+        int TareasPendientes = 0, string? TareasDetalle = null,
+        // Cobros en la calle sin aprobar: cuántos y de qué día es el más viejo (hora argentina).
+        int CobrosARendir = 0, DateTime? RendirDesde = null,
+        // Último día (antes de hoy, últimos 7) que fichó la entrada y no la salida.
+        DateTime? SalidaSinFichar = null,
+        // Paradas de hoy por tipo: así se ve que los Flex también cuentan.
+        int RutaFlex = 0, int RutaMe1 = 0, int RutaVentas = 0, int RutaAlquiler = 0, int RutaOtras = 0);
 
     // 2026-06-25: orden fijo pedido por Osmar — repartidores primero (alexis, walter,
     // benjamin, gonzalo, rodrigo), después oficina (osmar, german, gabriel, miguel).
@@ -391,13 +404,13 @@ public class DashboardController : ControllerBase
         var pendientesRepartidor = await _db.CafeCobranzasPendientes
             .Where(p => p.Estado == "PENDIENTE" && repIds.Contains(p.RepartidorId))
             .GroupBy(p => p.RepartidorId)
-            .Select(g => new { RepartidorId = g.Key, Total = g.Sum(x => x.Importe) })
+            .Select(g => new { RepartidorId = g.Key, Total = g.Sum(x => x.Importe), Cnt = g.Count(), Desde = g.Min(x => x.CreatedAt) })
             .ToListAsync();
         // 2026-06-26: sumar también lo pendiente de rendir de ALQUILERES (mismo repartidor).
         var pendientesAlqRepartidor = await _db.AlqCobranzasPendientes
             .Where(p => p.Estado == "PENDIENTE" && repIds.Contains(p.RepartidorId))
             .GroupBy(p => p.RepartidorId)
-            .Select(g => new { RepartidorId = g.Key, Total = g.Sum(x => x.Importe) })
+            .Select(g => new { RepartidorId = g.Key, Total = g.Sum(x => x.Importe), Cnt = g.Count(), Desde = g.Min(x => x.CreatedAt) })
             .ToListAsync();
         // 2026-07-04: contadores de carga por repartidor para el card del dashboard.
         // Ventas pendientes = escaneadas via QR por el repartidor pero aun sin entregar.
@@ -422,6 +435,7 @@ public class DashboardController : ControllerBase
         var ultimaHoraByRep = new Dictionary<int, string>();
         var minsSinMarcarByRep = new Dictionary<int, int>();
         var horasEntregaByRep = new Dictionary<int, List<string>>();
+        var rutaTiposByRep = new Dictionary<int, (int Flex, int Me1, int Ventas, int Alq, int Otras)>();
         if (repIds.Count > 0)
         {
             var driversMapa = await _db.MapeoDrivers
@@ -449,6 +463,9 @@ public class DashboardController : ControllerBase
                     rutaEntByRep[grupo.Key] = entregadas.Count;
                     rutaNoEntByRep[grupo.Key] = cerradas;
                     rutaFaltanByRep[grupo.Key] = grupo.Count() - entregadas.Count - cerradas;
+                    rutaTiposByRep[grupo.Key] = (grupo.Count(s => s.Origin == "flex"), grupo.Count(s => s.Origin == "me1"),
+                        grupo.Count(s => s.Origin == "venta_cafe"), grupo.Count(s => s.Origin == "alquiler"),
+                        grupo.Count(s => s.Origin is not ("flex" or "me1" or "venta_cafe" or "alquiler")));
                     // Las horas se guardan en UTC; en pantalla van en hora de Argentina.
                     horasEntregaByRep[grupo.Key] = entregadas
                         .Select(s => entregasPorStop[s.Id]!.Value)
@@ -536,6 +553,41 @@ public class DashboardController : ControllerBase
             .Where(l => liqIdsAPagar.Contains(l.Id))
             .ToDictionaryAsync(l => l.Id, l => new { l.Anio, l.Mes });
 
+        // ── 2026-11-16: lo nuevo de "Equipo hoy" ──
+        // Quién hizo algo hoy (mismos movimientos que la columna "Último movimiento", sin las fichadas).
+        var activosHoy = (await EquipoFichaController.CargarMovsAsync(_db, hoyUtcDesde, DateTime.UtcNow.AddMinutes(1), null))
+            .Where(m => m.Donde != "Fichador").Select(m => m.EmpId).ToHashSet();
+        var vacHoy = await _db.NomVacaciones.AsNoTracking()
+            .Where(v => v.Estado == "aprobada" && v.Desde <= hoy && v.Hasta >= hoy)
+            .Select(v => new { v.EmpleadoId, v.Hasta }).ToListAsync();
+        var vacByEmp = vacHoy.GroupBy(v => v.EmpleadoId).ToDictionary(g => g.Key, g => g.Max(x => x.Hasta).Date);
+        var tareasPend = await _db.DepTareas.AsNoTracking()
+            .Where(t => t.EmpleadoId != null && t.TerminadaAt == null && t.CanceladaAt == null)
+            .OrderBy(t => t.CreatedAt)
+            .Select(t => new { Emp = t.EmpleadoId!.Value, t.Titulo, t.Para }).ToListAsync();
+        var tareasByEmp = tareasPend.GroupBy(t => t.Emp).ToDictionary(g => g.Key, g => g.ToList());
+        var semanaAtras = hoy.AddDays(-7);
+        var sinSalida = await _db.HorasExtrasRegistros.AsNoTracking()
+            .Where(r => r.Fecha < hoy && r.Fecha >= semanaAtras && r.HoraEntrada != null && r.HoraSalida == null && fichaIds.Contains(r.EmpleadoId))
+            .GroupBy(r => r.EmpleadoId).Select(g => new { g.Key, Ult = g.Max(x => x.Fecha) }).ToListAsync();
+        // Solo cuenta si después de ese día no volvió a fichar bien (si no, ya pasó y no molesta).
+        var ultimaCompleta = await _db.HorasExtrasRegistros.AsNoTracking()
+            .Where(r => r.Fecha < hoy && r.Fecha >= semanaAtras && r.HoraEntrada != null && r.HoraSalida != null && fichaIds.Contains(r.EmpleadoId))
+            .GroupBy(r => r.EmpleadoId).Select(g => new { g.Key, Ult = g.Max(x => x.Fecha) }).ToListAsync();
+        var completaByFicha = ultimaCompleta.ToDictionary(x => x.Key, x => x.Ult);
+        var sinSalidaByFicha = sinSalida
+            .Where(x => !completaByFicha.TryGetValue(x.Key, out var c) || c < x.Ult)
+            .ToDictionary(x => x.Key, x => x.Ult.Date);
+        var cobrosCntByRep = new Dictionary<int, int>();
+        var rendirDesdeByRep = new Dictionary<int, DateTime>();
+        foreach (var p in pendientesRepartidor.Select(x => (x.RepartidorId, x.Cnt, x.Desde))
+                     .Concat(pendientesAlqRepartidor.Select(x => (x.RepartidorId, x.Cnt, x.Desde))))
+        {
+            cobrosCntByRep[p.RepartidorId] = cobrosCntByRep.GetValueOrDefault(p.RepartidorId) + p.Cnt;
+            var d = p.Desde.AddHours(-3).Date;
+            if (!rendirDesdeByRep.TryGetValue(p.RepartidorId, out var ya) || d < ya) rendirDesdeByRep[p.RepartidorId] = d;
+        }
+
         var result = emps.Select(e =>
         {
             string estado = "no_ficha";
@@ -583,6 +635,8 @@ public class DashboardController : ControllerBase
             int minsSinMarcar = -1;
             List<string>? horasEntrega = null;
             bool tieneRepartidor = repByEmp.TryGetValue(e.Id, out var rep);
+            (int Flex, int Me1, int Ventas, int Alq, int Otras) rt = default;
+            if (rep is not null) rutaTiposByRep.TryGetValue(rep.Id, out rt);
             if (tieneRepartidor && rep != null)
             {
                 apodoRepartidor = rep.Nombre;
@@ -634,7 +688,15 @@ public class DashboardController : ControllerBase
                 ventasPend, ventasEntHoy, alqEntHoy, alqRetHoy,
                 rutaEnt, rutaFaltan, rutaNoEnt, ultimoDom, ultimaHora, minsSinMarcar,
                 horasEntrega ?? new List<string>(),
-                pagarHoy, pagarDet, pagarTipo, pagarAnio, pagarMes, atrasado);
+                pagarHoy, pagarDet, pagarTipo, pagarAnio, pagarMes, atrasado,
+                activosHoy.Contains(e.Id),
+                vacByEmp.TryGetValue(e.Id, out var vh) ? vh : null,
+                tareasByEmp.TryGetValue(e.Id, out var tl) ? tl.Count : 0,
+                tl is null ? null : string.Join("\n", tl.Take(8).Select(t => "· " + t.Titulo + (t.Para == "HOY" ? " (para hoy)" : ""))) + (tl.Count > 8 ? $"\n… y {tl.Count - 8} más" : ""),
+                rep is not null && cobrosCntByRep.TryGetValue(rep.Id, out var cc) ? cc : 0,
+                rep is not null && rendirDesdeByRep.TryGetValue(rep.Id, out var rd) ? rd : null,
+                ficha is not null && sinSalidaByFicha.TryGetValue(ficha.Id, out var ss) ? ss : null,
+                rt.Flex, rt.Me1, rt.Ventas, rt.Alq, rt.Otras);
         })
         .OrderBy(x => OrdenPersonalizado(x.Nombre))
         .ThenBy(x => x.Nombre)

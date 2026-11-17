@@ -190,20 +190,31 @@ else
                 var visEq = equipoResp.Items.Where(x => EmpVisible(x.NomEmpleadoId)).ToList();
                 var nFich = visEq.Count(x => x.Estado == "trabajando");
                 var nFue = visEq.Count(x => x.Estado == "salio");
-                var nRep = visEq.Count(x => EquipoHoyRayitas.Tipo(x) == "repartiendo");
-                var nNo = visEq.Count(x => x.Estado == "sin-fichar" && EquipoHoyRayitas.Tipo(x) == "nada");
+                var nRep = visEq.Count(x => EquipoHoyRayitas.EstadoDe(x) == "activo");
+                var nNo = visEq.Count(x => EquipoHoyRayitas.EstadoDe(x) == "no_vino");
+                var nVac = visEq.Count(x => EquipoHoyRayitas.EstadoDe(x) == "vacaciones");
                 <span class="dash-eh-summary">
                     <span><span class="dash-dot" style="background:#10b981;"></span>@nFich trabajando</span>
                     @if (nFue > 0)
                     {
-                        <span><span class="dash-dot" style="background:#10b981;"></span>@nFue ya se fue@(nFue == 1 ? "" : "ron")</span>
+                        <span><span class="dash-dot" style="background:#9ca3af;"></span>@nFue ya se fue@(nFue == 1 ? "" : "ron")</span>
                     }
-                    <span><span class="dash-dot" style="background:#f59e0b;"></span>@nRep repartiendo sin fichar</span>
-                    <span><span class="dash-dot" style="background:#9ca3af;"></span>@nNo @(nNo == 1 ? "no vino" : "no vinieron")</span>
-                    @{ var nQuietos = visEq.Count(x => x.MinutosSinMarcar >= EquipoHoyRayitas.UmbralQuietoMin && x.RutaFaltan > 0); }
-                    @if (nQuietos > 0)
+                    @if (nRep > 0)
                     {
-                        <span style="color:#b45309; font-weight:700;">⚠ @nQuietos quieto@(nQuietos == 1 ? "" : "s") hace rato</span>
+                        <span><span class="dash-dot" style="background:#f59e0b;"></span>@nRep sin fichar pero activo@(nRep == 1 ? "" : "s")</span>
+                    }
+                    @if (nVac > 0)
+                    {
+                        <span><span class="dash-dot" style="background:#38bdf8;"></span>@nVac de vacaciones</span>
+                    }
+                    @if (nNo > 0)
+                    {
+                        <span><span class="dash-dot" style="background:#d1d5db;"></span>@nNo @(nNo == 1 ? "no vino" : "no vinieron")</span>
+                    }
+                    @{ var nOjo = visEq.Count(x => EquipoHoyRayitas.AvisoRuta(x) is "quieto" or "se_fue"); }
+                    @if (nOjo > 0)
+                    {
+                        <span style="color:#b45309; font-weight:700;">⚠ @nOjo con entregas para mirar</span>
                     }
                 </span>
                 <span class="dash-eh-car" @onclick="() => equipoAbierto = !equipoAbierto">@(equipoAbierto ? "plegar ▾" : "tocá para ver ▸")</span>

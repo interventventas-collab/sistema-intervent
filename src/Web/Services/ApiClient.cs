@@ -4557,7 +4557,13 @@ public class ApiClient
         List<string>? EntregasHoras = null,
         // 2026-11-11 (2ª): lo que hay que pagarle hoy (o quedó atrasado) por fecha de pago de sus extras.
         decimal PagarHoy = 0, string? PagarHoyDetalle = null, string? PagarHoyTipo = null,
-        int PagarHoyAnio = 0, int PagarHoyMes = 0, bool PagarHoyAtrasado = false);
+        int PagarHoyAnio = 0, int PagarHoyMes = 0, bool PagarHoyAtrasado = false,
+        // 2026-11-16: "Equipo hoy" sin contradicciones + vacaciones, tareas, rendir, salida sin fichar, tipos de parada.
+        bool ActivoHoy = false, DateTime? VacacionesHasta = null,
+        int TareasPendientes = 0, string? TareasDetalle = null,
+        int CobrosARendir = 0, DateTime? RendirDesde = null,
+        DateTime? SalidaSinFichar = null,
+        int RutaFlex = 0, int RutaMe1 = 0, int RutaVentas = 0, int RutaAlquiler = 0, int RutaOtras = 0);
     public record DashboardEquipoResumen(int Trabajando, int Salio, int SinFichar, int NoFicha);
     public record DashboardEquipoResponse(List<DashboardEquipoItem> Items, DashboardEquipoResumen Resumen, DateTime Fecha);
 
@@ -4583,7 +4589,10 @@ public class ApiClient
         DateTime Dia, List<EquipoMovDto> DelDia, int[] Ritmo, List<EquipoSemanaDto> Semana,
         EquipoUltimoFichaDto? Ultimo, List<string> UsaDesde, string Fichar,
         EquipoLiqDto? MesActual, EquipoLiqDto? MesAnterior, EquipoVacDto Vacaciones,
-        List<EquipoDocDto> Documentos, List<EquipoLinkDto> Links);
+        List<EquipoDocDto> Documentos, List<EquipoLinkDto> Links,
+        List<EquipoFichadaDto>? Fichadas = null);
+    /// <summary>2026-11-16: un día del fichaje (hora argentina, "HH:mm").</summary>
+    public record EquipoFichadaDto(DateTime Fecha, string? Entrada, string? Salida, string? Horas);
 
     public async Task<List<EquipoUltimoDto>?> GetEquipoUltimosAsync()
         => await GetAsync<List<EquipoUltimoDto>>("/api/equipo-ficha/ultimos");
