@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Api.Services;
 
 /// <summary>
-/// 18/11/2026 — Lo que hace solo el sistema con los pagos PROGRAMADOS a proveedores:
+/// 17/11/2026 — Lo que hace solo el sistema con los pagos PROGRAMADOS a proveedores:
 /// 1) "Todos los meses": cuando el de este mes queda pagado (o se saltea), crea el del mes siguiente
 ///    (si cae sábado o domingo, pasa al lunes). Si va con "lo de su última factura", el importe se toma
 ///    de la última factura de AFIP que nos hizo ese proveedor.
@@ -251,7 +251,7 @@ public class PagosProgramadosService
     }
 }
 
-/// <summary>18/11/2026 — Cada 30 minutos: arma los pagos del mes siguiente y cruza con el banco.</summary>
+/// <summary>17/11/2026 — Cada 30 minutos: arma los pagos del mes siguiente y cruza con el banco.</summary>
 public class PagosProgramadosBackgroundService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;

@@ -8920,7 +8920,7 @@ IF OBJECT_ID('Impuestos_Veps') IS NULL
     );
 GO
 
--- 18/11/2026: pagos programados "todos los meses" + alias/CBU del proveedor.
+-- 17/11/2026: pagos programados "todos los meses" + alias/CBU del proveedor.
 -- ⚠ En PROD correr a mano ANTES de publicar la API.
 IF COL_LENGTH('Cafe_PagosProgramados','DiaMes') IS NULL
     ALTER TABLE Cafe_PagosProgramados ADD DiaMes INT NULL, SerieId INT NULL,

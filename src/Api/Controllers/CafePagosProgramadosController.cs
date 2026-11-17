@@ -25,7 +25,7 @@ public class CafePagosProgramadosController : ControllerBase
 
     public record ProgramadoDto(int Id, int ProveedorId, string ProveedorNombre, DateTime Fecha, decimal Importe,
         string Medio, List<string> Claves, string? Nota, int Parte, int Partes, string Estado, int? PagoId, string? Operador,
-        // 18/11/2026: todos los meses + datos para transferir + lo que vino en el banco
+        // 17/11/2026: todos los meses + datos para transferir + lo que vino en el banco
         int? DiaMes = null, bool ImporteUltimaFactura = false, DateTime? TransferidoAt = null,
         string? Cuit = null, string? Alias = null, string? Cbu = null, string? FacturaTexto = null,
         int? BancoMovId = null, DateTime? BancoFecha = null, decimal? BancoImporte = null,
@@ -43,7 +43,7 @@ public class CafePagosProgramadosController : ControllerBase
     public async Task<IActionResult> Listar([FromQuery] DateTime? desde, [FromQuery] DateTime? hasta,
         [FromQuery] string? estado = "PENDIENTE", [FromQuery] int? proveedorId = null)
     {
-        // 18/11/2026: antes de mostrar, armar el mes siguiente de los "todos los meses" y cerrar los que vinieron en el banco.
+        // 17/11/2026: antes de mostrar, armar el mes siguiente de los "todos los meses" y cerrar los que vinieron en el banco.
         try { await _svc.MantenerAsync(); await _svc.CruzarConBancoAsync(); } catch { /* no impide ver la lista */ }
         var q = _db.CafePagosProgramados.AsNoTracking().Include(p => p.Proveedor).AsQueryable();
         if (!string.IsNullOrWhiteSpace(estado) && estado != "TODOS") q = q.Where(p => p.Estado == estado);
@@ -54,7 +54,7 @@ public class CafePagosProgramadosController : ControllerBase
         return Ok(await MapListaAsync(lista));
     }
 
-    /// <summary>18/11/2026: los pagados en los últimos días (para mostrar "✓ pagado (vino en el banco)").</summary>
+    /// <summary>17/11/2026: los pagados en los últimos días (para mostrar "✓ pagado (vino en el banco)").</summary>
     [HttpGet("recien-pagados")]
     public async Task<IActionResult> RecienPagados([FromQuery] int dias = 7)
     {
@@ -121,7 +121,7 @@ public class CafePagosProgramadosController : ControllerBase
             prov.UpdatedAt = DateTime.UtcNow;
         }
 
-        // 18/11/2026 — "Todos los meses": un solo programado (el próximo); los siguientes los arma el sistema.
+        // 17/11/2026 — "Todos los meses": un solo programado (el próximo); los siguientes los arma el sistema.
         if (req.DiaMes is >= 1 and <= 31)
         {
             var primera = partes.OrderBy(x => x.Fecha).First();
@@ -173,7 +173,7 @@ public class CafePagosProgramadosController : ControllerBase
     }
 
     /// <summary>Sacarlo de la lista (no se pagó así). Queda ANULADO, no se borra.</summary>
-    /// <summary>18/11/2026: si es de "todos los meses", <paramref name="todos"/>=true deja de repetirse;
+    /// <summary>17/11/2026: si es de "todos los meses", <paramref name="todos"/>=true deja de repetirse;
     /// si no, solo se saltea este mes y aparece el del mes siguiente.</summary>
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Anular(int id, [FromQuery] bool todos = false)
@@ -189,7 +189,7 @@ public class CafePagosProgramadosController : ControllerBase
         return Ok(new { ok = true });
     }
 
-    /// <summary>18/11/2026: "✓ Ya la hice" — queda esperando que aparezca en el banco. deshacer=true lo vuelve atrás.</summary>
+    /// <summary>17/11/2026: "✓ Ya la hice" — queda esperando que aparezca en el banco. deshacer=true lo vuelve atrás.</summary>
     [HttpPost("{id:int}/transferido")]
     public async Task<IActionResult> Transferido(int id, [FromQuery] bool deshacer = false)
     {
@@ -201,7 +201,7 @@ public class CafePagosProgramadosController : ControllerBase
         return Ok(new { ok = true });
     }
 
-    /// <summary>18/11/2026: tomar como pago una transferencia del banco que no coincidía clavada en importe.</summary>
+    /// <summary>17/11/2026: tomar como pago una transferencia del banco que no coincidía clavada en importe.</summary>
     [HttpPost("{id:int}/tomar-banco")]
     public async Task<IActionResult> TomarBanco(int id, [FromBody] TomarBancoReq req)
     {
@@ -214,7 +214,7 @@ public class CafePagosProgramadosController : ControllerBase
         return Ok(new { ok = true, pagoId });
     }
 
-    /// <summary>18/11/2026: alias y CBU del proveedor (para la ventana "Transferir a ...").</summary>
+    /// <summary>17/11/2026: alias y CBU del proveedor (para la ventana "Transferir a ...").</summary>
     [HttpPut("proveedor/{proveedorId:int}/banco")]
     public async Task<IActionResult> DatosBanco(int proveedorId, [FromBody] DatosBancoReq req)
     {

@@ -393,7 +393,7 @@ public class MisAlertasController : ControllerBase
                 lista.Add(new AlertaDisparadaDto(a.Id, a.Tipo, a.Mensaje, a.UltimoDetalle, a.DisparadaAt, a.Vista));
             }
         }
-        // 18/11/2026: pagos a proveedores programados para hoy/mañana o atrasados (solo admin).
+        // 17/11/2026: pagos a proveedores programados para hoy/mañana o atrasados (solo admin).
         // Id negativo = -Id del pago programado (tocarlo abre la ventana "Transferir a ...").
         if (bucket == "admin")
         {
@@ -429,7 +429,7 @@ public class MisAlertasController : ControllerBase
         var n = rows.Count;
         if (bucket == "admin")
         {
-            // 18/11/2026: los avisos de pagos programados se dan por vistos HOY (mañana vuelven a titilar si siguen).
+            // 17/11/2026: los avisos de pagos programados se dan por vistos HOY (mañana vuelven a titilar si siguen).
             var manana = DateTime.UtcNow.AddHours(-3).Date.AddDays(1);
             var progs = await _db.CafePagosProgramados
                 .Where(p => p.Estado == "PENDIENTE" && p.TransferidoAt == null && p.Fecha <= manana).ToListAsync();

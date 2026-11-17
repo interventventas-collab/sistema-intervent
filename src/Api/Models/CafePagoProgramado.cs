@@ -38,7 +38,7 @@ public class CafePagoProgramado
     public int? PagoId { get; set; }
     [MaxLength(100)]
     public string? Operador { get; set; }
-    /// <summary>18/11/2026 — "Todos los meses": día del mes en que se repite (null = una sola vez).
+    /// <summary>17/11/2026 — "Todos los meses": día del mes en que se repite (null = una sola vez).
     /// Cuando este queda pagado (o se saltea), se crea solo el del mes siguiente.</summary>
     public int? DiaMes { get; set; }
     /// <summary>Id del primero de la serie mensual (todos los meses del mismo pago comparten este número).</summary>

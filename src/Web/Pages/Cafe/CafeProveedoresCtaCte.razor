@@ -35,7 +35,7 @@
     .pg .acc { text-align: right; white-space: nowrap; width: 1%; }
     .pg .acc button { margin-left: 0.25rem; }
     .pg-pie { padding: 0.55rem 1rem; font-size: 0.85rem; color: #6b7280; }
-    /* 18/11/2026: todos los meses + transferir + banco */
+    /* 17/11/2026: todos los meses + transferir + banco */
     .pg .banco { background: #fef3c7; border-radius: 4px; padding: 0.2rem 0.45rem; margin-top: 0.25rem; font-size: 0.82rem; display: inline-block; }
     .pg .ok { color: #15803d; font-weight: 600; }
     .tr-dato { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.5rem 0; border-bottom: 1px solid #f3f4f6; }
@@ -429,7 +429,7 @@
         : lista.Where(c => c.Nombre.Contains(filtro.Trim(), StringComparison.OrdinalIgnoreCase) || (c.Cuit ?? "").Contains(filtro.Trim()));
 
     [Parameter, SupplyParameterFromQuery(Name = "programar")] public int? PreProgramar { get; set; }
-    /// <summary>18/11/2026: ?transferir=ID (desde la campanita) abre la ventana "Transferir a ...".</summary>
+    /// <summary>17/11/2026: ?transferir=ID (desde la campanita) abre la ventana "Transferir a ...".</summary>
     [Parameter, SupplyParameterFromQuery(Name = "transferir")] public int? PreTransferir { get; set; }
 
     private List<ApiClient.PagoProgramadoDto> pagadosRecien = new();
