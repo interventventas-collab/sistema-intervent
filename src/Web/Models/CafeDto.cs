@@ -249,6 +249,16 @@ public class CafeProductoDto
     /// <summary>2026-09-29: molienda/envase fijos del café (null/vacío = se eligen en la venta).</summary>
     public string? MoliendaFija { get; set; }
     public string? EnvaseFijo { get; set; }
+    // 2026-11-18: medidas y peso (unidad y bulto) + encastrable
+    public decimal? UnidadAltoCm { get; set; }
+    public decimal? UnidadAnchoCm { get; set; }
+    public decimal? UnidadLargoCm { get; set; }
+    public decimal? UnidadPesoG { get; set; }
+    public decimal? BultoLargoCm { get; set; }
+    public decimal? BultoAnchoCm { get; set; }
+    public decimal? BultoAltoCm { get; set; }
+    public decimal? BultoPesoKg { get; set; }
+    public bool? Encastrable { get; set; }
     /// <summary>Precio del bulto completo (descuento por volumen, SOLO OTROS).</summary>
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
@@ -393,6 +403,16 @@ public class CreateCafeProductoRequest
     /// <summary>2026-09-29: molienda/envase fijos del café (null/vacío = se eligen en la venta).</summary>
     public string? MoliendaFija { get; set; }
     public string? EnvaseFijo { get; set; }
+    // 2026-11-18: medidas y peso + encastrable
+    public decimal? UnidadAltoCm { get; set; }
+    public decimal? UnidadAnchoCm { get; set; }
+    public decimal? UnidadLargoCm { get; set; }
+    public decimal? UnidadPesoG { get; set; }
+    public decimal? BultoLargoCm { get; set; }
+    public decimal? BultoAnchoCm { get; set; }
+    public decimal? BultoAltoCm { get; set; }
+    public decimal? BultoPesoKg { get; set; }
+    public bool? Encastrable { get; set; }
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):
     public decimal? PrecioBulto { get; set; }
     public decimal? PrecioBultoOtro { get; set; }
@@ -449,6 +469,17 @@ public class UpdateCafeProductoRequest
     /// <summary>2026-09-29: molienda/envase fijos del café (null/vacío = se eligen en la venta).</summary>
     public string? MoliendaFija { get; set; }
     public string? EnvaseFijo { get; set; }
+    // 2026-11-18: medidas y peso + encastrable (MedidasEnviadas=true → el server pisa los 9)
+    public decimal? UnidadAltoCm { get; set; }
+    public decimal? UnidadAnchoCm { get; set; }
+    public decimal? UnidadLargoCm { get; set; }
+    public decimal? UnidadPesoG { get; set; }
+    public decimal? BultoLargoCm { get; set; }
+    public decimal? BultoAnchoCm { get; set; }
+    public decimal? BultoAltoCm { get; set; }
+    public decimal? BultoPesoKg { get; set; }
+    public bool? Encastrable { get; set; }
+    public bool MedidasEnviadas { get; set; }
     public bool ClearPrecioMedioKg { get; set; }
     public bool ClearPrecioCuartoKg { get; set; }
     // Precio del bulto completo (descuento por volumen, SOLO OTROS):

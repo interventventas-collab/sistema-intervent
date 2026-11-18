@@ -226,7 +226,11 @@ public record CafeProductoDto(
     decimal? PrecioCuartoKg = null,
     // 2026-09-29: molienda y envase fijos (null = se eligen en la venta).
     string? MoliendaFija = null,
-    string? EnvaseFijo = null);
+    string? EnvaseFijo = null,
+    // 2026-11-18: medidas y peso (unidad y bulto) + encastrable. Todo opcional.
+    decimal? UnidadAltoCm = null, decimal? UnidadAnchoCm = null, decimal? UnidadLargoCm = null, decimal? UnidadPesoG = null,
+    decimal? BultoLargoCm = null, decimal? BultoAnchoCm = null, decimal? BultoAltoCm = null, decimal? BultoPesoKg = null,
+    bool? Encastrable = null);
 
 public record CafeProductoPackDto(
     int Id, int Cantidad, string Nombre, decimal? PrecioOverride,
@@ -287,6 +291,16 @@ public class CreateCafeProductoRequest
     /// <summary>2026-09-29: molienda/envase fijos. Vacío = se eligen en la venta.</summary>
     public string? MoliendaFija { get; set; }
     public string? EnvaseFijo { get; set; }
+    /// <summary>2026-11-18: medidas y peso (unidad y bulto) + encastrable. Todo opcional.</summary>
+    public decimal? UnidadAltoCm { get; set; }
+    public decimal? UnidadAnchoCm { get; set; }
+    public decimal? UnidadLargoCm { get; set; }
+    public decimal? UnidadPesoG { get; set; }
+    public decimal? BultoLargoCm { get; set; }
+    public decimal? BultoAnchoCm { get; set; }
+    public decimal? BultoAltoCm { get; set; }
+    public decimal? BultoPesoKg { get; set; }
+    public bool? Encastrable { get; set; }
     /// <summary>2026-07-07: formato por defecto al vender (null/"UNIT" = Suelto). Solo OTROS.</summary>
     public string? FormatoPorDefecto { get; set; }
     /// <summary>Packs prearmados a crear junto con el producto. Opcional. Solo OTROS.</summary>
@@ -409,6 +423,18 @@ public class UpdateCafeProductoRequest
     /// <summary>2026-09-29: molienda/envase fijos. Vacío = se eligen en la venta.</summary>
     public string? MoliendaFija { get; set; }
     public string? EnvaseFijo { get; set; }
+    /// <summary>2026-11-18: medidas y peso + encastrable. Si MedidasEnviadas=true se pisan los 9
+    /// tal cual vienen (null = vacío). Si es false (otras pantallas que usan este update) no se tocan.</summary>
+    public decimal? UnidadAltoCm { get; set; }
+    public decimal? UnidadAnchoCm { get; set; }
+    public decimal? UnidadLargoCm { get; set; }
+    public decimal? UnidadPesoG { get; set; }
+    public decimal? BultoLargoCm { get; set; }
+    public decimal? BultoAnchoCm { get; set; }
+    public decimal? BultoAltoCm { get; set; }
+    public decimal? BultoPesoKg { get; set; }
+    public bool? Encastrable { get; set; }
+    public bool MedidasEnviadas { get; set; }
     public bool ClearPrecioMedioKg { get; set; }
     public bool ClearPrecioCuartoKg { get; set; }
     // Precio del bulto completo (descuento por volumen, SOLO OTROS).

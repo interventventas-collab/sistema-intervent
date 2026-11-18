@@ -313,6 +313,11 @@
                                     {
                                         <div style="font-size: 0.7rem; color: #9ca3af; font-family: monospace;">cod: @p.Barcode</div>
                                     }
+                                    @* 2026-11-18: medidas y peso cargados en la ficha *@
+                                    @if (!p.EsCompuestoFake && !p.EsPackFake && ResumenMedidas(p) is string medidas)
+                                    {
+                                        <div style="font-size:0.72rem; color:#6b7280;" title="Medidas y peso (Editar → Medidas y peso)">📏 @medidas</div>
+                                    }
                                     @* 2026-09-24: dónde está en el depósito. Si no tiene, "📍 agregar lugar" abre los
                                        botones PB / P1 / Otro depósito ahí mismo (naranja si "no estaba acá"). *@
                                     @* Los combos (EsCompuestoFake) viven en otra tabla: su Id no es de un producto. *@
@@ -1024,6 +1029,40 @@
                             <input class="form-input" type="number" step="1" min="0" @bind="formUxB" />
                             <p style="font-size: 0.7rem; color: #6b7280; margin: 0.2rem 0 0;">Unidades por bulto (informativo)</p>
                         </div>
+                    </div>
+                    @* 2026-11-18: medidas y peso de una unidad y del bulto + si se encastran ("para entender volúmenes"). *@
+                    <h4 style="margin: 1rem 0 0.5rem; color: #6b7280; font-size: 0.85rem; text-transform: uppercase;">📏 Medidas y peso</h4>
+                    <div style="font-size:0.8rem; font-weight:600; color:#374151; margin-bottom:0.2rem;">Una unidad</div>
+                    <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:0.5rem;">
+                        <div class="form-group" style="min-width:0;"><label class="form-label">Alto (cm)</label><input class="form-input" type="number" step="0.1" min="0" @bind="formUnidadAltoCm" /></div>
+                        <div class="form-group" style="min-width:0;"><label class="form-label">Ancho / boca (cm)</label><input class="form-input" type="number" step="0.1" min="0" @bind="formUnidadAnchoCm" /></div>
+                        <div class="form-group" style="min-width:0;"><label class="form-label">Largo / base (cm)</label><input class="form-input" type="number" step="0.1" min="0" @bind="formUnidadLargoCm" /></div>
+                        <div class="form-group" style="min-width:0;"><label class="form-label">Peso (g)</label><input class="form-input" type="number" step="0.1" min="0" @bind="formUnidadPesoG" /></div>
+                    </div>
+                    <div style="font-size:0.8rem; font-weight:600; color:#374151; margin:0.3rem 0 0.2rem;">Bulto (caja cerrada)@(formUxB is > 0 ? $" · {formUxB.Value:N0} unidades" : "")</div>
+                    <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:0.5rem;">
+                        <div class="form-group" style="min-width:0;"><label class="form-label">Largo (cm)</label><input class="form-input" type="number" step="0.1" min="0" @bind="formBultoLargoCm" /></div>
+                        <div class="form-group" style="min-width:0;"><label class="form-label">Ancho (cm)</label><input class="form-input" type="number" step="0.1" min="0" @bind="formBultoAnchoCm" /></div>
+                        <div class="form-group" style="min-width:0;"><label class="form-label">Alto (cm)</label><input class="form-input" type="number" step="0.1" min="0" @bind="formBultoAltoCm" /></div>
+                        <div class="form-group" style="min-width:0;"><label class="form-label">Peso (kg)</label><input class="form-input" type="number" step="0.01" min="0" @bind="formBultoPesoKg" /></div>
+                    </div>
+                    @if (BultoM3(formBultoLargoCm, formBultoAnchoCm, formBultoAltoCm) is decimal m3)
+                    {
+                        <p style="font-size:0.75rem; color:#6b7280; margin:0 0 0.4rem;">Volumen del bulto @m3.ToString("0.000") m³@(m3 > 0 ? $" · en 1 m³ entran {Math.Floor(1m / m3):0} bultos" : "")</p>
+                    }
+                    <div class="form-row" style="align-items:center;">
+                        <div class="form-group" style="flex:0 0 auto; margin-bottom:0;">
+                            <label class="form-label">¿Se encastran?</label>
+                            <select class="form-input" @bind="formEncastrableStr" style="min-width:230px;">
+                                <option value="">— sin dato —</option>
+                                <option value="SI">Sí, van uno dentro del otro</option>
+                                <option value="NO">No</option>
+                            </select>
+                        </div>
+                        @if (formEncastrableStr == "SI")
+                        {
+                            <p style="flex:1; font-size:0.75rem; color:#6b7280; margin:1.2rem 0 0;">Se encastran: para saber cuánto lugar ocupan, mirá el bulto, no la unidad.</p>
+                        }
                     </div>
                     @* ════════════ Modelo NUEVO: 2 precios directos por producto ════════════ *@
                     <div style="background: #f0fdf4; border: 1px solid #16a34a; border-radius: 6px; padding: 0.6rem 0.8rem; margin-top: 0.5rem;">
@@ -2235,6 +2274,30 @@
     private bool formTercerizado;
     private string formMoliendaFija = "";
     private string formEnvaseFijo = "";
+    // 2026-11-18: medidas y peso (unidad y bulto) + encastrable ("SI"/"NO"/"" — string puente: select atado a bool no anda en Blazor)
+    private decimal? formUnidadAltoCm, formUnidadAnchoCm, formUnidadLargoCm, formUnidadPesoG;
+    private decimal? formBultoLargoCm, formBultoAnchoCm, formBultoAltoCm, formBultoPesoKg;
+    private string formEncastrableStr = "";
+    private bool? FormEncastrable => formEncastrableStr == "SI" ? true : formEncastrableStr == "NO" ? false : null;
+    private static decimal? BultoM3(decimal? l, decimal? a, decimal? h) =>
+        l is > 0 && a is > 0 && h is > 0 ? Math.Round(l.Value * a.Value * h.Value / 1_000_000m, 4) : null;
+    private static string N(decimal v) => v.ToString("0.##", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+    /// <summary>"7,4 × 9,7 × 7,9 cm · 7,8 g · bulto 58×48×52 cm 8,8 kg · encastrable" (null si no hay nada cargado).</summary>
+    private static string? ResumenMedidas(CafeProductoDto p)
+    {
+        var partes = new List<string>();
+        var u = new[] { p.UnidadAltoCm, p.UnidadAnchoCm, p.UnidadLargoCm }.Where(x => x is > 0).Select(x => N(x!.Value)).ToList();
+        if (u.Count > 0) partes.Add(string.Join(" × ", u) + " cm");
+        if (p.UnidadPesoG is > 0) partes.Add(N(p.UnidadPesoG.Value) + " g");
+        var b = new[] { p.BultoLargoCm, p.BultoAnchoCm, p.BultoAltoCm }.Where(x => x is > 0).Select(x => N(x!.Value)).ToList();
+        var bulto = new List<string>();
+        if (b.Count > 0) bulto.Add(string.Join("×", b) + " cm");
+        if (p.BultoPesoKg is > 0) bulto.Add(N(p.BultoPesoKg.Value) + " kg");
+        if (bulto.Count > 0) partes.Add("bulto " + string.Join(" ", bulto));
+        if (p.Encastrable == true) partes.Add("encastrable");
+        else if (p.Encastrable == false) partes.Add("no encastra");
+        return partes.Count == 0 ? null : string.Join(" · ", partes);
+    }
     private decimal? formPrecioMedioKg;
     private decimal? formPrecioCuartoKg;
     // Precios futuros (cambio programado)
@@ -3044,6 +3107,8 @@
         formSinPrecioBar = false; // 2026-06-10
         formTercerizado = false; formPrecioMedioKg = null; formPrecioCuartoKg = null; // 2026-09-29
         formMoliendaFija = ""; formEnvaseFijo = "";
+        formUnidadAltoCm = formUnidadAnchoCm = formUnidadLargoCm = formUnidadPesoG = null;
+        formBultoLargoCm = formBultoAnchoCm = formBultoAltoCm = formBultoPesoKg = null; formEncastrableStr = "";
         formPrecioBulto = null; formPrecioBultoOtro = null;
         formFormatoPorDefecto = "UNIT"; // 2026-07-07
         formPacks = new();
@@ -3179,6 +3244,9 @@
         formPvp1 = p.PrecioBarEfectivo; formPvp2 = p.PrecioOtroEfectivo;
         formTercerizado = p.Tercerizado; formPrecioMedioKg = p.PrecioMedioKg; formPrecioCuartoKg = p.PrecioCuartoKg; // 2026-09-29
         formMoliendaFija = p.MoliendaFija ?? ""; formEnvaseFijo = p.EnvaseFijo ?? "";
+        formUnidadAltoCm = p.UnidadAltoCm; formUnidadAnchoCm = p.UnidadAnchoCm; formUnidadLargoCm = p.UnidadLargoCm; formUnidadPesoG = p.UnidadPesoG;
+        formBultoLargoCm = p.BultoLargoCm; formBultoAnchoCm = p.BultoAnchoCm; formBultoAltoCm = p.BultoAltoCm; formBultoPesoKg = p.BultoPesoKg;
+        formEncastrableStr = p.Encastrable == true ? "SI" : p.Encastrable == false ? "NO" : "";
         formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
         formBarPct = p.BarPctSobreCosto;
         // Modelo NUEVO de precios. Si NO están cargados (producto migrado del modelo viejo),
@@ -3284,6 +3352,9 @@
         formPvp1 = p.PrecioBarEfectivo; formPvp2 = p.PrecioOtroEfectivo;
         formTercerizado = p.Tercerizado; formPrecioMedioKg = p.PrecioMedioKg; formPrecioCuartoKg = p.PrecioCuartoKg; // 2026-09-29
         formMoliendaFija = p.MoliendaFija ?? ""; formEnvaseFijo = p.EnvaseFijo ?? "";
+        formUnidadAltoCm = p.UnidadAltoCm; formUnidadAnchoCm = p.UnidadAnchoCm; formUnidadLargoCm = p.UnidadLargoCm; formUnidadPesoG = p.UnidadPesoG;
+        formBultoLargoCm = p.BultoLargoCm; formBultoAnchoCm = p.BultoAnchoCm; formBultoAltoCm = p.BultoAltoCm; formBultoPesoKg = p.BultoPesoKg;
+        formEncastrableStr = p.Encastrable == true ? "SI" : p.Encastrable == false ? "NO" : "";
         formIvaPctStr = p.IvaPct == 10.5m ? "10.5" : "21";
         formBarPct = p.BarPctSobreCosto;
         formPrecioOtro = p.PrecioOtro ?? p.Pvp2 ?? p.Pvp1;
@@ -3471,6 +3542,17 @@
                     Tercerizado = formCategoria == "CAFE" && formTercerizado,
                     MoliendaFija = formCategoria == "CAFE" ? formMoliendaFija : "",
                     EnvaseFijo = formCategoria == "CAFE" ? formEnvaseFijo : "",
+                    // 2026-11-18: medidas y peso (MedidasEnviadas → el server pisa los 9)
+                    UnidadAltoCm = formUnidadAltoCm,
+                    UnidadAnchoCm = formUnidadAnchoCm,
+                    UnidadLargoCm = formUnidadLargoCm,
+                    UnidadPesoG = formUnidadPesoG,
+                    BultoLargoCm = formBultoLargoCm,
+                    BultoAnchoCm = formBultoAnchoCm,
+                    BultoAltoCm = formBultoAltoCm,
+                    BultoPesoKg = formBultoPesoKg,
+                    Encastrable = FormEncastrable,
+                    MedidasEnviadas = true,
                     PrecioMedioKg = formCategoria == "CAFE" && formPrecioMedioKg > 0 ? formPrecioMedioKg : null,
                     PrecioCuartoKg = formCategoria == "CAFE" && formPrecioCuartoKg > 0 ? formPrecioCuartoKg : null,
                     ClearPrecioMedioKg = !(formCategoria == "CAFE" && formPrecioMedioKg > 0),
@@ -3550,6 +3632,16 @@
                     Tercerizado = formCategoria == "CAFE" && formTercerizado,
                     MoliendaFija = formCategoria == "CAFE" ? formMoliendaFija : "",
                     EnvaseFijo = formCategoria == "CAFE" ? formEnvaseFijo : "",
+                    // 2026-11-18: medidas y peso
+                    UnidadAltoCm = formUnidadAltoCm,
+                    UnidadAnchoCm = formUnidadAnchoCm,
+                    UnidadLargoCm = formUnidadLargoCm,
+                    UnidadPesoG = formUnidadPesoG,
+                    BultoLargoCm = formBultoLargoCm,
+                    BultoAnchoCm = formBultoAnchoCm,
+                    BultoAltoCm = formBultoAltoCm,
+                    BultoPesoKg = formBultoPesoKg,
+                    Encastrable = FormEncastrable,
                     PrecioMedioKg = formCategoria == "CAFE" && formPrecioMedioKg > 0 ? formPrecioMedioKg : null,
                     PrecioCuartoKg = formCategoria == "CAFE" && formPrecioCuartoKg > 0 ? formPrecioCuartoKg : null,
                     // Precio del bulto (descuento por volumen, SOLO OTROS):
