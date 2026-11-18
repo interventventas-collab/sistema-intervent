@@ -200,6 +200,19 @@ public class CafeProducto
     /// Misma unidad que el ideal: unidades, salvo el cafe que va en kilos.</summary>
     public int? StockPiso { get; set; }
 
+    // 2026-11-18 — Medidas y peso (una unidad y el bulto/caja) + si se encastran. Todo opcional.
+    // Pedido del dueño para "entender volúmenes". Se cargan en Productos → Editar, debajo del UxB.
+    [Column(TypeName = "decimal(8,2)")] public decimal? UnidadAltoCm { get; set; }
+    [Column(TypeName = "decimal(8,2)")] public decimal? UnidadAnchoCm { get; set; }
+    [Column(TypeName = "decimal(8,2)")] public decimal? UnidadLargoCm { get; set; }
+    [Column(TypeName = "decimal(10,2)")] public decimal? UnidadPesoG { get; set; }
+    [Column(TypeName = "decimal(8,2)")] public decimal? BultoLargoCm { get; set; }
+    [Column(TypeName = "decimal(8,2)")] public decimal? BultoAnchoCm { get; set; }
+    [Column(TypeName = "decimal(8,2)")] public decimal? BultoAltoCm { get; set; }
+    [Column(TypeName = "decimal(10,3)")] public decimal? BultoPesoKg { get; set; }
+    /// <summary>true = van uno dentro del otro (vasos, potes): el volumen se mira por bulto, no por unidad.</summary>
+    public bool? Encastrable { get; set; }
+
     [MaxLength(500)]
     public string? Notas { get; set; }
 

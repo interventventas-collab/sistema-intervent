@@ -92,7 +92,10 @@ public class CafeProductosController : ControllerBase
         PrecioMedioKg: p.PrecioMedioKg,
         PrecioCuartoKg: p.PrecioCuartoKg,
         MoliendaFija: p.MoliendaFija,
-        EnvaseFijo: p.EnvaseFijo);
+        EnvaseFijo: p.EnvaseFijo,
+        UnidadAltoCm: p.UnidadAltoCm, UnidadAnchoCm: p.UnidadAnchoCm, UnidadLargoCm: p.UnidadLargoCm, UnidadPesoG: p.UnidadPesoG,
+        BultoLargoCm: p.BultoLargoCm, BultoAnchoCm: p.BultoAnchoCm, BultoAltoCm: p.BultoAltoCm, BultoPesoKg: p.BultoPesoKg,
+        Encastrable: p.Encastrable);
 
     /// <summary>Búsqueda rápida (solo Id, Sku, Nombre, StockUnidades). Usado por la UI de
     /// edición de componentes MeLi en /cafe/skus-meli (selector de producto).</summary>
@@ -969,6 +972,16 @@ public class CafeProductosController : ControllerBase
             PrecioCuartoKg = cat == "CAFE" && req.PrecioCuartoKg > 0 ? req.PrecioCuartoKg : null,
             MoliendaFija = cat == "CAFE" ? LimpiarFijo(req.MoliendaFija) : null,
             EnvaseFijo = cat == "CAFE" ? LimpiarFijo(req.EnvaseFijo) : null,
+            // 2026-11-18: medidas y peso (cualquier categoría). <= 0 se guarda vacío.
+            UnidadAltoCm = Medida(req.UnidadAltoCm),
+            UnidadAnchoCm = Medida(req.UnidadAnchoCm),
+            UnidadLargoCm = Medida(req.UnidadLargoCm),
+            UnidadPesoG = Medida(req.UnidadPesoG),
+            BultoLargoCm = Medida(req.BultoLargoCm),
+            BultoAnchoCm = Medida(req.BultoAnchoCm),
+            BultoAltoCm = Medida(req.BultoAltoCm),
+            BultoPesoKg = Medida(req.BultoPesoKg),
+            Encastrable = req.Encastrable,
             PrecioBulto = cat == "OTROS" ? req.PrecioBulto : null,
             PrecioBultoOtro = cat == "OTROS" ? req.PrecioBultoOtro : null,
             // 2026-07-07: formato por defecto al vender. "UNIT"/vacio = Suelto (se guarda null).
@@ -1126,6 +1139,19 @@ public class CafeProductosController : ControllerBase
         // 2026-09-29: molienda/envase fijos. En el update SIEMPRE vienen (vacío = se eligen en la venta).
         if (req.MoliendaFija is not null) p.MoliendaFija = LimpiarFijo(req.MoliendaFija);
         if (req.EnvaseFijo is not null) p.EnvaseFijo = LimpiarFijo(req.EnvaseFijo);
+        // 2026-11-18: medidas y peso. Solo la ficha de Productos las manda (MedidasEnviadas).
+        if (req.MedidasEnviadas)
+        {
+            p.UnidadAltoCm = Medida(req.UnidadAltoCm);
+            p.UnidadAnchoCm = Medida(req.UnidadAnchoCm);
+            p.UnidadLargoCm = Medida(req.UnidadLargoCm);
+            p.UnidadPesoG = Medida(req.UnidadPesoG);
+            p.BultoLargoCm = Medida(req.BultoLargoCm);
+            p.BultoAnchoCm = Medida(req.BultoAnchoCm);
+            p.BultoAltoCm = Medida(req.BultoAltoCm);
+            p.BultoPesoKg = Medida(req.BultoPesoKg);
+            p.Encastrable = req.Encastrable;
+        }
         if (req.PrecioBulto.HasValue) p.PrecioBulto = req.PrecioBulto.Value;
         else if (req.ClearPrecioBulto) p.PrecioBulto = null;
         if (req.PrecioBultoOtro.HasValue) p.PrecioBultoOtro = req.PrecioBultoOtro.Value;
@@ -1556,6 +1582,9 @@ public class CafeProductosController : ControllerBase
     }
 
     /// <summary>2026-09-29: "" o espacios = sin fijo (null).</summary>
+    /// <summary>2026-11-18: medida/peso cargado; 0 o negativo = vacío.</summary>
+    private static decimal? Medida(decimal? v) => v is > 0 ? Math.Round(v.Value, 3) : null;
+
     private static string? LimpiarFijo(string? v)
         => string.IsNullOrWhiteSpace(v) ? null : v.Trim().ToUpperInvariant();
 }

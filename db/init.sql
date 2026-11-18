@@ -8974,3 +8974,14 @@ IF COL_LENGTH('Alq_ReservaItems','CantidadDevuelta') IS NULL
     ALTER TABLE Alq_ReservaItems ADD CantidadDevuelta INT NOT NULL
         CONSTRAINT DF_AlqReservaItems_Devuelta DEFAULT 0;
 GO
+
+-- 18/11/2026: medidas y peso del producto (una unidad y el bulto/caja) + si se encastran.
+-- Pedido del dueño: "ver medidas y peso del producto y del bulto, y que se aclare si es encastrable
+-- para entender volúmenes". Se cargan en Productos → Editar, debajo del UxB. Todo opcional (NULL).
+-- ⚠ En PROD correr a mano ANTES de publicar la API (sqlcmd con -I). Idempotente.
+IF COL_LENGTH('Cafe_Productos','UnidadAltoCm') IS NULL
+    ALTER TABLE Cafe_Productos ADD UnidadAltoCm DECIMAL(8,2) NULL, UnidadAnchoCm DECIMAL(8,2) NULL,
+        UnidadLargoCm DECIMAL(8,2) NULL, UnidadPesoG DECIMAL(10,2) NULL,
+        BultoLargoCm DECIMAL(8,2) NULL, BultoAnchoCm DECIMAL(8,2) NULL, BultoAltoCm DECIMAL(8,2) NULL,
+        BultoPesoKg DECIMAL(10,3) NULL, Encastrable BIT NULL;
+GO
