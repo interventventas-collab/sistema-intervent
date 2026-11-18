@@ -82,6 +82,7 @@
     .fr-cominp { width:100%; font-size:0.8rem; padding:0.15rem 0.35rem; border:1px solid #9ca3af; border-radius:5px; margin-top:0.15rem; }
     .fr-via { color:#6b7280; font-size:0.74rem; }
     .fr-lnk { border:0; background:none; padding:0; color:#374151; text-decoration:underline; cursor:pointer; font-size:0.8rem; }
+    .fr-auto { font-size:0.62rem; color:#047857; background:#ecfdf5; border-radius:4px; padding:0 0.25rem; margin-left:0.2rem; vertical-align:1px; }
     .fr-x { border:0; background:none; padding:0 0.2rem; color:#9ca3af; cursor:pointer; font-size:0.78rem; }
     .fr-sug { background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; padding:0.15rem 0.4rem; font-size:0.76rem; color:#92400e; margin-top:0.2rem; display:flex; width:fit-content; max-width:420px; gap:0.3rem; align-items:center; flex-wrap:wrap; }
     .fr-sug button { border:1px solid #d97706; background:#fff; color:#92400e; border-radius:5px; font-size:0.72rem; padding:0 0.4rem; cursor:pointer; }
@@ -590,7 +591,12 @@
 
     private async Task Deshacer(ApiClient.FacturaRecibidaDto f)
     {
-        if (f.PagoManual)
+        if (f.PagoAuto is { } pa && pa.Split(':') is [var org, var num] && long.TryParse(num, out var mid))
+        {
+            if (!await Api.RechazarSugerenciaFacturaAsync(f.Id, org, mid)) { ToastService.Error("No se pudo deshacer"); return; }
+            ToastService.Success("Listo, ese pago no es de esta factura");
+        }
+        else if (f.PagoManual)
         {
             if (!await Api.DesmarcarFacturaPagadaAsync(f.Id)) { ToastService.Error("No se pudo deshacer"); return; }
         }
@@ -607,10 +613,11 @@
         if (f.Pago == "pagada")
         {
             <span class="ok">pagada</span>
-            if (f.PagoManual || f.ReglaPago is not null)
+            if (f.PagoManual || f.ReglaPago is not null || f.PagoAuto is not null)
             {
-                <button type="button" class="fr-x" title="@(f.PagoManual ? "Deshacer: volver a «no sé»" : "Quitar la regla de este proveedor")" @onclick="() => Deshacer(f)">✕</button>
+                <button type="button" class="fr-x" title="@(f.PagoAuto is not null ? "No es este pago: sacarlo" : f.PagoManual ? "Deshacer: volver a «no sé»" : "Quitar la regla de este proveedor")" @onclick="() => Deshacer(f)">✕</button>
             }
+            if (f.PagoAuto is not null) { <span class="fr-auto" title="Lo encontró el sistema solo">auto</span> }
             if (!string.IsNullOrWhiteSpace(f.PagoVia)) { <div class="fr-via">@f.PagoVia</div> }
             return;
         }
