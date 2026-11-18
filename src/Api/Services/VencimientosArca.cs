@@ -56,12 +56,16 @@ public static class VencimientosArca
         var usados = new HashSet<int>();
         foreach (var v in lista)
         {
-            // Un VEP es "de este vencimiento" si dice el mismo período, o si llegó / vence / se pagó cerca.
             bool Cerca(DateTime? d, int antes, int despues) => d.HasValue && d.Value.Date >= v.Vence.AddDays(-antes) && d.Value.Date <= v.Vence.AddDays(despues);
-            var mios = veps.Where(x => x.Concepto == v.Concepto && x.Origen != "BANCO"
-                && (x.Periodo == v.Periodo || (x.Periodo == null
-                    && (Cerca(x.Vence, 5, 5) || Cerca(x.PagadoFecha, 25, 5) || Cerca(x.MailFecha?.AddHours(-3), 30, 2)))))
+            // Un VEP es "de este vencimiento" si dice el mismo período, o si (sin período) se pagó / llegó / vence
+            // cerca: pagado hasta 12 días antes y 5 después; sin pagar, llegado hasta 12 días antes.
+            // (18/11: con 30 días tomaba el IIBB de septiembre pagado el 21/10 como el de octubre.) Cada VEP, una sola vez.
+            var mios = veps.Where(x => x.Concepto == v.Concepto && x.Origen != "BANCO" && !usados.Contains(x.Id)
+                && (x.Periodo == v.Periodo || (x.Periodo == null && (x.Estado == "PAGADO"
+                    ? Cerca(x.PagadoFecha, 12, 5)
+                    : Cerca(x.Vence, 5, 5) || Cerca(x.MailFecha?.AddHours(-3), 12, 2)))))
                 .ToList();
+            foreach (var m in mios) usados.Add(m.Id);
             var pag = mios.Where(x => x.Estado == "PAGADO").OrderByDescending(x => x.PagadoFecha).FirstOrDefault();
             if (pag is not null) { res.Add(new(v.Concepto, v.Nombre, v.Periodo, v.Vence, "PAGADO", mios.Where(x => x.Estado == "PAGADO").Sum(x => x.Importe), pag.PagadoFecha, pag.Id)); continue; }
             var pend = mios.FirstOrDefault(x => x.Estado == "PENDIENTE");
@@ -73,7 +77,7 @@ public static class VencimientosArca
             if (banco is not null)
             {
                 usados.Add(banco.Id);
-                res.Add(new(v.Concepto, v.Nombre, v.Periodo, v.Vence, "BANCO", null, banco.PagadoFecha, banco.Id));
+                res.Add(new(v.Concepto, v.Nombre, v.Periodo, v.Vence, "BANCO", banco.Importe, banco.PagadoFecha, banco.Id));
                 continue;
             }
             res.Add(new(v.Concepto, v.Nombre, v.Periodo, v.Vence, "SIN_VEP", null, null, null));

@@ -341,7 +341,7 @@
                     continue;
                 }
                 if (v.Estado == "PAGADO") r.Add(($"✓ {v.Nombre} pagado", ""));
-                else if (v.Estado == "BANCO") r.Add(($"✓ {v.Nombre} · débito AFIP {v.PagadoFecha:dd/MM}", ""));
+                else if (v.Estado == "BANCO") r.Add(($"✓ {v.Nombre} · débito AFIP {v.PagadoFecha:dd/MM} {P(v.Importe ?? 0)}", ""));
                 else if (v.Estado == "VEP") r.Add(($"📅 {v.Nombre} {cuando} · VEP llegó {P(v.Importe ?? 0)}", dias <= 2 ? "hoy" : ""));
                 else r.Add(($"📅 {v.Nombre} {cuando} · VEP no llegó", dias <= 3 ? "atr" : ""));
             }
