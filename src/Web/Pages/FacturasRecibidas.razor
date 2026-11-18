@@ -18,6 +18,11 @@
     .fr-btn:disabled { opacity:0.55; cursor:default; }
     .fr-fil { display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.9rem 0 0.4rem; }
     .fr-fil .form-input { max-width:260px; }
+    .fr-rango { display:flex; align-items:center; gap:0.35rem; font-size:0.85rem; color:#6b7280; }
+    .fr-rango .form-input { width:auto; }
+    .fr-pag { display:flex; align-items:center; gap:0.3rem; flex-wrap:wrap; justify-content:center; margin:0.8rem 0 0.2rem; font-size:0.85rem; color:#6b7280; }
+    .fr-pag > span:first-child { margin-right:0.5rem; }
+    .fr-pag button:disabled { opacity:0.4; cursor:default; }
     .fr { width:100%; border-collapse:collapse; font-size:0.9rem; }
     .fr th { font-size:0.7rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; font-weight:600; text-align:left; padding:0.4rem 0.4rem; border-bottom:1px solid #e5e7eb; }
     .fr td { padding:0.45rem 0.4rem; border-bottom:1px solid #f3f4f6; vertical-align:middle; }
@@ -114,7 +119,13 @@
                 {
                     <option value="@m.ToString("yyyy-MM")">@m.ToString("MMMM yyyy", Ar)</option>
                 }
+                <option value="rango">📅 Elegir fechas…</option>
             </select>
+            @if (mes == "rango")
+            {
+                <span class="fr-rango">desde <input type="date" class="form-input" @bind="desde" @bind:after="Cargar" />
+                    hasta <input type="date" class="form-input" @bind="hasta" @bind:after="Cargar" /></span>
+            }
             <input class="form-input" placeholder="🔍 Proveedor, CUIT o comentario" @bind="busca" @bind:event="oninput" />
             <div class="fr-chips">
                 @foreach (var (k, t) in new[] { ("", "Todas"), ("sin", "Sin pagar"), ("pag", "Pagadas"), ("nose", "No sé") })
@@ -136,6 +147,12 @@
         else
         {
             var vis = Visibles();
+            // 18/11/2026: de a 50 por página (los totales y el tablero son de todo lo filtrado).
+            var firma = $"{mes}|{desde}|{hasta}|{busca}|{filtroPago}|{filtroGrupo}|{filtroDet}";
+            if (firma != firmaPag) { firmaPag = firma; pagina = 1; }
+            var paginas = Math.Max(1, (vis.Count + PorPagina - 1) / PorPagina);
+            if (pagina > paginas) pagina = paginas;
+            var pag = vis.Skip((pagina - 1) * PorPagina).Take(PorPagina).ToList();
             <div class="fr-tot">
                 <span>@vis.Count comprobante@(vis.Count == 1 ? "" : "s") · <b>@Plata(vis.Sum(f => f.Total))</b>
                     @if (vis.Any(f => f.Nueva)) { <span> · <span class="punto"></span>@vis.Count(f => f.Nueva) nueva@(vis.Count(f => f.Nueva) == 1 ? "" : "s")</span> }</span>
@@ -143,10 +160,10 @@
                 <span>No sé <b>@Plata(vis.Where(EsNoSe).Sum(f => f.Total))</b></span>
             </div>
             @Tablero()
-            <div class="table-responsive">
+            <div class="table-responsive" id="fr-lista">
                 <table class="fr">
                     <tr><th>Llegó</th><th>Proveedor</th><th>Categoría</th><th>Comprobante</th><th>Fecha</th><th class="num">Importe</th><th>¿Pagada?</th><th></th></tr>
-                    @foreach (var f in vis)
+                    @foreach (var f in pag)
                     {
                         var (gr, de) = Cat(f.Categoria);
                         <tr>
@@ -201,6 +218,20 @@
                     }
                 </table>
             </div>
+            @if (paginas > 1)
+            {
+                <div class="fr-pag">
+                    <span>Mostrando @((pagina - 1) * PorPagina + 1)–@Math.Min(pagina * PorPagina, vis.Count) de @vis.Count</span>
+                    <button type="button" class="fr-chip" disabled="@(pagina == 1)" @onclick="() => IrA(pagina - 1)">‹ Anterior</button>
+                    @for (var n = 1; n <= paginas; n++)
+                    {
+                        var nn = n;
+                        if (paginas > 9 && nn != 1 && nn != paginas && Math.Abs(nn - pagina) > 2) { if (nn == 2 || nn == paginas - 1) { <span>…</span> } continue; }
+                        <button type="button" class="fr-chip @(nn == pagina ? "on" : "")" @onclick="() => IrA(nn)">@nn</button>
+                    }
+                    <button type="button" class="fr-chip" disabled="@(pagina == paginas)" @onclick="() => IrA(pagina + 1)">Siguiente ›</button>
+                </div>
+            }
             <div class="fr-sub" style="margin-top:0.6rem;">"¿Pagada?" sale de la cuenta corriente (proveedores que la llevan), de lo que marcaste a mano, o de la regla del proveedor ("se paga por débito / tarjeta / MP"). En amarillo: un pago de Mercado Pago o del Galicia por casi el mismo importe — confirmalo con Sí o No.</div>
         }
     </div>
@@ -211,6 +242,17 @@
     private List<ApiClient.FacturaRecibidaDto>? lista;
     private ApiClient.FacturasEstadoDto? estado;
     private string mes = "", busca = "";
+    // 18/11/2026: "Elegir fechas" (mes == "rango") y páginas de 50.
+    private DateTime? desde = FechaPalabras.HoyAr.AddDays(-30), hasta = FechaPalabras.HoyAr;
+    private const int PorPagina = 50;
+    private int pagina = 1;
+    private string? firmaPag;
+    private async Task IrA(int n)
+    {
+        pagina = n;
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("eval", "document.getElementById('fr-lista')?.scrollIntoView({block:'start'})"); } catch { }
+    }
     private bool iniciando;
     private System.Threading.Timer? timer;
     private CancellationTokenSource? pausa;
@@ -226,7 +268,7 @@
     {
         try
         {
-            lista = await Api.GetFacturasRecibidasAsync(mes, null);
+            lista = await Api.GetFacturasRecibidasAsync(mes == "rango" ? null : mes, null, mes == "rango" ? desde : null, mes == "rango" ? hasta : null);
             estado = await Api.GetFacturasRecibidasEstadoAsync();
         }
         catch (Exception ex) { lista ??= new(); ToastService.Error(ex.Message); }
@@ -286,7 +328,7 @@
             if (estado is { Corriendo: false })
             {
                 timer?.Dispose(); timer = null; iniciando = false;
-                lista = await Api.GetFacturasRecibidasAsync(mes, null);
+                lista = await Api.GetFacturasRecibidasAsync(mes == "rango" ? null : mes, null, mes == "rango" ? desde : null, mes == "rango" ? hasta : null);
                 if (estado.Resultado?.StartsWith("⚠") == true) ToastService.Error(estado.Resultado);
                 else ToastService.Success("Listo: facturas actualizadas");
                 try { await Api.MarcarFacturasRecibidasVistasAsync(); } catch { }

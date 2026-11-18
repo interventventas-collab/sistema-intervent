@@ -19,9 +19,11 @@ public partial class ApiClient
         => await GetAsync<FacturasResumenDto>("/api/compras/facturas-recibidas/resumen");
     public async Task<FacturasEstadoDto?> GetFacturasRecibidasEstadoAsync()
         => await GetAsync<FacturasEstadoDto>("/api/compras/facturas-recibidas/estado");
-    public async Task<List<FacturaRecibidaDto>> GetFacturasRecibidasAsync(string? mes, string? q)
+    public async Task<List<FacturaRecibidaDto>> GetFacturasRecibidasAsync(string? mes, string? q, DateTime? desde = null, DateTime? hasta = null)
     {
         var url = "/api/compras/facturas-recibidas?x=1";
+        if (desde.HasValue) url += "&desde=" + desde.Value.ToString("yyyy-MM-dd");
+        if (hasta.HasValue) url += "&hasta=" + hasta.Value.ToString("yyyy-MM-dd");
         if (!string.IsNullOrWhiteSpace(mes)) url += "&mes=" + Uri.EscapeDataString(mes);
         if (!string.IsNullOrWhiteSpace(q)) url += "&q=" + Uri.EscapeDataString(q.Trim());
         return await GetAsync<List<FacturaRecibidaDto>>(url) ?? new();

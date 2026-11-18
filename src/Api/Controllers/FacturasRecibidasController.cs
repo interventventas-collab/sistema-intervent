@@ -71,28 +71,35 @@ public class FacturasRecibidasController : ControllerBase
     [HttpGet("estado")]
     public async Task<IActionResult> Estado() => Ok(await EstadoAsync(await VistasHastaAsync()));
 
-    /// <summary>Por defecto, lo que llegó en los últimos 60 días. mes=yyyy-MM filtra por fecha de la factura.</summary>
+    /// <summary>Por defecto, lo que llegó en los últimos 60 días. mes=yyyy-MM filtra por fecha de la factura.
+    /// 18/11/2026: desde/hasta=yyyy-MM-dd (fecha de la factura) para elegir fechas a mano.</summary>
     [HttpGet]
-    public async Task<IActionResult> Listar([FromQuery] string? mes, [FromQuery] string? q)
+    public async Task<IActionResult> Listar([FromQuery] string? mes, [FromQuery] string? q, [FromQuery] DateTime? desde, [FromQuery] DateTime? hasta)
     {
         var vistas = await VistasHastaAsync();
         var qq = _db.ContadoraComprobantes.AsNoTracking().Where(c => c.Naturaleza == "COMPRA");
-        if (!string.IsNullOrWhiteSpace(mes) && DateTime.TryParse(mes + "-01", out var ini))
+        if (desde.HasValue || hasta.HasValue)
+        {
+            var d0 = (desde ?? new DateTime(2000, 1, 1)).Date;
+            var d1 = (hasta ?? DateTime.UtcNow.AddHours(-3)).Date.AddDays(1);
+            qq = qq.Where(c => c.FechaEmision >= d0 && c.FechaEmision < d1);
+        }
+        else if (!string.IsNullOrWhiteSpace(mes) && DateTime.TryParse(mes + "-01", out var ini))
         {
             var fin = ini.AddMonths(1);
             qq = qq.Where(c => c.FechaEmision >= ini && c.FechaEmision < fin);
         }
         else
         {
-            var desde = DateTime.UtcNow.AddDays(-60);
-            qq = qq.Where(c => c.PrimeraVezEn >= desde || c.FechaEmision >= desde);
+            var hace60 = DateTime.UtcNow.AddDays(-60);
+            qq = qq.Where(c => c.PrimeraVezEn >= hace60 || c.FechaEmision >= hace60);
         }
         if (!string.IsNullOrWhiteSpace(q))
         {
             var t = q.Trim();
             qq = qq.Where(c => (c.ReceptorNombre != null && c.ReceptorNombre.Contains(t)) || (c.ReceptorDoc != null && c.ReceptorDoc.Contains(t)));
         }
-        var filas = await qq.OrderByDescending(c => c.PrimeraVezEn).ThenByDescending(c => c.FechaEmision).Take(500)
+        var filas = await qq.OrderByDescending(c => c.PrimeraVezEn).ThenByDescending(c => c.FechaEmision).Take(3000)
             .Select(c => new
             {
                 c.IdComprobante, c.PrimeraVezEn, c.FechaEmision, c.ReceptorNombre, c.ReceptorDoc, c.TipoComprobante,
