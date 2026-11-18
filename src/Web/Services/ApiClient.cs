@@ -827,6 +827,17 @@ public partial class ApiClient
         return resp.IsSuccessStatusCode;
     }
 
+    /// <summary>18/11/2026: "Volvió todo" (todo=true) o "Volvió parte…" (cuántas volvieron de cada renglón).</summary>
+    public async Task<(bool ok, string? error)> DevolucionAlqAsync(int reservaId, bool todo, List<(int itemId, int devuelto)>? items = null)
+    {
+        await SetAuthHeaderAsync();
+        var body = new { todo, items = items?.Select(x => new { itemId = x.itemId, devuelto = x.devuelto }).ToList() };
+        var resp = await _http.PostAsJsonAsync($"/api/alquileres/reservas/{reservaId}/devolucion", body);
+        if (resp.IsSuccessStatusCode) return (true, null);
+        var txt = await resp.Content.ReadAsStringAsync();
+        return (false, string.IsNullOrWhiteSpace(txt) ? $"Error {(int)resp.StatusCode}" : txt);
+    }
+
     /// <summary>Deshace la entrega o el retiro marcado por un repartidor (tipo = "entrega" | "retiro").</summary>
     public async Task<bool> LimpiarRepartoAlqAsync(int reservaId, string tipo)
     {

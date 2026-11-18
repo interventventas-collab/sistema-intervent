@@ -226,6 +226,10 @@ public class AlqReservaItem
 
     public int Cantidad { get; set; }
 
+    /// <summary>18/11/2026: cuántas de estas ya volvieron ("Volvió parte…" en Pendientes de retiro).
+    /// Mientras sea menor que Cantidad, lo que falta sigue contando como "en la calle".</summary>
+    public int CantidadDevuelta { get; set; }
+
     [Column(TypeName = "decimal(18,2)")]
     public decimal PrecioUnitario { get; set; }
 }
