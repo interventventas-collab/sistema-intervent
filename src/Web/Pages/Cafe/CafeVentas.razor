@@ -296,6 +296,8 @@
     .nv-top-n { font-size: 0.82rem; font-weight: 600; color: #111827; line-height: 1.2; word-break: break-word; }
     .nv-top-sub { font-size: 0.7rem; color: #6b7280; margin-top: 0.1rem; }
     .nv-top-cod { font-family: ui-monospace, Consolas, monospace; color: #374151; }
+    .nv-top-badge { flex: 0 0 42px; height: 42px; border-radius: 9px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 800; font-size: 1rem; line-height: 1; align-self: center; }
+    .nv-top-badge small { font-size: 0.6rem; font-weight: 800; margin-top: 2px; }
     .nv-top-x { background: none; border: none; color: #c0c4cc; cursor: pointer; font-size: 0.85rem; padding: 0 0.15rem; line-height: 1; }
     .nv-top-x:hover { color: #dc2626; }
     /* Pantallas angostas: una sola columna, el resumen abajo. */
@@ -2737,7 +2739,7 @@
                         <div class="form-group" style="margin:0; width: 130px;">
                             <label class="form-label" style="font-size: 0.75rem;">Formato</label>
                             <select id="nv-formato" class="form-input" value="@addFormato" @onchange="OnAddFormatoChanged" @onkeydown="OnKeyDownFormato"
-                                    style="@(FormatoEnAlerta(addProductoId, addFormato) ? FmtAlertaCss : "")">
+                                    style="@FmtCss(addProductoId, addFormato)">
                                 @if (AddProductoCategoria == "CAFE")
                                 {
                                     <option value="1KG">1 kg</option>
@@ -2972,8 +2974,12 @@
 
                                         // ── Fila item normal (no combo) ──
                                         var fmtAlerta = FormatoEnAlerta(ci.ProductoId, ci.Formato);
-                                        <tr style="@(rojo || fmtAlerta ? "background: #fef2f2;" : "")">
-                                            <td style="text-align: right;">
+                                        @* 2026-11-18: ¼ y ½ kg de café ya no van en rojo (parecía error): ¼ celeste, ½ violeta,
+                                           con raya del color al costado. Rojo solo si el cliente casi siempre lleva 1 kg. *@
+                                        var fracColor = FraccionColor(ci.ProductoId, ci.Formato);
+                                        var fmtRojo = fmtAlerta && (fracColor is null || ClienteSueleLlevar1Kg(ci.ProductoId, ci.Formato));
+                                        <tr style="@(rojo || (fmtRojo && fracColor is null) ? "background: #fef2f2;" : fracColor is not null ? $"background: {fracColor.Value.Fondo};" : "")">
+                                            <td style="text-align: right; @(fracColor is not null ? $"box-shadow: inset 5px 0 0 {fracColor.Value.Borde};" : "")">
                                                 <input class="form-input" type="number" step="1" min="1"
                                                        style="width: 70px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.9rem; font-weight: 700;"
                                                        value="@formItem.Cantidad" @onchange="@(e => OnItemCantidadChanged(i, e.Value?.ToString()))" />
@@ -2992,7 +2998,7 @@
                                                 @if (fmtEditable)
                                                 {
                                                     <select class="form-input"
-                                                            style="@(fmtAlerta ? "padding:0.2rem 0.4rem; font-size:0.9rem; text-transform:uppercase; border-radius:6px; width:100%; min-width:120px; max-width:170px; " + FmtAlertaCss : "padding:0.15rem 0.4rem; font-size:0.82rem; font-family:Georgia,serif; font-style:italic; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; color:#4b5563; width:100%; min-width:120px; max-width:170px;")"
+                                                            style="@(fmtAlerta ? "padding:0.2rem 0.4rem; font-size:0.9rem; text-transform:uppercase; border-radius:6px; width:100%; min-width:120px; max-width:170px; " + FmtCss(ci.ProductoId, ci.Formato) : "padding:0.15rem 0.4rem; font-size:0.82rem; font-family:Georgia,serif; font-style:italic; background:#f3f4f6; border:1px dashed #9ca3af; border-radius:12px; color:#4b5563; width:100%; min-width:120px; max-width:170px;")"
                                                             value="@ci.Formato"
                                                             @onchange="@(e => OnItemFormatoChanged(i, e.Value?.ToString()))"
                                                             title="@(FormatoParaMostrar(ci.ProductoId, ci.Formato)) — Formato de venta. Al cambiarlo se recalcula el precio del catálogo (se pierde el precio manual si lo habías pisado).">
@@ -3043,7 +3049,7 @@
                                                 }
                                                 @* 2026-10-06: Osmar se confundía cargando ¼ kg cuando pedían 1 kg (porque alguna vez
                                                    compró ¼) y vasos sueltos cuando van por pack/caja. Aviso + botón para corregir. *@
-                                                @if (fmtAlerta)
+                                                @if (fmtRojo)
                                                 {
                                                     <div style="font-size:0.75rem; color:#b91c1c; margin-top:0.2rem; display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap;">
                                                         @if (esCafe)
@@ -3982,6 +3988,23 @@
                             @* 2026-10-28: código + formato, y un renglón con palabras (stock · compró N veces) para que
                                no se confundan los números. A la derecha el precio de HOY (lista del cliente o pactado)
                                y abajo lo que PAGÓ la última vez: en naranja si fue distinto. *@
+                            @* 2026-11-18: cuadrado con el tamaño para no confundir ¼ / ½ / 1 kg del mismo café. *@
+                            @{ var fcTop = t.Categoria == "CAFE" ? FraccionColorFmt(t.Formato) : null; }
+                            @if (fcTop is { } fq)
+                            {
+                                <div class="nv-top-badge" style="background:@(fq.Fondo); border:2px solid @(fq.Borde); color:@(fq.Texto);">
+                                    <svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#fff" stroke="@fq.Borde" stroke-width="2.5" /><path d="@fq.Pie" fill="@fq.Borde" /></svg>
+                                    <small>@(t.Formato == "CUARTO" ? "¼" : "½") KG</small>
+                                </div>
+                            }
+                            else if (t.Categoria == "CAFE" && t.Formato == "1KG")
+                            {
+                                <div class="nv-top-badge" style="background:#f3f4f6; border:1px solid #d1d5db; color:#374151;">1<small>KG</small></div>
+                            }
+                            else
+                            {
+                                <div class="nv-top-badge" style="background:#fff; border:1px dashed #d1d5db; color:#9ca3af; font-size:0.68rem;">@(t.Formato == "UNIT" ? "u." : t.Formato == "BULTO" ? "bulto" : ParsePackUnidades(t.Formato) is int pn ? $"x{pn}" : FormatoLabel(t.Formato))</div>
+                            }
                             <div style="flex: 1; min-width: 0;">
                                 <div class="nv-top-n">@t.Nombre</div>
                                 <div class="nv-top-sub"><span class="nv-top-cod">@t.Sku</span> · @FormatoLabel(t.Formato)</div>
@@ -5311,7 +5334,7 @@
                         && (pModal.PrecioBulto.HasValue || pModal.PrecioBultoOtro.HasValue);
                     <div>
                         <label style="font-size:0.78rem; color:#374151; font-weight:600; display:block; margin-bottom:0.2rem;">Formato</label>
-                        <select class="form-input" @bind="addItemModalFormato" style="width:100%; padding:0.45rem 0.6rem; font-size:1rem; font-weight:600; @(FormatoEnAlerta(addProductoId, addItemModalFormato) ? FmtAlertaCss : "")">
+                        <select class="form-input" @bind="addItemModalFormato" style="width:100%; padding:0.45rem 0.6rem; font-size:1rem; font-weight:600; @FmtCss(addProductoId, addItemModalFormato)">
                             <option value="UNIT">📦 Suelto</option>
                             @foreach (var pack in packsModal)
                             {
@@ -5331,7 +5354,7 @@
                         <div>
                             <label style="font-size:0.72rem; color:#6b7280; font-weight:600;">Formato</label>
                             <select class="form-input" @bind="addItemModalFormato" @bind:after="AplicarDefaultEnvaseModal"
-                                    style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem; @(FormatoEnAlerta(addProductoId, addItemModalFormato) ? FmtAlertaCss : "")">
+                                    style="font-size:0.85rem; padding:0.35rem 0.4rem; margin-top:0.15rem; @FmtCss(addProductoId, addItemModalFormato)">
                                 <option value="1KG">1 kg</option>
                                 <option value="MEDIO">1/2 kg</option>
                                 <option value="CUARTO">1/4 kg</option>
@@ -11457,6 +11480,34 @@
     // ═══ 2026-10-06: formatos que se marcan en ROJO (pedido de Osmar) ═══
     // Café de ½ o ¼ kg, y vasos/tapas sueltos teniendo pack o caja: son los errores de carga típicos.
     private const string FmtAlertaCss = "background:#fef2f2; border:2px solid #dc2626; color:#b91c1c; font-weight:800; font-style:normal; font-family:inherit;";
+
+    /// <summary>2026-11-18: ¼ kg celeste, ½ kg violeta (café). null si no es fracción de café.</summary>
+    private (string Borde, string Fondo, string Texto, string Pie)? FraccionColor(int productoId, string? formato)
+    {
+        if (formato is not ("CUARTO" or "MEDIO")) return null;
+        var p = productos?.FirstOrDefault(x => x.Id == productoId);
+        if (p is not null && p.Categoria != "CAFE") return null;
+        return FraccionColorFmt(formato);
+    }
+
+    private static (string Borde, string Fondo, string Texto, string Pie)? FraccionColorFmt(string? formato) => formato switch
+    {
+        "CUARTO" => ("#0284c7", "#f0f9ff", "#075985", "M12 12 L12 2 A10 10 0 0 1 22 12 Z"),
+        "MEDIO" => ("#7c3aed", "#f5f3ff", "#5b21b6", "M12 2 A10 10 0 0 1 12 22 Z"),
+        _ => null
+    };
+
+    /// <summary>Estilo del select de formato: ¼/½ de café con color + tortita; vasos sueltos en rojo.</summary>
+    private string FmtCss(int productoId, string? formato)
+    {
+        var c = FraccionColor(productoId, formato);
+        if (c is { } f)
+        {
+            var svg = $"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='10' fill='white' stroke='{f.Borde}' stroke-width='2.5'/><path d='{f.Pie}' fill='{f.Borde}'/></svg>".Replace("#", "%23");
+            return $"background:{(f.Borde == "#0284c7" ? "#e0f2fe" : "#ede9fe")} url(\"data:image/svg+xml;utf8,{svg}\") no-repeat 6px center / 18px; padding-left:30px; border:2px solid {f.Borde}; color:{f.Texto}; font-weight:800; font-style:normal; font-family:inherit;";
+        }
+        return FormatoEnAlerta(productoId, formato) ? FmtAlertaCss : "";
+    }
 
     private bool FormatoEnAlerta(int productoId, string? formato)
     {
