@@ -1,0 +1,171 @@
+@* 18/11/2026: otras empresas en el Galicia (una cuenta por sociedad, cada una con su usuario y
+   clave). Lo que trae el robot de estas cuentas queda APARTE de Palanica: no entra en cobranzas,
+   Salieron ni en el saldo de Palanica. Se mira en la ventana 🏦 Banco Galicia cambiando de empresa. *@
+@inject ApiClient Api
+@inject ToastService ToastService
+
+<div class="card" style="padding:1.1rem; margin-top:1.2rem; border:1px solid #e5e7eb; border-radius:10px;">
+    <h3 style="margin-top:0;">Otras empresas</h3>
+    <p style="color:#6b7280; font-size:0.85rem; margin-top:0;">
+        Cuentas del Galicia de otras sociedades, cada una con su usuario y clave. Lo que trae el robot de estas
+        cuentas se ve aparte en la ventana 🏦 Banco Galicia (arriba elegís la empresa). No se mezcla con lo de
+        Palanica: no aparece en cobranzas, en las transferencias a explicar ni en el saldo de Palanica.
+    </p>
+
+    @if (cuentas is null) { <p>Cargando…</p> }
+    else
+    {
+        @foreach (var f in forms)
+        {
+            var form = f;
+            <div style="border:1px solid #e5e7eb; border-radius:8px; padding:0.9rem; margin-bottom:0.9rem;">
+                <div style="font-weight:700; margin-bottom:0.5rem;">@(form.Id == 0 ? "Empresa nueva" : form.Nombre)</div>
+                <div class="form-group">
+                    <label>Nombre de la empresa (así se ve en la ventana del banco)</label>
+                    <input class="form-control" @bind="form.Nombre" placeholder="ej: Intervent SRL" />
+                </div>
+                <div class="form-group">
+                    <label>Usuario del Office Banking</label>
+                    <input class="form-control" @bind="form.Usuario" />
+                </div>
+                <div class="form-group">
+                    <label>Clave @(form.HasPassword ? "(dejá vacío para no cambiarla)" : "")</label>
+                    <input class="form-control" type="password" @bind="form.Password"
+                           placeholder="@(form.HasPassword ? "•••••••• (ya guardada)" : "Escribí la clave")" />
+                </div>
+
+                <label style="display:flex; align-items:center; gap:0.5rem; font-weight:600; cursor:pointer;">
+                    <input type="checkbox" @bind="form.Auto" />
+                    Que entre sola todos los días
+                </label>
+                @if (form.Auto)
+                {
+                    <div style="margin-top:0.5rem;">
+                        <div style="font-size:0.85rem; color:#374151; margin-bottom:0.3rem;">Horarios (Argentina):</div>
+                        @for (int i = 0; i < form.Horarios.Count; i++)
+                        {
+                            var idx = i;
+                            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+                                <input type="time" @bind="form.Horarios[idx]" style="padding:0.3rem 0.5rem; border:1px solid #d1d5db; border-radius:6px;" />
+                                <button class="btn btn-secondary" style="padding:0.2rem 0.6rem;" @onclick="() => form.Horarios.RemoveAt(idx)">✕</button>
+                            </div>
+                        }
+                        <button class="btn btn-secondary" style="padding:0.3rem 0.7rem;" @onclick="() => form.Horarios.Add(new TimeOnly(8, 0))">+ Agregar horario</button>
+                    </div>
+                }
+
+                <div style="margin-top:0.9rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+                    <button class="btn btn-primary" disabled="@form.Guardando" @onclick="() => Guardar(form)">
+                        @(form.Guardando ? "Guardando…" : "Guardar")
+                    </button>
+                    @if (form.Id != 0)
+                    {
+                        <button class="btn btn-secondary" disabled="@form.Trayendo" @onclick="() => Traer(form)">
+                            @(form.Trayendo ? "Trayendo… (puede tardar unos minutos)" : "⬇ Traer ahora")
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-secondary" @onclick="() => forms.Remove(form)">Cancelar</button>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(form.Resultado))
+                {
+                    <div style="margin-top:0.6rem; font-size:0.85rem; color:#374151;">@form.Resultado</div>
+                }
+                @if (form.Id != 0 && form.UltimaAuto is DateTime ua)
+                {
+                    <div style="margin-top:0.4rem; font-size:0.78rem; color:#6b7280;">Última vez que entró sola: @ua.ToArTime().ToString("dd/MM HH:mm")</div>
+                }
+            </div>
+        }
+        @if (!forms.Any(x => x.Id == 0))
+        {
+            <button class="btn btn-secondary" @onclick="Agregar">+ Agregar otra empresa</button>
+        }
+    }
+</div>
+
+@code {
+    private List<ApiClient.GaliciaCuentaDto>? cuentas;
+    private List<Form> forms = new();
+
+    private class Form
+    {
+        public int Id;
+        public string Nombre = "";
+        public string Usuario = "";
+        public string Password = "";
+        public bool HasPassword;
+        public bool Auto;
+        public List<TimeOnly> Horarios = new();
+        public DateTime? UltimaAuto;
+        public bool Guardando;
+        public bool Trayendo;
+        public string? Resultado;
+    }
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        try
+        {
+            cuentas = await Api.GetGaliciaCuentasAsync();
+            forms = cuentas.Where(c => !c.EsPrincipal).Select(c => new Form
+            {
+                Id = c.Id, Nombre = c.Nombre, Usuario = c.Usuario, HasPassword = c.HasPassword,
+                Auto = c.AutoSyncEnabled, UltimaAuto = c.LastAutoSyncAt,
+                Horarios = (c.AutoSyncTimes ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Select(t => TimeOnly.TryParse(t, out var h) ? h : (TimeOnly?)null).Where(h => h is not null).Select(h => h!.Value).ToList()
+            }).ToList();
+        }
+        catch (Exception ex) { cuentas = new(); ToastService.Error("No se pudieron leer las cuentas: " + ex.Message); }
+    }
+
+    private void Agregar()
+    {
+        // Por defecto entra sola a la mañana, al mediodía y a la tarde (se puede cambiar).
+        forms.Add(new Form { Auto = true, Horarios = new() { new(8, 0), new(13, 0), new(18, 0) } });
+    }
+
+    private async Task Guardar(Form f)
+    {
+        if (string.IsNullOrWhiteSpace(f.Nombre)) { ToastService.Error("Poné el nombre de la empresa"); return; }
+        if (string.IsNullOrWhiteSpace(f.Usuario)) { ToastService.Error("Poné el usuario"); return; }
+        f.Guardando = true;
+        try
+        {
+            var r = await Api.SaveGaliciaCuentaAsync(f.Id, new Web.Models.SaveGaliciaAccountRequest
+            {
+                Usuario = f.Usuario.Trim(),
+                Password = string.IsNullOrWhiteSpace(f.Password) ? null : f.Password,
+                Alias = f.Nombre.Trim(),
+                IsActive = true,
+                AutoSyncEnabled = f.Auto,
+                AutoSyncTimes = string.Join(",", f.Horarios.Select(h => h.ToString("HH:mm")))
+            });
+            ToastService.Success("Guardado");
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { f.Guardando = false; }
+    }
+
+    private async Task Traer(Form f)
+    {
+        f.Trayendo = true;
+        f.Resultado = "Trayendo movimientos…";
+        StateHasChanged();
+        try
+        {
+            var m = await Api.TraerGaliciaCuentaAsync(f.Id, "movimientos");
+            f.Resultado = $"Movimientos: {m?.Texto} · trayendo cheques…";
+            StateHasChanged();
+            var c = await Api.TraerGaliciaCuentaAsync(f.Id, "cheques");
+            f.Resultado = $"Movimientos: {m?.Texto} · Cheques: {c?.Texto}";
+        }
+        catch (Exception ex) { f.Resultado = "No se pudo: " + ex.Message; }
+        finally { f.Trayendo = false; }
+    }
+}

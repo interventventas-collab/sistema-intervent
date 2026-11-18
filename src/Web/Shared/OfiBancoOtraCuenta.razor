@@ -1,0 +1,141 @@
+@* 18/11/2026: ventana 🏦 Banco Galicia con OTRA empresa elegida (no Palanica). Solo para mirar
+   importes: saldo, lo que entró, lo que salió y los cheques. No tiene cobrar/asociar porque esa
+   plata no es de las cobranzas ni de los proveedores de Palanica. Usa los estilos op-* de
+   OficinaPastillas (están en su <style>, que es global). *@
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<div class="op-banco-estado">
+    @if (r is null) { <span class="gris">Cargando…</span> }
+    else
+    {
+        <span style="cursor:pointer; font-weight:800;" @onclick="OnToggleSaldo" title="@(VerSaldo ? "Tapar el saldo" : "Ver el saldo")">
+            Saldo @(r.Saldo is null ? "$ —" : VerSaldo ? "$" + Plata(r.Saldo.Value) : "$ ••••••") @(VerSaldo ? "👁" : "🙈")
+        </span>
+        <span class="gris">·</span>
+        <span>@(r.UltimoImportadoAt is DateTime u ? $"Se trajo del banco {Cuando(u)}" : "Todavía no se trajo nada del banco")</span>
+        @if (cuenta is not null)
+        {
+            <span class="gris">·</span>
+            <span class="gris">@(cuenta.AutoSyncEnabled && !string.IsNullOrEmpty(cuenta.AutoSyncTimes) ? $"entra sola a las {cuenta.AutoSyncTimes.Replace(",", ", ")} hs" : "automático apagado")</span>
+        }
+    }
+    <span style="margin-left:auto; display:flex; gap:0.4rem; align-items:center;">
+        @if (trayendo) { <span class="gris">@paso</span> }
+        else if (!string.IsNullOrEmpty(resultado)) { <span class="gris">@resultado</span> }
+        <button class="op-tab on" disabled="@trayendo" @onclick="Traer">⬇ Traer ahora</button>
+        <button class="op-tab" title="Usuario, clave y horarios" @onclick='() => Nav.NavigateTo("/integraciones/galicia")'>⚙ Horarios</button>
+    </span>
+</div>
+
+@if (r is not null)
+{
+    <div class="op-tabs">
+        <button class="op-tab @(vista == "ent" ? "on" : "")" @onclick='() => vista = "ent"'>💰 Entró (@r.Entraron.Count)</button>
+        <button class="op-tab @(vista == "sal" ? "on" : "")" @onclick='() => vista = "sal"'>💸 Salió (@r.Salieron.Count)</button>
+        <button class="op-tab @(vista == "rec" ? "on" : "")" @onclick='() => vista = "rec"'>📄 Cheques recibidos (@r.ChequesRecibidos.Count)</button>
+        <button class="op-tab @(vista == "emi" ? "on" : "")" @onclick='() => vista = "emi"'>✍ Cheques emitidos (@r.ChequesEmitidos.Count)</button>
+    </div>
+
+    @if (vista == "ent" || vista == "sal")
+    {
+        var lista = vista == "ent" ? r.Entraron : r.Salieron;
+        <div class="op-l gris" style="padding:0.45rem 1rem; margin:0;">
+            @(vista == "ent" ? "Lo que entró" : "Lo que salió") en los últimos @Dias días · total $@Plata(lista.Sum(x => x.Importe))
+        </div>
+        <div class="op-lista">
+            @if (lista.Count == 0) { <div class="op-vacio">No hubo movimientos.</div> }
+            @foreach (var m in lista)
+            {
+                <div class="op-fila">
+                    <span style="width:3.2rem; color:#6b7280;">@m.Fecha.ToString("dd/MM")</span>
+                    <span style="flex:1;"><b>@m.Nombre</b>@if (!string.IsNullOrWhiteSpace(m.Detalle)) { <span class="sub">@m.Detalle</span> }</span>
+                    <span style="white-space:nowrap; font-weight:700;">$@Plata2(m.Importe)</span>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        var ches = vista == "rec" ? r.ChequesRecibidos : r.ChequesEmitidos;
+        <div class="op-l gris" style="padding:0.45rem 1rem; margin:0;">
+            @(vista == "rec" ? "Cheques recibidos que están en mano" : "Cheques emitidos que el banco todavía no pagó") · total $@Plata(ches.Sum(x => x.Importe))
+        </div>
+        <div class="op-lista">
+            @if (ches.Count == 0) { <div class="op-vacio">No hay cheques.</div> }
+            else
+            {
+                <table class="op-tabla">
+                    <tr><th>Vence</th><th>Cheque</th><th>@(vista == "rec" ? "De quién" : "A quién")</th><th style="text-align:right;">Importe</th><th>Estado</th></tr>
+                    @foreach (var c in ches)
+                    {
+                        <tr>
+                            <td style="white-space:nowrap;">@(c.Vence?.ToString("dd/MM") ?? "—")</td>
+                            <td>#@c.Numero</td>
+                            <td>@(c.Quien ?? "—")</td>
+                            <td style="text-align:right; white-space:nowrap; font-weight:700;">$@Plata(c.Importe)</td>
+                            <td><span class="op-est">@c.Estado</span></td>
+                        </tr>
+                    }
+                </table>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int CuentaId { get; set; }
+    [Parameter] public bool VerSaldo { get; set; }
+    [Parameter] public EventCallback OnToggleSaldo { get; set; }
+
+    private const int Dias = 30;
+    private ApiClient.GaliciaResumenDto? r;
+    private ApiClient.GaliciaCuentaDto? cuenta;
+    private string vista = "ent";
+    private bool trayendo;
+    private string paso = "";
+    private string? resultado;
+
+    private static readonly System.Globalization.CultureInfo Ar = new("es-AR");
+    private static string Plata(decimal v) => v.ToString("N0", Ar);
+    private static string Plata2(decimal v) => v.ToString("N2", Ar);
+
+    protected override async Task OnInitializedAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        try
+        {
+            r = await Api.GetGaliciaResumenCuentaAsync(CuentaId, Dias);
+            cuenta = (await Api.GetGaliciaCuentasAsync()).FirstOrDefault(c => c.Id == CuentaId);
+        }
+        catch (Exception ex) { resultado = "No se pudo leer: " + ex.Message; }
+    }
+
+    private static string Cuando(DateTime utc)
+    {
+        var ar = utc.ToArTime();
+        var hoy = DateTime.UtcNow.ToArTime().Date;
+        if (ar.Date == hoy) return $"hoy {ar:HH:mm}";
+        if (ar.Date == hoy.AddDays(-1)) return $"ayer {ar:HH:mm}";
+        return ar.ToString("dd/MM HH:mm");
+    }
+
+    private async Task Traer()
+    {
+        trayendo = true; resultado = null;
+        try
+        {
+            paso = "trayendo movimientos…";
+            StateHasChanged();
+            var m = await Api.TraerGaliciaCuentaAsync(CuentaId, "movimientos");
+            paso = "trayendo cheques…";
+            StateHasChanged();
+            var c = await Api.TraerGaliciaCuentaAsync(CuentaId, "cheques");
+            resultado = (m?.Ok == true && c?.Ok == true) ? "listo" : $"movimientos: {m?.Texto} · cheques: {c?.Texto}";
+            await Cargar();
+        }
+        catch (Exception ex) { resultado = "no se pudo: " + ex.Message; }
+        finally { trayendo = false; }
+    }
+}

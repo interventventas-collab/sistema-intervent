@@ -42,10 +42,28 @@ public class GaliciaAutoSyncBackgroundService : BackgroundService
 
     private async Task TickAsync()
     {
+        // 2026-11-18: una vuelta por cada cuenta (una por sociedad), de a una: el robot hace
+        // una sola cosa a la vez.
+        List<int> ids;
+        using (var scope0 = _scopeFactory.CreateScope())
+        {
+            var accounts0 = scope0.ServiceProvider.GetRequiredService<GaliciaAccountService>();
+            ids = (await accounts0.ListEntitiesAsync())
+                .Where(a => a.IsActive && a.AutoSyncEnabled).Select(a => a.Id).ToList();
+        }
+        foreach (var id in ids)
+        {
+            try { await TickCuentaAsync(id); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[Galicia auto] error con la cuenta {Id} (no crítico)", id); }
+        }
+    }
+
+    private async Task TickCuentaAsync(int accountId)
+    {
         using var scope = _scopeFactory.CreateScope();
         var accounts = scope.ServiceProvider.GetRequiredService<GaliciaAccountService>();
 
-        var acc = await accounts.GetEntityAsync();
+        var acc = await accounts.GetEntityAsync(accountId);
         if (acc is null || !acc.AutoSyncEnabled) return;
         var times = GaliciaAccountService.ParseTimes(acc.AutoSyncTimes);
         if (times.Count == 0) return;
@@ -63,30 +81,30 @@ public class GaliciaAutoSyncBackgroundService : BackgroundService
         var lastArg = acc.LastAutoSyncAt?.AddHours(ARG_OFFSET_HOURS);
         if (lastArg.HasValue && lastArg.Value >= dueArg) return; // ya lo hicimos
 
-        _logger.LogInformation("[Galicia auto] Corriendo sincronización del horario {Hora} (ARG)...", dueTime);
+        var quien = acc.Alias ?? acc.Usuario;
+        _logger.LogInformation("[Galicia auto] {Quien}: corriendo el horario {Hora} (ARG)...", quien, dueTime);
         // Marcar YA (antes de correr) para que aunque tarde ~1 min no dispare de nuevo en el próximo tick.
-        await accounts.MarcarAutoSyncAsync(DateTime.UtcNow);
+        await accounts.MarcarAutoSyncAsync(accountId, DateTime.UtcNow);
 
         var sync = scope.ServiceProvider.GetRequiredService<GaliciaSyncService>();
-        var r = await sync.SincronizarAsync();
+        var r = await sync.SincronizarAsync(accountId);
         if (r.Ok)
-            _logger.LogInformation("[Galicia auto] OK — {N} movimientos nuevos ({S} ya estaban)", r.Nuevos, r.SinCambios);
+            _logger.LogInformation("[Galicia auto] {Quien}: OK — {N} movimientos nuevos ({S} ya estaban)", quien, r.Nuevos, r.SinCambios);
         else
-            _logger.LogWarning("[Galicia auto] No se pudo (movimientos): {Err}", r.Error);
+            _logger.LogWarning("[Galicia auto] {Quien}: no se pudo (movimientos): {Err}", quien, r.Error);
 
-        // Después de los movimientos, traer también los cheques (mismo horario, misma sesión de robot).
-        // El robot es de una sola corrida a la vez; como SincronizarAsync ya terminó, ahora sí puede correr cheques.
+        // Después de los movimientos, traer también los cheques (mismo horario).
         try
         {
-            var rc = await sync.SincronizarChequesAsync();
+            var rc = await sync.SincronizarChequesAsync(accountId);
             if (rc.Ok)
-                _logger.LogInformation("[Galicia auto] OK — cheques: {N} nuevos, {A} actualizados ({S} sin cambios)", rc.Nuevos, rc.Actualizados, rc.SinCambios);
+                _logger.LogInformation("[Galicia auto] {Quien}: OK — cheques: {N} nuevos, {A} actualizados ({S} sin cambios)", quien, rc.Nuevos, rc.Actualizados, rc.SinCambios);
             else
-                _logger.LogWarning("[Galicia auto] No se pudo (cheques): {Err}", rc.Error);
+                _logger.LogWarning("[Galicia auto] {Quien}: no se pudo (cheques): {Err}", quien, rc.Error);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "[Galicia auto] error trayendo cheques (no crítico)");
+            _logger.LogWarning(ex, "[Galicia auto] {Quien}: error trayendo cheques (no crítico)", quien);
         }
     }
 }

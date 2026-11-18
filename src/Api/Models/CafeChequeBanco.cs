@@ -106,6 +106,11 @@ public class CafeChequeBanco
     [ForeignKey(nameof(CobranzaId))]
     public CafeCobranza? Cobranza { get; set; }
 
+    /// <summary>2026-11-18: de qué cuenta Galicia vino. NULL = la cuenta principal (Palanica).
+    /// Las otras sociedades quedan fuera de todo lo de Palanica por el filtro global de AppDbContext.
+    /// Su IdBanco va con prefijo "C{id}:" para no chocar con el índice único.</summary>
+    public int? GaliciaAccountId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

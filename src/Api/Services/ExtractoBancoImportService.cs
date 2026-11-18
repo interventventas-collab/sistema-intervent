@@ -21,8 +21,9 @@ public class ExtractoBancoImportService
 
     public record Resultado(int Nuevos, int SinCambios, List<string> Errores);
 
-    /// <summary>Importa el contenido de texto de un CSV del Galicia.</summary>
-    public async Task<Resultado> ImportCsvTextAsync(string allText, string archivoOrigen)
+    /// <summary>Importa el contenido de texto de un CSV del Galicia. cuentaId: null = cuenta
+    /// principal (Palanica); otro valor = otra sociedad (GaliciaAccounts.Id), que queda aparte.</summary>
+    public async Task<Resultado> ImportCsvTextAsync(string allText, string archivoOrigen, int? cuentaId = null)
     {
         var errores = new List<string>();
 
@@ -60,7 +61,10 @@ public class ExtractoBancoImportService
         // Dedup por CANTIDAD de copias por clave (fecha+desc+débito+crédito), NO por saldo.
         // Ver ExtractoDedup para el porqué. conteoExistente = cuántas copias de cada clave ya
         // están en la DB; vistosEnImport = cuántas llevamos vistas en ESTE archivo.
-        var conteoExistente = (await _db.CafeExtractoMovimientos
+        var baseQ = cuentaId is null
+            ? _db.CafeExtractoMovimientos
+            : _db.CafeExtractoMovimientos.IgnoreQueryFilters().Where(m => m.GaliciaAccountId == cuentaId);
+        var conteoExistente = (await baseQ
                 .Select(m => new { m.Fecha, m.Descripcion, m.Debitos, m.Creditos })
                 .ToListAsync())
             .GroupBy(x => ExtractoDedup.Clave(x.Fecha, x.Descripcion, x.Debitos, x.Creditos))
@@ -106,6 +110,8 @@ public class ExtractoBancoImportService
                 vistosEnImport[clave] = ocurrencia;
                 if (ocurrencia <= yaEnDb) { sinCambios++; continue; }
                 var hash = ExtractoDedup.Hash(clave, ocurrencia);
+                // Otra sociedad: prefijo para no chocar con el índice único de HashUnico.
+                if (cuentaId is not null) hash = $"C{cuentaId}:{hash}";
 
                 var entrada = new CafeExtractoMovimiento
                 {
@@ -126,6 +132,7 @@ public class ExtractoBancoImportService
                     LeyendaAdicional4 = NullIfEmpty(GetCol("Leyendas Adicionales 4")),
                     TipoMovimiento = NullIfEmpty(GetCol("Tipo de Movimiento")),
                     HashUnico = hash,
+                    GaliciaAccountId = cuentaId,
                     ArchivoOrigen = archivoOrigen,
                     ImportadoAt = DateTime.UtcNow,
                     CreatedAt = DateTime.UtcNow

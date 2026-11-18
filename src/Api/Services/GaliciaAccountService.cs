@@ -94,6 +94,68 @@ public class GaliciaAccountService
         return (true, null, Map(a));
     }
 
+    // ── 2026-11-18: varias cuentas (una por sociedad). La principal (la de Id más bajo) es
+    // Palanica y sigue usando los métodos de arriba; las otras se manejan por Id. ──
+
+    /// <summary>Todas las cuentas cargadas, la principal primero.</summary>
+    public async Task<List<GaliciaAccountDto>> ListAsync()
+        => (await _db.GaliciaAccounts.OrderBy(x => x.Id).ToListAsync()).Select(Map).ToList();
+
+    /// <summary>Id de la cuenta principal (Palanica), o null si no hay ninguna.</summary>
+    public async Task<int?> PrincipalIdAsync()
+        => await _db.GaliciaAccounts.OrderBy(x => x.Id).Select(x => (int?)x.Id).FirstOrDefaultAsync();
+
+    /// <summary>Entidad cruda por Id (incluye clave — no exponer al frontend).</summary>
+    public async Task<GaliciaAccount?> GetEntityAsync(int id)
+        => await _db.GaliciaAccounts.FirstOrDefaultAsync(x => x.Id == id);
+
+    /// <summary>Todas las entidades (para el job automático). Incluyen clave — no exponer.</summary>
+    public async Task<List<GaliciaAccount>> ListEntitiesAsync()
+        => await _db.GaliciaAccounts.OrderBy(x => x.Id).ToListAsync();
+
+    public async Task MarcarAutoSyncAsync(int id, DateTime whenUtc)
+    {
+        var a = await _db.GaliciaAccounts.FirstOrDefaultAsync(x => x.Id == id);
+        if (a is null) return;
+        a.LastAutoSyncAt = whenUtc;
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>Crea (id = 0) o actualiza una cuenta por Id. Para una sociedad nueva el nombre
+    /// (Alias) es obligatorio: es lo que se ve en la ventana del Banco Galicia.</summary>
+    public async Task<(bool ok, string? error, GaliciaAccountDto? dto)> SaveByIdAsync(int id, SaveGaliciaAccountRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Usuario))
+            return (false, "El usuario es obligatorio", null);
+        GaliciaAccount? a = null;
+        if (id != 0)
+        {
+            a = await _db.GaliciaAccounts.FirstOrDefaultAsync(x => x.Id == id);
+            if (a is null) return (false, "No existe esa cuenta", null);
+        }
+        if (a is null)
+        {
+            if (string.IsNullOrWhiteSpace(req.Password))
+                return (false, "La clave es obligatoria la primera vez", null);
+            if (string.IsNullOrWhiteSpace(req.Alias))
+                return (false, "Poné el nombre de la empresa", null);
+            a = new GaliciaAccount { CreatedAt = DateTime.UtcNow, Password = req.Password };
+            _db.GaliciaAccounts.Add(a);
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(req.Password)) a.Password = req.Password;
+            a.UpdatedAt = DateTime.UtcNow;
+        }
+        a.Usuario = req.Usuario.Trim();
+        a.Alias = string.IsNullOrWhiteSpace(req.Alias) ? null : req.Alias.Trim();
+        a.IsActive = req.IsActive;
+        a.AutoSyncEnabled = req.AutoSyncEnabled;
+        a.AutoSyncTimes = NormTimes(req.AutoSyncTimes);
+        await _db.SaveChangesAsync();
+        return (true, null, Map(a));
+    }
+
     /// <summary>Normaliza "HH:mm,HH:mm,...": valida cada hora, deja las válidas ordenadas y sin repetir.</summary>
     private static string? NormTimes(string? raw)
     {

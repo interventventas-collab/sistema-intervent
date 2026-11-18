@@ -312,13 +312,35 @@
     <div class="op-vent op-vent-ancha">
         <div class="op-vh">
             🏦 Banco Galicia
+            @* 18/11/2026: con más de una empresa, se elige cuál mirar. Palanica = la de siempre. *@
+            @if (bancoCuentas is { Count: > 1 })
+            {
+                <span style="display:flex; gap:0.3rem; margin-left:0.8rem;">
+                    @foreach (var bc in bancoCuentas)
+                    {
+                        var cta = bc;
+                        var on = cta.EsPrincipal ? bancoCuentaId is null : bancoCuentaId == cta.Id;
+                        <button class="op-tab @(on ? "on" : "")" style="font-size:0.8rem;" @onclick="() => bancoCuentaId = cta.EsPrincipal ? null : cta.Id">@cta.Nombre</button>
+                    }
+                </span>
+            }
+            @if (bancoCuentaId is null)
+            {
             <span style="margin-left:auto; font-size:1rem; font-weight:800; cursor:pointer;" @onclick="ToggleSaldo" title="@(verSaldo ? "Tapar el saldo" : "Ver el saldo")">
                 @(saldoBanco is null ? "" : verSaldo ? "$" + Plata(saldoBanco.Saldo) : "$ ••••••") @(verSaldo ? "👁" : "🙈")
             </span>
+            }
+            else { <span style="margin-left:auto;"></span> }
             <button class="op-x" style="margin-left:0.6rem;" title="Cerrar" @onclick="Cerrar">✕</button>
         </div>
         @* 16/11/2026: renglón de estado. Antes el título decía "se actualiza solo", pero el automático está
            apagado a pedido de él desde el 29/10 (los robots entran solo cuando aprieta Traer). *@
+        @if (bancoCuentaId is int otraCta)
+        {
+            <OfiBancoOtraCuenta @key="otraCta" CuentaId="otraCta" VerSaldo="verSaldo" OnToggleSaldo="ToggleSaldo" />
+        }
+        else
+        {
         <div class="op-banco-estado">
             <span>@(saldoBanco?.UltimoImportadoAt is DateTime u2 ? $"Se trajo del banco {CuandoDia(u2)}" : "Todavía no se trajo nada del banco")</span>
             <span class="gris">·</span>
@@ -529,6 +551,7 @@
             </div>
             <div class="op-pie"><a @onclick='() => Nav.NavigateTo($"/cafe/tesoreria/cheques-todos?vista={chVista}")'>Ir a la pantalla de cheques ›</a></div>
         }
+        }
     </div>
 }
 
@@ -648,6 +671,12 @@
         "EN_MANO" => chResp.Conteos.EnMano, "EN_BANCO" => chResp.Conteos.EnBanco, "USADOS" => chResp.Conteos.Usados,
         "RECHAZADOS" => chResp.Conteos.Rechazados, "A_PAGAR" => chResp.Conteos.APagar, _ => chResp.Conteos.Todos,
     };
+    private async Task CargarBancoCuentas()
+    {
+        try { bancoCuentas = await Api.GetGaliciaCuentasAsync(); await InvokeAsync(StateHasChanged); }
+        catch { /* sin la lista se ve solo Palanica, como antes */ }
+    }
+
     private async Task VerCheques(string k)
     {
         chVista = k; chCargando = true; StateHasChanged();
@@ -805,6 +834,9 @@
     private List<SalidaBancoDto> salieron = new();
     private bool bancoOk, verSaldo;
     private string bancoVista = "ent";
+    // 18/11/2026: empresas del Galicia. null = Palanica (la ventana de siempre); otro = Id de la otra sociedad.
+    private List<ApiClient.GaliciaCuentaDto>? bancoCuentas;
+    private int? bancoCuentaId;
     private string? entIgnorando;
     private bool entGuardando;
 
@@ -1113,6 +1145,8 @@
         {
             if (ventana == "che") { Cerrar(); return; }
             ventana = "che";
+            bancoCuentaId = null;
+            _ = CargarBancoCuentas();
             // Abre en la solapa que tiene algo para hacer.
             bancoVista = Entraron.Count > 0 ? "ent" : salieron.Count > 0 ? "sal" : "che";
             if (bancoVista == "che") _ = VerCheques(chVista);
