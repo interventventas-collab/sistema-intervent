@@ -1612,7 +1612,7 @@
                 }
                 @if (HasPerm("vault") && !(HasPerm("cafe") || HasPerm("oficina")))
                 {
-                    <NavItem Href="/vault" Label="Bóveda" Icon="@SvgIcons.Shield"
+                    <NavItem Href="/vault" Label="Nitro" Icon="@SvgIcons.Shield"
                              IsActive="@IsActive("/vault")" OnClick="@(() => NavigateTo("/vault"))" />
                 }
                 @if (HasPerm("config"))
@@ -2111,9 +2111,9 @@
                 {
                 <button class="topbar-nav-modern"
                         @onclick="@(() => NavigateTo("/vault"))"
-                        title="Bóveda de contraseñas">
+                        title="Nitro (contraseñas)">
                     <span class="topbar-nav-modern-ico">@SvgIcons.Shield</span>
-                    <span>BOVEDA CONT</span>
+                    <span>NITRO</span>
                 </button>
                 }
                 @* 2026-10-20: CALCU ALQUILER va pegado abajo de CALCUPRECIOS (mismo lugar, mitad de alto

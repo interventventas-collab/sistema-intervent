@@ -68,7 +68,7 @@ public static class MenuDefinition
             new MenuItem("compartido", "Compartido (carpeta común)", "/compartido"),
             new MenuItem("auditoria", "Auditoria", "/auditoria"),
             new MenuItem("backups", "Backups", "/backups"),
-            new MenuItem("vault", "Bóveda de contraseñas", "/vault")
+            new MenuItem("vault", "Nitro (contraseñas)", "/vault")
         }),
         new MenuGroup("configuracion", "Configuracion", new[]
         {
