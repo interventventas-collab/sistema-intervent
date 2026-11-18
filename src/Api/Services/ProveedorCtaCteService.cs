@@ -394,6 +394,10 @@ public class ProveedorCtaCteService
         if (req.Items is null || req.Items.Count == 0) return ("Cargar al menos un comprobante (o 'a cuenta')", 0, "");
         if (req.Medios is null || req.Medios.Count == 0) return ("Cargar al menos una forma de pago", 0, "");
         if (req.Items.Any(i => i.Importe <= 0)) return ("Hay un importe en cero o negativo", 0, "");
+        // 18/11/2026: sin caja elegida el pago quedaba guardado a medias (sin forma de pago) y salía "Error 500".
+        if (req.Medios.Any(m => m.CajaId <= 0)) return ("Elegí la caja de cada forma de pago (de dónde sale la plata)", 0, "");
+        var cajaIds = req.Medios.Select(m => m.CajaId).Distinct().ToList();
+        if (await _db.CafeCajas.CountAsync(c => cajaIds.Contains(c.Id)) != cajaIds.Count) return ("Una de las cajas elegidas no existe", 0, "");
 
         var sumComp = req.Items.Sum(c => c.Importe);
         var sumMed = req.Medios.Sum(m => m.Importe);
