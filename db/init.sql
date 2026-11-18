@@ -8942,3 +8942,30 @@ BEGIN
     EXEC('UPDATE ContadoraComprobantes SET PrimeraVezEn = CASE WHEN FechaEmision IS NOT NULL AND DATEADD(day,1,FechaEmision) < ImportadoEn THEN DATEADD(hour,10,FechaEmision) ELSE ImportadoEn END');
 END
 GO
+
+-- 18/11/2026: Facturas recibidas — categoría y "cómo se paga" por PROVEEDOR (por CUIT), y por
+-- FACTURA un comentario y el pago marcado (a mano o confirmando la sugerencia de Mercado Pago /
+-- banco Galicia). Las sugerencias que se dicen "No" quedan en Rechazados ("MP:123,BCO:45").
+-- ⚠ En PROD correr a mano ANTES de publicar la API (sqlcmd con -I). Idempotente.
+IF OBJECT_ID('Compras_ProveedorConfig','U') IS NULL
+CREATE TABLE Compras_ProveedorConfig (
+    Cuit NVARCHAR(30) NOT NULL PRIMARY KEY,
+    Categoria NVARCHAR(60) NULL,
+    ReglaPago NVARCHAR(30) NULL,          -- DEBITO / TARJETA / MP / EFECTIVO (todas sus facturas salen pagadas)
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedBy NVARCHAR(120) NULL
+);
+GO
+IF OBJECT_ID('Compras_FacturaExtra','U') IS NULL
+CREATE TABLE Compras_FacturaExtra (
+    IdComprobante NVARCHAR(40) NOT NULL PRIMARY KEY,   -- ContadoraComprobantes.IdComprobante
+    Comentario NVARCHAR(500) NULL,
+    PagoMedio NVARCHAR(30) NULL,          -- Mercado Pago / Transferencia / Débito / Tarjeta / Efectivo
+    PagoFecha DATETIME2 NULL,
+    PagoMpMovId INT NULL,                 -- Mp_Movimientos.Id si se confirmó la sugerencia
+    PagoExtractoMovId INT NULL,           -- Cafe_ExtractoMovimientos.Id si se confirmó la sugerencia
+    Rechazados NVARCHAR(1000) NULL,
+    UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    UpdatedBy NVARCHAR(120) NULL
+);
+GO

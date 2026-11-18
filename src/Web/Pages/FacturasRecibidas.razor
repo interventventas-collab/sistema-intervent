@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = "admin")]
 @inject ApiClient Api
 @inject ToastService ToastService
+@inject IJSRuntime JS
 @implements IDisposable
 
 @* 18/11/2026 — Facturas recibidas: lo que nos facturan los proveedores. Las trae de ARCA un robot
@@ -28,6 +29,28 @@
     .fr-dia td { font-size:0.7rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; padding-top:0.8rem; border-bottom:1px solid #e5e7eb; }
     .fr a { color:inherit; }
     .fr-pdf { text-decoration:none; }
+    /* 18/11/2026 (2ª): categoría, comentario, pagada, sugerencias */
+    .fr-chips { display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center; }
+    .fr-chip { border:1px solid #d1d5db; background:#fff; border-radius:14px; padding:0.15rem 0.65rem; font-size:0.8rem; color:#374151; cursor:pointer; }
+    .fr-chip.on { background:#111827; color:#fff; border-color:#111827; }
+    .fr-tot { display:flex; gap:1rem; flex-wrap:wrap; color:#6b7280; font-size:0.84rem; margin-bottom:0.35rem; }
+    .fr-tot b { color:#111827; font-weight:600; }
+    .fr-cat { border:0; border-bottom:1px dashed #9ca3af; background:none; padding:0; font-size:0.84rem; color:#374151; cursor:pointer; white-space:nowrap; }
+    .fr-cat.vacia { color:#9ca3af; }
+    .fr-catsel { font-size:0.82rem; padding:0.1rem 0.25rem; border:1px solid #9ca3af; border-radius:5px; max-width:170px; }
+    .fr-com { color:#6b7280; font-size:0.78rem; margin-top:0.1rem; cursor:pointer; }
+    .fr-com.vacio { color:#c0c4cc; }
+    .fr tr:hover .fr-com.vacio { color:#9ca3af; }
+    .fr-cominp { width:100%; font-size:0.8rem; padding:0.15rem 0.35rem; border:1px solid #9ca3af; border-radius:5px; margin-top:0.15rem; }
+    .fr-via { color:#6b7280; font-size:0.74rem; }
+    .fr-lnk { border:0; background:none; padding:0; color:#374151; text-decoration:underline; cursor:pointer; font-size:0.8rem; }
+    .fr-x { border:0; background:none; padding:0 0.2rem; color:#9ca3af; cursor:pointer; font-size:0.78rem; }
+    .fr-sug { background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; padding:0.15rem 0.4rem; font-size:0.76rem; color:#92400e; margin-top:0.2rem; display:flex; width:fit-content; max-width:420px; gap:0.3rem; align-items:center; flex-wrap:wrap; }
+    .fr-sug button { border:1px solid #d97706; background:#fff; color:#92400e; border-radius:5px; font-size:0.72rem; padding:0 0.4rem; cursor:pointer; }
+    .fr-menu { border:1px solid #e5e7eb; border-radius:8px; background:#fff; box-shadow:0 6px 18px rgba(0,0,0,.12); padding:0.4rem; margin-top:0.25rem; font-size:0.8rem; min-width:190px; }
+    .fr-menu button.op { display:block; width:100%; text-align:left; border:0; background:none; padding:0.2rem 0.3rem; cursor:pointer; border-radius:4px; }
+    .fr-menu button.op:hover { background:#f3f4f6; }
+    .fr-menu label { display:flex; gap:0.3rem; align-items:flex-start; color:#6b7280; font-size:0.74rem; margin-top:0.3rem; border-top:1px solid #f1f5f9; padding-top:0.3rem; }
 </style>
 
 <div class="card">
@@ -53,7 +76,19 @@
                     <option value="@m.ToString("yyyy-MM")">@m.ToString("MMMM yyyy", Ar)</option>
                 }
             </select>
-            <input class="form-input" placeholder="🔍 Proveedor o CUIT" @bind="busca" @bind:event="oninput" @bind:after="BuscarConPausa" />
+            <input class="form-input" placeholder="🔍 Proveedor, CUIT o comentario" @bind="busca" @bind:event="oninput" />
+            <select class="form-input" @bind="filtroCat" style="max-width:200px;">
+                <option value="">Categoría: todas</option>
+                <option value="-">Sin categoría</option>
+                @foreach (var c in categorias) { <option value="@c">@c</option> }
+            </select>
+            <div class="fr-chips">
+                @foreach (var (k, t) in new[] { ("", "Todas"), ("sin", "Sin pagar"), ("pag", "Pagadas"), ("nose", "No sé") })
+                {
+                    var kk = k;
+                    <button type="button" class="fr-chip @(filtroPago == kk ? "on" : "")" @onclick="() => filtroPago = kk">@t</button>
+                }
+            </div>
         </div>
 
         @if (lista is null)
@@ -66,14 +101,22 @@
         }
         else
         {
-            <div class="fr-sub" style="margin-bottom:0.3rem;">
-                @lista.Count comprobante@(lista.Count == 1 ? "" : "s") · @Plata(lista.Sum(f => f.Total))
-                @if (lista.Any(f => f.Nueva)) { <span> · <span class="punto"></span>@lista.Count(f => f.Nueva) nueva@(lista.Count(f => f.Nueva) == 1 ? "" : "s")</span> }
+            var vis = Visibles();
+            <div class="fr-tot">
+                <span>@vis.Count comprobante@(vis.Count == 1 ? "" : "s") · <b>@Plata(vis.Sum(f => f.Total))</b>
+                    @if (vis.Any(f => f.Nueva)) { <span> · <span class="punto"></span>@vis.Count(f => f.Nueva) nueva@(vis.Count(f => f.Nueva) == 1 ? "" : "s")</span> }</span>
+                <span>Sin pagar <b style="color:#b45309;">@Plata(vis.Where(EsSinPagar).Sum(SaldoDe))</b></span>
+                <span>No sé <b>@Plata(vis.Where(EsNoSe).Sum(f => f.Total))</b></span>
+                @{ var porCat = vis.Where(f => !f.EsNotaCredito && f.Categoria != null).GroupBy(f => f.Categoria!).Select(g => (g.Key, g.Sum(x => x.Total))).OrderByDescending(x => x.Item2).Take(5).ToList(); }
+                @if (porCat.Count > 0)
+                {
+                    <span>@((MarkupString)string.Join(" · ", porCat.Select(c => $"{System.Net.WebUtility.HtmlEncode(c.Key)} <b>{Plata(c.Item2)}</b>")))</span>
+                }
             </div>
             <div class="table-responsive">
                 <table class="fr">
-                    <tr><th>Llegó</th><th>Proveedor</th><th>Comprobante</th><th>Fecha</th><th class="num">Importe</th><th>¿Pagada?</th><th></th></tr>
-                    @foreach (var f in lista)
+                    <tr><th>Llegó</th><th>Proveedor</th><th>Categoría</th><th>Comprobante</th><th>Fecha</th><th class="num">Importe</th><th>¿Pagada?</th><th></th></tr>
+                    @foreach (var f in vis)
                     {
                         <tr>
                             <td style="white-space:nowrap;">@if (f.Nueva) { <span class="punto" title="Nueva"></span> }@f.Llego.ToArTime().ToString("dd/MM")</td>
@@ -83,11 +126,40 @@
                                     <a href="/cafe/proveedores/@pid/estado-cuenta"><b>@f.Proveedor</b></a>
                                 }
                                 else { <b>@f.Proveedor</b> }
+                                @if (editCom == f.Id)
+                                {
+                                    <input class="fr-cominp" @bind="textoCom" @bind:event="oninput" @onkeydown="e => TeclaComentario(e, f)" @onblur="() => GuardarComentario(f)"
+                                           placeholder="Nota de esta factura (Enter guarda, Esc cancela)" maxlength="500" autofocus />
+                                }
+                                else if (!string.IsNullOrWhiteSpace(f.Comentario))
+                                {
+                                    <div class="fr-com" title="Tocá para cambiar la nota" @onclick="() => EditarComentario(f)">✎ @f.Comentario</div>
+                                }
+                                else
+                                {
+                                    <div class="fr-com vacio" title="Agregar una nota a esta factura" @onclick="() => EditarComentario(f)">✎ agregar comentario</div>
+                                }
+                            </td>
+                            <td>
+                                @if (f.Cuit is null) { <span class="gris">—</span> }
+                                else if (editCat == f.Cuit + "|" + f.Id)
+                                {
+                                    <select class="fr-catsel" value="@(f.Categoria ?? "")" @onchange="e => ElegirCategoria(f, e.Value?.ToString())" @onblur="() => editCat = null">
+                                        <option value="">— sin categoría —</option>
+                                        @foreach (var c in categorias) { <option value="@c">@c</option> }
+                                        <option value="+">+ Otra categoría…</option>
+                                    </select>
+                                }
+                                else
+                                {
+                                    <button type="button" class="fr-cat @(f.Categoria is null ? "vacia" : "")" title="Es del proveedor: vale para todas sus facturas"
+                                            @onclick='() => editCat = f.Cuit + "|" + f.Id'>@(f.Categoria ?? "elegir…")</button>
+                                }
                             </td>
                             <td class="gris">@(f.EsNotaCredito ? "Nota de crédito" : f.Tipo) @f.Numero</td>
                             <td class="gris">@f.Fecha?.ToString("dd/MM/yy")</td>
                             <td class="num">@Plata(f.Total)</td>
-                            <td class="@(f.Pago == "pagada" ? "ok" : f.Pago?.StartsWith("debe") == true || f.Pago == "a pagar" ? "debe" : "gris")">@(f.Pago ?? "—")</td>
+                            <td>@CeldaPago(f)</td>
                             <td style="text-align:right;">
                                 @if (f.TienePdf)
                                 {
@@ -98,7 +170,7 @@
                     }
                 </table>
             </div>
-            <div class="fr-sub" style="margin-top:0.6rem;">"¿Pagada?" se sabe solo de los proveedores que llevan cuenta corriente (¿A quién le debo?).</div>
+            <div class="fr-sub" style="margin-top:0.6rem;">"¿Pagada?" sale de la cuenta corriente (proveedores que la llevan), de lo que marcaste a mano, o de la regla del proveedor ("se paga por débito / tarjeta / MP"). En amarillo: un pago de Mercado Pago o del Galicia por casi el mismo importe — confirmalo con Sí o No.</div>
         }
     </div>
 </div>
@@ -123,8 +195,9 @@
     {
         try
         {
-            lista = await Api.GetFacturasRecibidasAsync(mes, busca);
+            lista = await Api.GetFacturasRecibidasAsync(mes, null);
             estado = await Api.GetFacturasRecibidasEstadoAsync();
+            if (categorias.Count == 0) categorias = await Api.GetFacturasCategoriasAsync();
         }
         catch (Exception ex) { lista ??= new(); ToastService.Error(ex.Message); }
     }
@@ -183,7 +256,7 @@
             if (estado is { Corriendo: false })
             {
                 timer?.Dispose(); timer = null; iniciando = false;
-                lista = await Api.GetFacturasRecibidasAsync(mes, busca);
+                lista = await Api.GetFacturasRecibidasAsync(mes, null);
                 if (estado.Resultado?.StartsWith("⚠") == true) ToastService.Error(estado.Resultado);
                 else ToastService.Success("Listo: facturas actualizadas");
                 try { await Api.MarcarFacturasRecibidasVistasAsync(); } catch { }
@@ -194,6 +267,177 @@
     }
 
     private static string Plata(decimal v) => "$" + v.ToString("N0", Ar);
+
+    // ═══════════ 18/11/2026 (2ª): categorías, comentarios, pagada ═══════════
+    private List<string> categorias = new();
+    private string filtroCat = "", filtroPago = "";
+    private string? editCat, editCom, menuPago;
+    private string textoCom = "";
+    private bool reglaSiempre;
+
+    private static bool EsSinPagar(ApiClient.FacturaRecibidaDto f) => f.Pago == "a pagar" || f.Pago?.StartsWith("debe") == true;
+    private static bool EsNoSe(ApiClient.FacturaRecibidaDto f) => !f.EsNotaCredito && (f.Pago is null || f.Pago.StartsWith("anterior"));
+    private static decimal SaldoDe(ApiClient.FacturaRecibidaDto f)
+    {
+        if (f.Pago?.StartsWith("debe ") == true && decimal.TryParse(f.Pago[5..].Replace("$", "").Replace(".", ""), out var d)) return d;
+        return f.Total;
+    }
+
+    private List<ApiClient.FacturaRecibidaDto> Visibles()
+    {
+        IEnumerable<ApiClient.FacturaRecibidaDto> l = lista ?? new();
+        var b = (busca ?? "").Trim();
+        if (b != "")
+            l = l.Where(f => f.Proveedor.Contains(b, StringComparison.OrdinalIgnoreCase) || (f.Cuit ?? "").Contains(b)
+                          || (f.Comentario ?? "").Contains(b, StringComparison.OrdinalIgnoreCase) || f.Numero.Contains(b));
+        if (filtroCat == "-") l = l.Where(f => f.Categoria is null);
+        else if (filtroCat != "") l = l.Where(f => f.Categoria == filtroCat);
+        l = filtroPago switch
+        {
+            "sin" => l.Where(EsSinPagar),
+            "pag" => l.Where(f => f.Pago == "pagada"),
+            "nose" => l.Where(EsNoSe),
+            _ => l,
+        };
+        return l.ToList();
+    }
+
+    private void Reemplazar(string id, Func<ApiClient.FacturaRecibidaDto, ApiClient.FacturaRecibidaDto> cambio)
+    {
+        if (lista is null) return;
+        lista = lista.Select(x => x.Id == id ? cambio(x) : x).ToList();
+    }
+
+    // ── Comentario ──
+    private void EditarComentario(ApiClient.FacturaRecibidaDto f) { editCom = f.Id; textoCom = f.Comentario ?? ""; }
+    private async Task TeclaComentario(KeyboardEventArgs e, ApiClient.FacturaRecibidaDto f)
+    {
+        if (e.Key == "Escape") editCom = null;
+        else if (e.Key == "Enter") await GuardarComentario(f);
+    }
+    private async Task GuardarComentario(ApiClient.FacturaRecibidaDto f)
+    {
+        if (editCom != f.Id) return;
+        editCom = null;
+        var t = textoCom.Trim();
+        if (t == (f.Comentario ?? "")) return;
+        if (await Api.GuardarComentarioFacturaAsync(f.Id, t)) Reemplazar(f.Id, x => x with { Comentario = t == "" ? null : t });
+        else ToastService.Error("No se pudo guardar la nota");
+    }
+
+    // ── Categoría (del proveedor) ──
+    private async Task ElegirCategoria(ApiClient.FacturaRecibidaDto f, string? v)
+    {
+        editCat = null;
+        if (f.Cuit is null) return;
+        if (v == "+")
+        {
+            string? nueva = null;
+            try { nueva = await JS.InvokeAsync<string?>("prompt", "Nombre de la categoría nueva:"); } catch { }
+            if (string.IsNullOrWhiteSpace(nueva)) return;
+            v = nueva.Trim();
+            if (!categorias.Contains(v)) categorias.Add(v);
+        }
+        var cat = string.IsNullOrWhiteSpace(v) ? null : v;
+        if (!await Api.PonerCategoriaProveedorAsync(f.Cuit, cat)) { ToastService.Error("No se pudo guardar la categoría"); return; }
+        if (lista is not null) lista = lista.Select(x => x.Cuit == f.Cuit ? x with { Categoria = cat } : x).ToList();
+        var n = lista?.Count(x => x.Cuit == f.Cuit) ?? 1;
+        ToastService.Success(cat is null ? "Categoría sacada" : $"{f.Proveedor}: {cat}" + (n > 1 ? $" (sus {n} facturas)" : ""));
+    }
+
+    // ── Pagada ──
+    private static readonly (string Medio, string? Regla)[] Medios =
+        { ("Mercado Pago", "MP"), ("Transferencia", null), ("Débito automático", "DEBITO"), ("Tarjeta", "TARJETA"), ("Efectivo", "EFECTIVO") };
+
+    private async Task MarcarPagada(ApiClient.FacturaRecibidaDto f, string medio, string? regla)
+    {
+        menuPago = null;
+        if (reglaSiempre && regla is not null && f.Cuit is not null)
+        {
+            if (!await Api.PonerReglaPagoProveedorAsync(f.Cuit, regla)) { ToastService.Error("No se pudo guardar"); return; }
+            ToastService.Success($"{f.Proveedor}: todas sus facturas salen pagadas ({medio.ToLowerInvariant()})");
+            reglaSiempre = false;
+            await Cargar();
+            return;
+        }
+        if (!await Api.MarcarFacturaPagadaAsync(f.Id, medio)) { ToastService.Error("No se pudo marcar"); return; }
+        Reemplazar(f.Id, x => x with { Pago = "pagada", PagoVia = medio + " · " + FechaPalabras.HoyAr.ToString("dd/MM"), PagoManual = true, Sugerencia = null });
+    }
+
+    private async Task Confirmar(ApiClient.FacturaRecibidaDto f, ApiClient.FacturaSugerenciaDto s)
+    {
+        var medio = s.Origen == "MP" ? "Mercado Pago" : "Galicia";
+        if (!await Api.MarcarFacturaPagadaAsync(f.Id, medio, s.Origen, s.MovId)) { ToastService.Error("No se pudo marcar"); return; }
+        Reemplazar(f.Id, x => x with { Pago = "pagada", PagoVia = $"{medio} · {s.Fecha:dd/MM}", PagoManual = true, Sugerencia = null });
+    }
+
+    private async Task Rechazar(ApiClient.FacturaRecibidaDto f, ApiClient.FacturaSugerenciaDto s)
+    {
+        if (!await Api.RechazarSugerenciaFacturaAsync(f.Id, s.Origen, s.MovId)) { ToastService.Error("No se pudo guardar"); return; }
+        Reemplazar(f.Id, x => x with { Sugerencia = null });
+        ToastService.Success("Listo, no te lo vuelvo a sugerir");
+    }
+
+    private async Task Deshacer(ApiClient.FacturaRecibidaDto f)
+    {
+        if (f.PagoManual)
+        {
+            if (!await Api.DesmarcarFacturaPagadaAsync(f.Id)) { ToastService.Error("No se pudo deshacer"); return; }
+        }
+        else if (f.ReglaPago is not null && f.Cuit is not null)
+        {
+            if (!await Api.PonerReglaPagoProveedorAsync(f.Cuit, null)) { ToastService.Error("No se pudo quitar la regla"); return; }
+        }
+        await Cargar();
+    }
+
+    private RenderFragment CeldaPago(ApiClient.FacturaRecibidaDto f) => __builder =>
+    {
+        if (f.EsNotaCredito) { <span class="gris">—</span> return; }
+        if (f.Pago == "pagada")
+        {
+            <span class="ok">pagada</span>
+            if (f.PagoManual || f.ReglaPago is not null)
+            {
+                <button type="button" class="fr-x" title="@(f.PagoManual ? "Deshacer: volver a «no sé»" : "Quitar la regla de este proveedor")" @onclick="() => Deshacer(f)">✕</button>
+            }
+            if (!string.IsNullOrWhiteSpace(f.PagoVia)) { <div class="fr-via">@f.PagoVia</div> }
+            return;
+        }
+        if (f.Pago is not null && !f.Pago.StartsWith("anterior"))
+        {
+            <span class="@(EsSinPagar(f) ? "debe" : "gris")">@f.Pago</span>
+            if (!string.IsNullOrWhiteSpace(f.PagoVia)) { <div class="fr-via">@f.PagoVia</div> }
+            return;
+        }
+        <span class="gris">@(f.Pago ?? "no sé")</span>
+        if (!f.CuentaCorriente)
+        {
+            <span class="gris"> · </span><button type="button" class="fr-lnk" @onclick='() => { menuPago = menuPago == f.Id ? null : f.Id; reglaSiempre = false; }'>marcar pagada ▾</button>
+            if (menuPago == f.Id)
+            {
+                <div class="fr-menu">
+                    @foreach (var (medio, regla) in Medios)
+                    {
+                        var m = medio; var r = regla;
+                        <button type="button" class="op" @onclick="() => MarcarPagada(f, m, r)">@m</button>
+                    }
+                    @if (f.Cuit is not null)
+                    {
+                        <label><input type="checkbox" @bind="reglaSiempre" /> Siempre se paga así: marcar pagadas todas las de @f.Proveedor (no aplica a Transferencia)</label>
+                    }
+                </div>
+            }
+        }
+        if (f.Sugerencia is { } s)
+        {
+            <div class="fr-sug" title="Mismo importe (o casi) y fecha cerca. Confirmá si es el pago de esta factura.">
+                ¿Es este? @s.Texto
+                <button type="button" @onclick="() => Confirmar(f, s)">Sí</button>
+                <button type="button" @onclick="() => Rechazar(f, s)">No</button>
+            </div>
+        }
+    };
 
     public void Dispose() { timer?.Dispose(); pausa?.Cancel(); }
 }
