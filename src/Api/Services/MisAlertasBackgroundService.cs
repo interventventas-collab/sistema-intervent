@@ -235,7 +235,11 @@ public class MisAlertasBackgroundService : BackgroundService
                 var texto = string.IsNullOrWhiteSpace(hist.Detalle)
                     ? $"🔔 {hist.Mensaje}" : $"🔔 {hist.Mensaje}\n{hist.Detalle}";
 
-                if (alerta.CanalWhatsApp)
+                // 2026-11-18: interruptor general "Avisos automáticos por WhatsApp" (Mis alertas).
+                var waGeneral = alerta.CanalWhatsApp && await WaAvisosAutomaticos.EstanPrendidosAsync(db);
+                if (alerta.CanalWhatsApp && !waGeneral)
+                    _logger.LogInformation("[Alertas] '{M}' no sale por WhatsApp: avisos automáticos por WhatsApp apagados", hist.Mensaje);
+                if (waGeneral)
                 {
                     var wa = scope.ServiceProvider.GetRequiredService<WhatsAppOutboundService>();
                     foreach (var per in pers.Where(x => !string.IsNullOrWhiteSpace(x.WhatsAppNumero)))
@@ -604,6 +608,8 @@ public class MisAlertasBackgroundService : BackgroundService
 
         var alerta = await db.MisAlertas.AsNoTracking().FirstOrDefaultAsync(x => x.Tipo == "FICHADA");
         if (alerta is null || !alerta.Activa || !alerta.CanalWhatsApp) return;
+        // 2026-11-18: interruptor general "Avisos automáticos por WhatsApp" (Mis alertas). Sin log: corre cada minuto.
+        if (!await WaAvisosAutomaticos.EstanPrendidosAsync(db)) return;
 
         var hoy = ahoraAr.Date;
         var origenDia = $"fichadas:{hoy:yyyy-MM-dd}:";

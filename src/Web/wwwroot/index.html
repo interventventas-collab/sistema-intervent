@@ -140,6 +140,42 @@
                 beep(1319, 0.16, 0.30);  // Mi (más agudo)
             } catch (e) { /* audio bloqueado: ignorar */ }
         };
+
+        // 18/11/2026: "¡ka-ching!" de caja registradora para los #gasto por WhatsApp. También con Web
+        // Audio (sin archivo): un golpe seco de cajón (ruido filtrado) y después la campanita metálica
+        // (tonos con armónicos "desafinados" que se apagan despacio, como una campana de verdad).
+        window.playCajaSound = function () {
+            try {
+                var Ctx = window.AudioContext || window.webkitAudioContext;
+                if (!Ctx) return;
+                var ctx = new Ctx();
+                var t0 = ctx.currentTime + 0.02;
+                // "ka": golpe del cajón
+                var len = Math.floor(ctx.sampleRate * 0.09);
+                var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+                var d = buf.getChannelData(0);
+                for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+                var ruido = ctx.createBufferSource(); ruido.buffer = buf;
+                var bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.8;
+                var gR = ctx.createGain(); gR.gain.value = 0.9;
+                ruido.connect(bp); bp.connect(gR); gR.connect(ctx.destination);
+                ruido.start(t0);
+                // "ching": campana (dos golpes, el segundo más fuerte y largo)
+                var campana = function (t, vol, dur) {
+                    [[2637, 1], [3951, 0.55], [5274, 0.35], [6643, 0.2]].forEach(function (p) {
+                        var o = ctx.createOscillator(); var g = ctx.createGain();
+                        o.type = 'sine'; o.frequency.value = p[0];
+                        o.connect(g); g.connect(ctx.destination);
+                        g.gain.setValueAtTime(0.0001, t);
+                        g.gain.exponentialRampToValueAtTime(vol * p[1], t + 0.005);
+                        g.gain.exponentialRampToValueAtTime(0.0001, t + dur * (1.1 - p[1] * 0.3));
+                        o.start(t); o.stop(t + dur + 0.05);
+                    });
+                };
+                campana(t0 + 0.10, 0.10, 0.25);
+                campana(t0 + 0.22, 0.22, 1.1);
+            } catch (e) { /* audio bloqueado: ignorar */ }
+        };
     </script>
     <script>
         // Helper para el modulo de Mapeo Flex

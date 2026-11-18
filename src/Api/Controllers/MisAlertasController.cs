@@ -353,6 +353,23 @@ public class MisAlertasController : ControllerBase
     public record AlertaDisparadaDto(int Id, string Tipo, string Mensaje, string? Detalle, DateTime? DisparadaAt, bool Vista);
     public record AlertasBellDto(int NoVistas, List<AlertaDisparadaDto> Disparadas);
 
+    // ── 2026-11-18: interruptor general "📱 Avisos automáticos por WhatsApp" ──
+    // Apagado = ningún robot manda WhatsApp por su cuenta; campanita, Telegram y mail siguen igual.
+    // Lo lee cualquiera con acceso a Mis alertas; lo cambia solo el admin.
+    public record WaAvisosAutomaticosDto(bool Prendidos);
+
+    [HttpGet("wa-avisos-automaticos")]
+    public async Task<IActionResult> GetWaAvisosAutomaticos()
+        => Ok(new WaAvisosAutomaticosDto(await WaAvisosAutomaticos.EstanPrendidosAsync(_db)));
+
+    [HttpPut("wa-avisos-automaticos")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> SetWaAvisosAutomaticos([FromBody] WaAvisosAutomaticosDto r)
+    {
+        await WaAvisosAutomaticos.SetAsync(_db, r.Prendidos);
+        return Ok(new WaAvisosAutomaticosDto(r.Prendidos));
+    }
+
     /// <summary>Alertas disparadas ahora que el rol del usuario puede ver (para la campanita).</summary>
     [HttpGet("disparadas")]
     public async Task<IActionResult> Disparadas()
@@ -460,6 +477,22 @@ public class MisAlertasController : ControllerBase
                 lista.Add(new AlertaDisparadaDto(-3000000 - i, d < hoyAr ? "VEP_VENCIDO" : "VEP_VENCE",
                     $"{cuando}: {v.Nombre}", d < hoyAr ? "No veo el pago · Impuestos" : "María todavía no mandó el VEP · Impuestos",
                     DateTime.UtcNow, campVista.HasValue && campVista.Value.AddHours(-3).Date >= hoyAr));
+            }
+        }
+        if (bucket == "admin")
+        {
+            // 18/11/2026: "#gasto" por WhatsApp pendientes de cargar. Id -4000000-Id (tocarlo abre Nuevo pago).
+            var campVistaG = ComprasAfipRobot.ParseUtc(await ComprasAfipRobot.LeerAsync(_db, KeyCampanaVista));
+            var ar3 = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+            var gastos = await _db.GastosWhatsApp.AsNoTracking().Where(g => g.Estado == "PENDIENTE")
+                .OrderByDescending(g => g.Id).Take(20).ToListAsync();
+            foreach (var g in gastos)
+            {
+                var txt = g.Texto.Length > 70 ? g.Texto[..70] + "…" : g.Texto;
+                lista.Add(new AlertaDisparadaDto(-4000000 - g.Id, "GASTO_WA",
+                    $"Gasto: {txt}" + (string.IsNullOrEmpty(g.MediaUrl) ? "" : " 📎"),
+                    (g.Importe is decimal imp ? imp.ToString("$#,0", ar3) + " · " : "") + "WhatsApp · tocá para cargarlo",
+                    g.CreatedAt, campVistaG.HasValue && campVistaG.Value >= g.CreatedAt));
             }
         }
         lista = lista.OrderByDescending(x => x.DisparadaAt ?? DateTime.MinValue).ToList();

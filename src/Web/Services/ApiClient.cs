@@ -10943,6 +10943,29 @@ public partial class ApiClient
             horas[it.NomEmpleadoId] = it.EntregasHoras ?? new();
         return (equipo, horas);
     }
+
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 2026-11-18: interruptor general "📱 Avisos automáticos por WhatsApp" (Mis alertas).
+    // Apagado = ningún robot manda WhatsApp; campanita, Telegram y mail siguen igual.
+    // Leer: cualquiera con acceso a Mis alertas. Cambiar: solo admin.
+    // ════════════════════════════════════════════════════════════════════════════════
+    public sealed record WaAvisosAutomaticosDto(bool Prendidos);
+
+    /// <summary>Null si no se pudo leer.</summary>
+    public async Task<bool?> GetWaAvisosAutomaticosAsync()
+        => (await GetAsync<WaAvisosAutomaticosDto>("/api/mis-alertas/wa-avisos-automaticos"))?.Prendidos;
+
+    public async Task<(bool ok, string? error)> SetWaAvisosAutomaticosAsync(bool prendidos)
+    {
+        try
+        {
+            await SetAuthHeaderAsync();
+            var resp = await _http.PutAsJsonAsync("/api/mis-alertas/wa-avisos-automaticos", new WaAvisosAutomaticosDto(prendidos));
+            if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden) return (false, "Solo el administrador puede cambiar esto.");
+            return resp.IsSuccessStatusCode ? (true, null) : (false, await ExtraerError(resp));
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
 }
 
 // 2026-08-03: resultado del borrado de cliente.

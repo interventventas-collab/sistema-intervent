@@ -118,6 +118,8 @@ public static class MenuNuevoCatalogo
             new("Facturas recibidas", "/compras/facturas-recibidas", "contadora"),
             new("Pagos a proveedores", "/cafe/tesoreria/pagos"),
             new("Compras", "/cafe/compras"),
+            // 18/11/2026: "#gasto" por WhatsApp (pendientes, aplicados con ✅, rechazados, comentarios).
+            new("Gastos por WhatsApp", "/compras/gastos-whatsapp", "contadora"),
         }, Nuevo: "compra"),
         new("Productos y precios", "", false, new Item[]
         {

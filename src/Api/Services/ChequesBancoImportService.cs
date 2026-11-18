@@ -26,13 +26,13 @@ public class ChequesBancoImportService
     public record ImportResultDto(string Archivo, string TipoDetectado, int Nuevos, int Actualizados, int SinCambios, List<string> Errores);
 
     /// <summary>Abre un Excel desde un Stream (subida manual) y procesa su primera hoja.</summary>
-    public async Task<ImportResultDto> ImportStreamAsync(Stream stream, string fileName)
+    public async Task<ImportResultDto> ImportStreamAsync(Stream stream, string fileName, int? cuentaId = null)
     {
         try
         {
             using var wb = new XLWorkbook(stream);
             var ws = wb.Worksheets.First();
-            return await ProcesarHojaAsync(ws, fileName);
+            return await ProcesarHojaAsync(ws, fileName, cuentaId);
         }
         catch (Exception ex)
         {
@@ -42,10 +42,10 @@ public class ChequesBancoImportService
     }
 
     /// <summary>Abre un Excel desde bytes (lo que baja el robot en base64) y procesa su primera hoja.</summary>
-    public async Task<ImportResultDto> ImportBytesAsync(byte[] bytes, string fileName)
+    public async Task<ImportResultDto> ImportBytesAsync(byte[] bytes, string fileName, int? cuentaId = null)
     {
         using var stream = new MemoryStream(bytes);
-        return await ImportStreamAsync(stream, fileName);
+        return await ImportStreamAsync(stream, fileName, cuentaId);
     }
 
     /// <summary>El banco usa "Recibido" para cheques apenas acreditados y "Disponible" para
@@ -63,7 +63,7 @@ public class ChequesBancoImportService
 
     /// <summary>Procesa una hoja del Excel del banco. Auto-detecta el tipo (RECIBIDO/EMITIDO/ENDOSADO)
     /// segun los headers (ej: "Recibido de" vs "Emitido a" vs "Enviado a"). Insert o update por IdBanco.</summary>
-    private async Task<ImportResultDto> ProcesarHojaAsync(IXLWorksheet ws, string fileName)
+    private async Task<ImportResultDto> ProcesarHojaAsync(IXLWorksheet ws, string fileName, int? cuentaId)
     {
         var errores = new List<string>();
         // Los Excel del banco tienen 2 filas de headers: la primera con grupos ("Datos del cheque" repetido),
@@ -101,7 +101,10 @@ public class ChequesBancoImportService
         };
 
         // Cargamos todos los cheques existentes una vez para evitar N queries
-        var existentes = await _db.CafeChequesBanco.ToDictionaryAsync(c => c.IdBanco);
+        // cuentaId null = Palanica (el filtro global ya deja solo esos); otra sociedad = solo los suyos.
+        var existentes = cuentaId is null
+            ? await _db.CafeChequesBanco.ToDictionaryAsync(c => c.IdBanco)
+            : await _db.CafeChequesBanco.IgnoreQueryFilters().Where(c => c.GaliciaAccountId == cuentaId).ToDictionaryAsync(c => c.IdBanco);
 
         int nuevos = 0, actualizados = 0, sinCambios = 0;
         var lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
@@ -145,6 +148,9 @@ public class ChequesBancoImportService
 
                 var idBanco = Get("ID del cheque");
                 if (string.IsNullOrWhiteSpace(idBanco)) continue; // fila vacia / mal formada
+                // Otra sociedad: prefijo para no chocar con el índice único (un cheque de Palanica a la
+                // otra empresa aparece en las dos cuentas con el mismo ID del banco).
+                if (cuentaId is not null) idBanco = $"C{cuentaId}:{idBanco}";
 
                 // El librador y beneficiario actual aparecen 2 veces en el header (grupos). El IDX nos dio el primero.
                 // Para los 2 "Razon social" + 2 "CUIT/CUIL/CDI" siguientes, accedemos por offset basados en la posicion.
@@ -181,6 +187,7 @@ public class ChequesBancoImportService
                 var entrada = new CafeChequeBanco
                 {
                     IdBanco = idBanco,
+                    GaliciaAccountId = cuentaId,
                     Tipo = tipoDetectado,
                     Numero = Get("Nº de cheque"),
                     Cmc7 = NullIfEmpty(Get("CMC7")),
@@ -246,6 +253,8 @@ public class ChequesBancoImportService
         }
 
         await _db.SaveChangesAsync();
+        // La cartera de cheques es de Palanica: con la otra sociedad no se toca.
+        if (cuentaId is null)
         try { await SincronizarCarteraConBancoAsync(); }
         catch (Exception ex) { _logger.LogWarning(ex, "No se pudo poner la cartera al dia con el banco"); }
         return new ImportResultDto(fileName, tipoDetectado, nuevos, actualizados, sinCambios, errores);

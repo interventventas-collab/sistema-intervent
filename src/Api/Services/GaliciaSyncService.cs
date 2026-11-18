@@ -40,17 +40,28 @@ public class GaliciaSyncService
         }
     }
 
-    public async Task<SyncResult> SincronizarAsync()
+    /// <summary>2026-11-18: arma usuario/clave de la cuenta pedida (null = principal) y a qué
+    /// "cuenta" se importa (null = Palanica, si no el Id de la otra sociedad).</summary>
+    private async Task<(string? usuario, string? password, int? cuentaImport, string? error)> CredencialesAsync(int? accountId)
     {
-        var dto = await _accounts.GetAsync();
-        if (dto is null || !dto.HasPassword)
-            return new SyncResult(false, 0, 0, "No hay usuario/clave cargados", null);
-        var password = await _accounts.GetPasswordAsync();
-        if (string.IsNullOrEmpty(password))
-            return new SyncResult(false, 0, 0, "No se pudo leer la clave", null);
+        var principalId = await _accounts.PrincipalIdAsync();
+        var acc = accountId is null
+            ? await _accounts.GetEntityAsync()
+            : await _accounts.GetEntityAsync(accountId.Value);
+        if (acc is null || string.IsNullOrEmpty(acc.Password))
+            return (null, null, null, "No hay usuario/clave cargados");
+        int? cuentaImport = acc.Id == principalId ? null : acc.Id;
+        return (acc.Usuario, acc.Password, cuentaImport, null);
+    }
+
+    public async Task<SyncResult> SincronizarAsync(int? accountId = null)
+    {
+        var (usuario, password, cuentaImport, credErr) = await CredencialesAsync(accountId);
+        if (credErr is not null || usuario is null || password is null)
+            return new SyncResult(false, 0, 0, credErr ?? "No hay usuario/clave cargados", null);
 
         await EsperarRobotLibreAsync();
-        var (ok, error) = await _scraping.StartMovimientosAsync(dto.Usuario, password);
+        var (ok, error) = await _scraping.StartMovimientosAsync(usuario, password);
         if (!ok) return new SyncResult(false, 0, 0, error, null);
 
         // Esperar al robot (~8 min máx: si el banco está lento, el robot le tiene paciencia y reintenta).
@@ -76,7 +87,7 @@ public class GaliciaSyncService
         {
             var bytes = Convert.FromBase64String(result.CsvBase64);
             var texto = System.Text.Encoding.UTF8.GetString(bytes);
-            var res = await _import.ImportCsvTextAsync(texto, $"Galicia-auto-{DateTime.Now:yyyyMMdd-HHmm}.csv");
+            var res = await _import.ImportCsvTextAsync(texto, $"Galicia{(cuentaImport is null ? "" : $"-C{cuentaImport}")}-auto-{DateTime.Now:yyyyMMdd-HHmm}.csv", cuentaImport);
             return new SyncResult(true, res.Nuevos, res.SinCambios, null, res.Errores);
         }
         catch (Exception ex)
@@ -91,17 +102,14 @@ public class GaliciaSyncService
     /// Recibidos/Emitidos/Endosados y los importa a Cafe_ChequesBanco (dedup por ID del banco).
     /// Es el mismo flujo que los movimientos, pero para la sección Cheques.
     /// </summary>
-    public async Task<ChequesSyncResult> SincronizarChequesAsync()
+    public async Task<ChequesSyncResult> SincronizarChequesAsync(int? accountId = null)
     {
-        var dto = await _accounts.GetAsync();
-        if (dto is null || !dto.HasPassword)
-            return new ChequesSyncResult(false, 0, 0, 0, "No hay usuario/clave cargados", null);
-        var password = await _accounts.GetPasswordAsync();
-        if (string.IsNullOrEmpty(password))
-            return new ChequesSyncResult(false, 0, 0, 0, "No se pudo leer la clave", null);
+        var (usuario, password, cuentaImport, credErr) = await CredencialesAsync(accountId);
+        if (credErr is not null || usuario is null || password is null)
+            return new ChequesSyncResult(false, 0, 0, 0, credErr ?? "No hay usuario/clave cargados", null);
 
         await EsperarRobotLibreAsync();
-        var (ok, error) = await _scraping.StartChequesAsync(dto.Usuario, password);
+        var (ok, error) = await _scraping.StartChequesAsync(usuario, password);
         if (!ok) return new ChequesSyncResult(false, 0, 0, 0, error, null);
 
         // Esperar al robot. Baja 3 archivos y puede reintentar si el banco está lento (~9 min máx,
@@ -137,7 +145,7 @@ public class GaliciaSyncService
             try
             {
                 var bytes = Convert.FromBase64String(b64);
-                var res = await _chequesImport.ImportBytesAsync(bytes, $"Galicia-{nombre}-{DateTime.Now:yyyyMMdd-HHmm}.xls");
+                var res = await _chequesImport.ImportBytesAsync(bytes, $"Galicia{(cuentaImport is null ? "" : $"-C{cuentaImport}")}-{nombre}-{DateTime.Now:yyyyMMdd-HHmm}.xls", cuentaImport);
                 nuevos += res.Nuevos;
                 actualizados += res.Actualizados;
                 sinCambios += res.SinCambios;

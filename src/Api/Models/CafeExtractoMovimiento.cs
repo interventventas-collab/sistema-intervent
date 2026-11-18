@@ -105,6 +105,12 @@ public class CafeExtractoMovimiento
     [MaxLength(300)]
     public string? IgnoradoMotivo { get; set; }
 
+    /// <summary>2026-11-18: de qué cuenta Galicia vino. NULL = la cuenta principal (Palanica).
+    /// Las otras sociedades (otra GaliciaAccount) se guardan con su Id y quedan FUERA de todo
+    /// lo de Palanica (cobranzas, Salieron, saldo...) por el filtro global de AppDbContext.
+    /// Para verlas: IgnoreQueryFilters() + Where(GaliciaAccountId == id).</summary>
+    public int? GaliciaAccountId { get; set; }
+
     [MaxLength(200)]
     public string? ArchivoOrigen { get; set; }
 

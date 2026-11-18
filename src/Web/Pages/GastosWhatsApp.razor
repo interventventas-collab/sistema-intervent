@@ -1,0 +1,246 @@
+@page "/compras/gastos-whatsapp"
+@attribute [Authorize(Roles = "admin")]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@* 18/11/2026 — Gastos por WhatsApp. Se escribe "#gasto lo que sea" al fijo Transradio (con o sin foto del
+   ticket). El sistema NO contesta nada (Meta cobra las respuestas). Acá se ven todos: pendientes, aplicados
+   (con tilde, atados al pago) y rechazados; se les deja comentarios. "Cargar" abre Nuevo pago con el mensaje.
+   Maqueta aprobada: scratchpad/Gasto_whatsapp_PROPUESTA.html *@
+
+<style>
+    .gw-top { display:flex; justify-content:space-between; align-items:flex-start; gap:0.8rem; flex-wrap:wrap; }
+    .gw-sub { color:#6b7280; font-size:0.85rem; margin-top:0.2rem; }
+    .gw-btn { border:1px solid #d1d5db; background:#fff; border-radius:6px; padding:0.3rem 0.65rem; font-size:0.85rem; cursor:pointer; white-space:nowrap; color:#374151; }
+    .gw-btn.p { background:#2563eb; border-color:#2563eb; color:#fff; }
+    .gw-btn:disabled { opacity:0.5; cursor:default; }
+    .gw-tabs { display:flex; gap:0.35rem; flex-wrap:wrap; margin:0.9rem 0 0.5rem; }
+    .gw-tab { border:1px solid #e5e7eb; background:#fff; border-radius:16px; padding:0.2rem 0.75rem; font-size:0.85rem; cursor:pointer; color:#374151; }
+    .gw-tab.on { background:#111827; color:#fff; border-color:#111827; }
+    .gw-row { display:grid; grid-template-columns: 28px 1fr auto; gap:0.6rem; padding:0.7rem 0.2rem; border-bottom:1px solid #f3f4f6; align-items:start; }
+    .gw-est { font-size:1.15rem; text-align:center; line-height:1.4; }
+    .gw-txt { font-weight:600; color:#111827; word-break:break-word; }
+    .gw-meta { color:#6b7280; font-size:0.8rem; margin-top:0.1rem; }
+    .gw-imp { font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; font-weight:600; }
+    .gw-acc { display:flex; gap:0.35rem; flex-wrap:wrap; justify-content:flex-end; margin-top:0.35rem; }
+    .gw-com { font-size:0.82rem; color:#374151; margin-top:0.3rem; }
+    .gw-com span { color:#9ca3af; }
+    .gw-comin { display:flex; gap:0.35rem; margin-top:0.35rem; }
+    .gw-comin input { flex:1; min-width:0; }
+    .gw-foto { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb; cursor:zoom-in; margin-top:0.35rem; }
+    .gw-cfg { margin-top:1.4rem; padding-top:0.8rem; border-top:1px dashed #e5e7eb; font-size:0.85rem; color:#374151; }
+    .gw-cfg .gw-sub { margin-bottom:0.4rem; }
+    .gw-zoom { position:fixed; inset:0; background:rgba(0,0,0,0.75); display:flex; align-items:center; justify-content:center; z-index:3000; cursor:zoom-out; }
+    .gw-zoom img { max-width:94vw; max-height:92vh; border-radius:8px; }
+    @@media (max-width: 560px) { .gw-row { grid-template-columns: 24px 1fr; } .gw-der { grid-column: 2; } .gw-imp, .gw-acc { text-align:left; justify-content:flex-start; } }
+</style>
+
+<div class="card">
+    <div class="card-body">
+        <div class="gw-top">
+            <div>
+                <h3 style="margin:0;">💸 Gastos por WhatsApp</h3>
+                <div class="gw-sub">Escribí <b>#gasto</b> y el detalle al fijo Transradio (11 2081-2933), con la foto del ticket si querés. El sistema no contesta nada, así WhatsApp no cobra.</div>
+            </div>
+            <button class="gw-btn" @onclick="CambiarSonido" title="Ruidito de caja registradora cuando entra un gasto (en esta compu / celu)">@(sonido ? "🔊 Sonido de caja: prendido" : "🔇 Sonido de caja: apagado")</button>
+        </div>
+
+        <div class="gw-tabs">
+            @foreach (var (k, l) in Tabs)
+            {
+                <button class="gw-tab @(filtro == k ? "on" : "")" @onclick="() => filtro = k">@l @(Cuenta(k) is int n && n > 0 ? $"({n})" : "")</button>
+            }
+        </div>
+
+        @if (gastos is null)
+        {
+            <p class="gw-sub">Cargando…</p>
+        }
+        else if (!Filtrados.Any())
+        {
+            <p class="gw-sub" style="padding:0.6rem 0;">@(filtro == "PENDIENTE" ? "No hay gastos para cargar." : "No hay gastos acá.")</p>
+        }
+        else
+        {
+            @foreach (var g in Filtrados)
+            {
+                <div class="gw-row">
+                    <div class="gw-est" title="@TituloEstado(g)">@(g.Estado == "APLICADO" ? "✅" : g.Estado == "RECHAZADO" ? "✖" : "🕓")</div>
+                    <div>
+                        <div class="gw-txt" style="@(g.Estado == "RECHAZADO" ? "color:#9ca3af; text-decoration:line-through;" : "")">@g.Texto</div>
+                        <div class="gw-meta">
+                            @(g.Quien ?? g.Numero) · @Cuando(g.CreatedAt)@(g.Medio is null ? "" : " · " + MedioLindo(g.Medio))
+                            @if (g.Estado == "APLICADO") { <span> · pago <b>@g.PagoNumero</b> · @g.ResueltoPor @(g.ResueltoAt is DateTime ra ? Cuando(ra) : "")</span> }
+                            @if (g.Estado == "RECHAZADO") { <span> · rechazado por @g.ResueltoPor@(string.IsNullOrEmpty(g.MotivoRechazo) ? "" : ": " + g.MotivoRechazo)</span> }
+                        </div>
+                        @if (!string.IsNullOrEmpty(g.MediaUrl))
+                        {
+                            @if (EsImagen(g))
+                            {
+                                <img class="gw-foto" src="@g.MediaUrl" alt="ticket" @onclick="() => zoom = g.MediaUrl" />
+                            }
+                            else
+                            {
+                                <div class="gw-meta"><a href="@g.MediaUrl" target="_blank">📎 @(g.MediaFilename ?? "adjunto")</a></div>
+                            }
+                        }
+                        @foreach (var c in g.Comentarios)
+                        {
+                            <div class="gw-com">💬 @c.Texto <span>· @c.Usuario · @Cuando(c.CreatedAt)</span></div>
+                        }
+                        @if (comentando == g.Id)
+                        {
+                            <div class="gw-comin">
+                                <input class="form-input" placeholder="Comentario…" @bind="comTexto" @bind:event="oninput" @onkeydown="e => TeclaCom(e, g)" />
+                                <button class="gw-btn" @onclick="() => Comentar(g)" disabled="@string.IsNullOrWhiteSpace(comTexto)">Guardar</button>
+                                <button class="gw-btn" @onclick="() => comentando = null">✕</button>
+                            </div>
+                        }
+                        @if (rechazando == g.Id)
+                        {
+                            <div class="gw-comin">
+                                <input class="form-input" placeholder="¿Por qué? (opcional)" @bind="motivo" />
+                                <button class="gw-btn" @onclick="() => Rechazar(g)">Rechazar</button>
+                                <button class="gw-btn" @onclick="() => rechazando = null">✕</button>
+                            </div>
+                        }
+                    </div>
+                    <div class="gw-der">
+                        <div class="gw-imp">@(g.Importe is decimal i ? P0(i) : "")</div>
+                        <div class="gw-acc">
+                            <button class="gw-btn" @onclick="() => { comentando = g.Id; comTexto = string.Empty; rechazando = null; }" title="Dejar un comentario">💬</button>
+                            @if (g.Estado == "PENDIENTE")
+                            {
+                                <button class="gw-btn" @onclick="() => { rechazando = g.Id; motivo = string.Empty; comentando = null; }">Rechazar</button>
+                                <button class="gw-btn p" @onclick="() => Nav.NavigateTo(UrlCargar(g))">Cargar pago</button>
+                            }
+                            else if (g.Estado == "RECHAZADO")
+                            {
+                                <button class="gw-btn" @onclick="() => Reabrir(g)" title="Volver a pendiente">↩ Deshacer</button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+
+        <div class="gw-cfg">
+            <b>¿Quién puede mandar #gasto?</b>
+            @if (numeros is not null)
+            {
+                <div class="gw-sub">
+                    @if (numeros.UsaAlertas)
+                    {
+                        <span>Hoy valen las personas de Alertas con WhatsApp cargado: @(numeros.DeAlertas.Count == 0 ? "ninguna" : string.Join(" · ", numeros.DeAlertas.Select(p => p.Nombre))). Si escribís números acá, valen solo esos.</span>
+                    }
+                    else
+                    {
+                        <span>Valen solo estos números. Los mensajes con #gasto de otros números se ignoran (quedan en el chat igual).</span>
+                    }
+                </div>
+                <div class="gw-comin" style="max-width:560px;">
+                    <input class="form-input" placeholder="Ej: 11 5555-1234, 11 4444-9876" @bind="numerosTexto" />
+                    <button class="gw-btn" @onclick="GuardarNumeros">Guardar</button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (zoom is not null)
+{
+    <div class="gw-zoom" @onclick="() => zoom = null"><img src="@zoom" alt="ticket" /></div>
+}
+
+@code {
+    private List<ApiClient.GastoWaDto>? gastos;
+    private ApiClient.GastoWaNumerosDto? numeros;
+    private string numerosTexto = "";
+    private string filtro = "PENDIENTE";
+    private int? comentando, rechazando;
+    private string comTexto = "", motivo = "";
+    private string? zoom;
+    private bool sonido = true;
+
+    private static readonly (string, string)[] Tabs = { ("PENDIENTE", "🕓 Para cargar"), ("APLICADO", "✅ Aplicados"), ("RECHAZADO", "✖ Rechazados"), ("", "Todos") };
+    private IEnumerable<ApiClient.GastoWaDto> Filtrados => (gastos ?? new()).Where(g => filtro == "" || g.Estado == filtro);
+    private int? Cuenta(string k) => k == "" ? null : gastos?.Count(g => g.Estado == k);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { sonido = await JS.InvokeAsync<string?>("localStorage.getItem", "gasto.sonido") != "0"; } catch { }
+        await Cargar();
+        try
+        {
+            numeros = await Api.GetGastoWaNumerosAsync();
+            numerosTexto = string.Join(", ", numeros?.Numeros ?? new());
+        }
+        catch { }
+    }
+
+    private async Task Cargar()
+    {
+        try { gastos = await Api.GetGastosWaAsync(); } catch { gastos = new(); }
+    }
+
+    private static string UrlCargar(ApiClient.GastoWaDto g) => $"/cafe/tesoreria/pagos?gasto={g.Id}";
+
+    private async Task CambiarSonido()
+    {
+        sonido = !sonido;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "gasto.sonido", sonido ? "1" : "0"); } catch { }
+        if (sonido) { try { await JS.InvokeVoidAsync("playCajaSound"); } catch { } }
+    }
+
+    private async Task TeclaCom(KeyboardEventArgs e, ApiClient.GastoWaDto g)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(comTexto)) await Comentar(g);
+    }
+
+    private async Task Comentar(ApiClient.GastoWaDto g)
+    {
+        if (!await Api.ComentarGastoWaAsync(g.Id, comTexto.Trim())) { ToastService.Error("No se pudo guardar el comentario"); return; }
+        comentando = null; comTexto = "";
+        await Cargar();
+    }
+
+    private async Task Rechazar(ApiClient.GastoWaDto g)
+    {
+        if (!await Api.RechazarGastoWaAsync(g.Id, motivo)) { ToastService.Error("No se pudo rechazar"); return; }
+        rechazando = null;
+        ToastService.Success("Gasto rechazado (a quien lo mandó no le llega nada)");
+        await Cargar();
+    }
+
+    private async Task Reabrir(ApiClient.GastoWaDto g)
+    {
+        if (!await Api.ReabrirGastoWaAsync(g.Id)) { ToastService.Error("No se pudo"); return; }
+        await Cargar();
+    }
+
+    private async Task GuardarNumeros()
+    {
+        var lista = numerosTexto.Split(new[] { ',', ';', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        if (!await Api.GuardarGastoWaNumerosAsync(lista)) { ToastService.Error("No se pudo guardar"); return; }
+        numeros = await Api.GetGastoWaNumerosAsync();
+        numerosTexto = string.Join(", ", numeros?.Numeros ?? new());
+        ToastService.Success("Guardado");
+    }
+
+    private static bool EsImagen(ApiClient.GastoWaDto g)
+    {
+        var n = (g.MediaFilename ?? g.MediaUrl ?? "").ToLowerInvariant();
+        return !n.EndsWith(".pdf") && (n.EndsWith(".jpg") || n.EndsWith(".jpeg") || n.EndsWith(".png") || n.EndsWith(".webp") || g.MediaFilename is null);
+    }
+    private static string MedioLindo(string m) => m switch { "EFECTIVO" => "efectivo", "TRANSFERENCIA" => "transferencia", "MERCADOPAGO" => "Mercado Pago", _ => m.ToLowerInvariant() };
+    private static string TituloEstado(ApiClient.GastoWaDto g) => g.Estado switch { "APLICADO" => "Aplicado a un pago", "RECHAZADO" => "Rechazado", _ => "Para cargar" };
+    private static string P0(decimal v) => "$" + v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
+    private static string Cuando(DateTime utc)
+    {
+        var d = utc.ToArTime();
+        var hoy = FechaPalabras.HoyAr;
+        return (d.Date == hoy ? "hoy" : d.Date == hoy.AddDays(-1) ? "ayer" : d.ToString("dd/MM")) + " " + d.ToString("HH:mm");
+    }
+}

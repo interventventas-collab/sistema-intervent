@@ -905,7 +905,12 @@ public class CafeVentasController : ControllerBase
                 enviadoTg = ok;
             }
 
-            if (alerta.CanalWhatsApp)
+            // 2026-11-18: salvo que los avisos automáticos por WhatsApp estén apagados (Mis alertas).
+            var waGeneral = alerta.CanalWhatsApp && await WaAvisosAutomaticos.EstanPrendidosAsync(_db);
+            if (alerta.CanalWhatsApp && !waGeneral)
+                HttpContext?.RequestServices.GetService<ILogger<CafeVentasController>>()?
+                    .LogInformation("[Drive caido] aviso no sale por WhatsApp: avisos automáticos por WhatsApp apagados");
+            if (waGeneral)
             {
                 var idsDest = await _db.AutoDestinatarios.Where(d => d.AutoKey == $"alerta:{alerta.Id}")
                     .Select(d => d.PersonaId).ToListAsync();

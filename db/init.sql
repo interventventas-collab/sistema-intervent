@@ -8987,3 +8987,45 @@ IF COL_LENGTH('Cafe_Productos','UnidadAltoCm') IS NULL
         BultoLargoCm DECIMAL(8,2) NULL, BultoAnchoCm DECIMAL(8,2) NULL, BultoAltoCm DECIMAL(8,2) NULL,
         BultoPesoKg DECIMAL(10,3) NULL, Encastrable BIT NULL;
 GO
+
+-- 18/11/2026: "#gasto" por WhatsApp. Se escribe "#gasto ..." al fijo Transradio (sin respuesta, para no
+-- pagar mensajes) y aparece en Compras / campanita; al tocarlo abre Nuevo pago con el mensaje.
+-- ⚠ En PROD correr a mano ANTES de publicar la API (sqlcmd con -I). Idempotente.
+IF OBJECT_ID('Gastos_WhatsApp','U') IS NULL
+CREATE TABLE Gastos_WhatsApp (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    MensajeId INT NULL,
+    Numero NVARCHAR(30) NOT NULL,
+    NombrePerfil NVARCHAR(120) NULL,
+    Texto NVARCHAR(1000) NOT NULL,
+    MediaUrl NVARCHAR(500) NULL,
+    MediaFilename NVARCHAR(300) NULL,
+    Importe DECIMAL(18,2) NULL,
+    Medio NVARCHAR(20) NULL,
+    Estado NVARCHAR(15) NOT NULL CONSTRAINT DF_GastosWa_Estado DEFAULT 'PENDIENTE',
+    PagoId INT NULL,
+    PagoNumero NVARCHAR(30) NULL,
+    MotivoRechazo NVARCHAR(300) NULL,
+    ResueltoPor NVARCHAR(120) NULL,
+    ResueltoAt DATETIME2 NULL,
+    CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_GastosWa_Created DEFAULT SYSUTCDATETIME()
+);
+GO
+IF OBJECT_ID('Gastos_WhatsApp_Comentarios','U') IS NULL
+CREATE TABLE Gastos_WhatsApp_Comentarios (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    GastoId INT NOT NULL,
+    Texto NVARCHAR(1000) NOT NULL,
+    Usuario NVARCHAR(120) NULL,
+    CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_GastosWaCom_Created DEFAULT SYSUTCDATETIME()
+);
+GO
+
+-- 2026-11-18: segunda sociedad en el Galicia. Cada movimiento/cheque del banco dice de qué
+-- cuenta (GaliciaAccounts.Id) vino. NULL = la cuenta principal (Palanica): todo lo viejo queda así.
+IF COL_LENGTH('Cafe_ExtractoMovimientos','GaliciaAccountId') IS NULL
+    ALTER TABLE Cafe_ExtractoMovimientos ADD GaliciaAccountId INT NULL;
+GO
+IF COL_LENGTH('Cafe_ChequesBanco','GaliciaAccountId') IS NULL
+    ALTER TABLE Cafe_ChequesBanco ADD GaliciaAccountId INT NULL;
+GO

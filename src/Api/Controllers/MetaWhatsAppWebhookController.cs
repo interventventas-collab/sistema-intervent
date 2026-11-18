@@ -574,6 +574,12 @@ public class MetaWhatsAppWebhookController : ControllerBase
         catch (Exception ex) { _logger.LogError(ex, "[Meta WA webhook] aviso de deposito"); }
         _logger.LogInformation("[Meta WA webhook] IN {Numero} ({Name}): {Body}", numero, nombrePerfil, cuerpo);
 
+        // 18/11/2026: "#gasto ..." de un número habilitado → queda para cargar en Compras (sin responder
+        // nada por WhatsApp: Meta cobra las respuestas). Va ANTES del corte de "línea sin automatismos"
+        // porque justamente se usa en el fijo Transradio. Si lo tomó, no corre ningún otro robot.
+        try { if (await GastoWhatsAppService.TryRegistrarAsync(db, _logger, msg)) return; }
+        catch (Exception ex) { _logger.LogError(ex, "[Meta WA webhook] #gasto"); }
+
         // 2026-08-05 (pedido del usuario): la línea FIJO TRANSRADIO NO tiene automatismos.
         // El mensaje entra a la bandeja igual (arriba ya se guardó), pero acá cortamos ANTES de
         // los robots: nada de bot de empleados, ni detección de pedidos, ni bot de bienvenida.
