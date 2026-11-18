@@ -72,8 +72,16 @@ public class ImpuestosController : ControllerBase
             ultimaRevision = ComprasAfipRobot.ParseUtc(await ComprasAfipRobot.LeerAsync(_db, ImpuestosService.KeyUltima)),
             resultadoRevision = await ComprasAfipRobot.LeerAsync(_db, ImpuestosService.KeyResultado),
             vencenPronto = pend.Count(p => p.Vence.HasValue && p.Vence.Value.Date >= hoy && p.Vence.Value.Date <= hoy.AddDays(3)),
+            // 18/11/2026: almanaque fijo de ARCA (terminación 9): de 5 días atrás a 12 adelante.
+            vencimientos = await VencimientosArca.EvaluarAsync(_db, hoy.AddDays(-5), hoy.AddDays(12)),
+            almanaqueHasta = VencimientosArca.CargadoHasta,
         });
     }
+
+    /// <summary>18/11/2026 — Todo el almanaque de ARCA cargado, con el estado de cada vencimiento.</summary>
+    [HttpGet("vencimientos")]
+    public async Task<IActionResult> Vencimientos()
+        => Ok(await VencimientosArca.EvaluarAsync(_db, DateTime.MinValue, DateTime.MaxValue));
 
     [HttpGet("{id:int}/pdf")]
     public async Task<IActionResult> Pdf(int id)

@@ -328,6 +328,25 @@
                 r.Add(($"🧾 {a.Pendientes} sin pagar {P(a.PendientesImporte)}{vence}", a.ProximoVence is { } pv2 && pv2.Date <= FechaPalabras.HoyAr.AddDays(2) ? "atr" : "hoy"));
             }
             if (a.SinVepsEsteMes) r.Add(("🧾 María no mandó los VEP del mes", "atr"));
+            // 18/11/2026: almanaque de ARCA (terminación 9): qué vence en los próximos días y si llegó el VEP.
+            var hoyV = FechaPalabras.HoyAr;
+            foreach (var v in a.Vencimientos ?? new())
+            {
+                var d = v.Vence.Date;
+                var dias = (d - hoyV).Days;
+                var cuando = d == hoyV ? "vence HOY" : d == hoyV.AddDays(1) ? "vence mañana" : "vence " + FechaPalabras.Corta(d);
+                if (d < hoyV)
+                {
+                    if (v.Estado == "SIN_VEP") r.Add(($"🔴 {v.Nombre} venció {d:dd/MM} · no veo el pago", "atr"));
+                    continue;
+                }
+                if (v.Estado == "PAGADO") r.Add(($"✓ {v.Nombre} pagado", ""));
+                else if (v.Estado == "BANCO") r.Add(($"✓ {v.Nombre} · débito AFIP {v.PagadoFecha:dd/MM}", ""));
+                else if (v.Estado == "VEP") r.Add(($"📅 {v.Nombre} {cuando} · VEP llegó {P(v.Importe ?? 0)}", dias <= 2 ? "hoy" : ""));
+                else r.Add(($"📅 {v.Nombre} {cuando} · VEP no llegó", dias <= 3 ? "atr" : ""));
+            }
+            if (a.AlmanaqueHasta is DateTime ah && ah <= hoyV.AddDays(20))
+                r.Add(("📅 falta cargar los vencimientos de ARCA del año que viene", "hoy"));
             if (a.PagadosMes > 0) r.Add(($"✓ pagado este mes {P(a.PagadosMesImporte)}", ""));
             impUltima = a.UltimaRevision;
             avisosImpuestos = r;

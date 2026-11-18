@@ -37,6 +37,15 @@
         .im-q, .im-e { grid-column: 1 / 2; }
         .im-b { grid-column: 1 / -1; justify-content:flex-start; }
     }
+    /* 18/11/2026: vencimientos de ARCA */
+    .im-venc { margin-top: 0.9rem; font-size: 0.86rem; }
+    .im-venc-t { font-weight: 700; margin-bottom: 0.25rem; }
+    .im-venc-t span, .im-venc .gris { color: #6b7280; font-weight: 400; }
+    .im-venc-r { display: grid; grid-template-columns: 6.5rem minmax(0, 22rem) 1fr; gap: 0.6rem; padding: 0.18rem 0; border-bottom: 1px solid #f3f4f6; }
+    .im-venc-r.rojo { color: #b91c1c; font-weight: 600; }
+    .im-venc-r.gris { color: #6b7280; }
+    .im-venc-f { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    @@media (max-width: 640px) { .im-venc-r { grid-template-columns: 5.5rem 1fr; } .im-venc-r > span:last-child { grid-column: 2; } }
 </style>
 
 <div class="card">
@@ -72,6 +81,31 @@
         @if (avisos?.SinVepsEsteMes == true)
         {
             <div class="im-aviso">Este mes María todavía no mandó los VEP.</div>
+        }
+
+        @* 18/11/2026: almanaque fijo de ARCA / Convenio Multilateral para el CUIT de Palanica (termina en 9). *@
+        @if (vencs is { Count: > 0 })
+        {
+            var hoyV = FechaPalabras.HoyAr;
+            <div class="im-venc">
+                <div class="im-venc-t">📅 Vencimientos <span>· CUIT de Palanica terminado en 9</span></div>
+                @foreach (var v in vencs.Where(x => x.Vence.Date >= hoyV.AddDays(-10)))
+                {
+                    var d = v.Vence.Date;
+                    var rojo = v.Estado == "SIN_VEP" && d <= hoyV.AddDays(3);
+                    <div class="im-venc-r @(rojo ? "rojo" : "") @(v.Estado is "PAGADO" or "BANCO" ? "gris" : "")">
+                        <span class="im-venc-f">@FechaPalabras.Corta(d)</span>
+                        <span class="im-venc-n">@v.Nombre <span class="gris">· @PeriodoTxt(v.Periodo)</span></span>
+                        <span>@(v.Estado switch
+                        {
+                            "PAGADO" => $"✓ pagado {v.PagadoFecha:dd/MM} · {Plata(v.Importe ?? 0)}",
+                            "BANCO" => $"✓ débito AFIP del {v.PagadoFecha:dd/MM} (el banco no dice de qué)",
+                            "VEP" => $"VEP llegó · {Plata(v.Importe ?? 0)} sin pagar",
+                            _ => d < hoyV ? "venció · no veo VEP ni pago" : "VEP no llegó todavía",
+                        })</span>
+                    </div>
+                }
+            </div>
         }
 
         @if (lista is null)
@@ -182,6 +216,9 @@
 
     private List<ApiClient.ImpuestoDto>? lista;
     private ApiClient.ImpuestosAvisosDto? avisos;
+    private List<ApiClient.VencimientoArcaDto>? vencs;
+    private static string PeriodoTxt(string p) => DateTime.TryParseExact(p + "-01", "yyyy-MM-dd", null, DateTimeStyles.None, out var d)
+        ? d.ToString("MMMM yyyy", CultureInfo.GetCultureInfo("es-AR")) : p;
     private bool revisando, pegando;
     private string? textoPegado;
     private int verMeses = 6;
@@ -223,6 +260,13 @@
         {
             lista = Filtrar(await Api.GetImpuestosAsync());
             avisos = await Api.GetImpuestosAvisosAsync();
+            var vs = await Api.GetVencimientosArcaAsync();
+            vencs = Ver?.ToUpperInvariant() switch
+            {
+                "IIBB" => vs.Where(v => v.Concepto == "Ingresos brutos").ToList(),
+                "AFIP" => vs.Where(v => v.Concepto != "Ingresos brutos").ToList(),
+                _ => vs,
+            };
         }
         catch (Exception ex) { lista ??= new(); ToastService.Error(ex.Message); }
     }

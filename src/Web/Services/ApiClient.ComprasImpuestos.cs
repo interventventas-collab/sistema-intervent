@@ -57,4 +57,10 @@ public partial class ApiClient
 
     public async Task<bool> TraerFacturasRecibidasAhoraAsync()
         => await PostAsync<object>("/api/compras/facturas-recibidas/traer-ahora", new { }) is not null;
+
+    // 18/11/2026: almanaque fijo de ARCA (terminación 9). Estado: PAGADO · BANCO · VEP · SIN_VEP.
+    public record VencimientoArcaDto(string Concepto, string Nombre, string Periodo, DateTime Vence, string Estado,
+        decimal? Importe, DateTime? PagadoFecha, int? VepId);
+    public async Task<List<VencimientoArcaDto>> GetVencimientosArcaAsync()
+        => await GetAsync<List<VencimientoArcaDto>>("/api/impuestos/vencimientos") ?? new();
 }
