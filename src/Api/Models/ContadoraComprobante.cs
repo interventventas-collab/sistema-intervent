@@ -100,6 +100,11 @@ public class ContadoraComprobante
     public string? ArchivoOrigen { get; set; }
     public DateTime ImportadoEn { get; set; } = DateTime.UtcNow;
 
+    /// <summary>18/11/2026 — Cuándo entró al sistema por PRIMERA vez (ImportadoEn se pisa en cada
+    /// re-importación). Lo pone la base (DEFAULT) y EF nunca lo escribe. Sirve para "facturas nuevas".</summary>
+    [System.ComponentModel.DataAnnotations.Schema.DatabaseGenerated(System.ComponentModel.DataAnnotations.Schema.DatabaseGeneratedOption.Computed)]
+    public DateTime PrimeraVezEn { get; set; }
+
     /// <summary>Ruta relativa (dentro de /data/files) al PDF de la factura, si lo tenemos adjunto.</summary>
     [MaxLength(500)]
     public string? PdfPath { get; set; }

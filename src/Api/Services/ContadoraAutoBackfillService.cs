@@ -81,7 +81,7 @@ public class ContadoraAutoBackfillService : BackgroundService
                 catch (Exception ex) { _logger.LogWarning(ex, "[Contadora robot] Error bajando facturas de MeLi"); }
             }
             // Baja de AFIP (emitidos + recibidos) con la clave fiscal de PALANICA e importa. A lo sumo 1x/día.
-            if (incluirAfip) await CorrerAfipAsync(ct);
+            // 18/11/2026: la bajada de AFIP pasó a ComprasAfipRobot (todos los días a las 7 + "Traer ahora").
             _logger.LogInformation("[Contadora robot] Fin. Provincias resueltas: {P}, facturas resueltas: {F}", prov, fact);
         }
         catch (Exception ex) { _logger.LogError(ex, "[Contadora robot] Error en la corrida"); }

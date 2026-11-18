@@ -28,6 +28,7 @@ public class ImpuestosService
     /// <summary>Desde cuándo se arma la historia (primera corrida).</summary>
     public static readonly DateTime Inicio = new(2026, 5, 1);
     public const string RemitenteDefault = "cuentacontadora@gmail.com";
+    public const string KeyUltima = "impuestos.ultima", KeyResultado = "impuestos.resultado";
     private static readonly CultureInfo Ar = CultureInfo.GetCultureInfo("es-AR");
 
     public ImpuestosService(AppDbContext db, ILogger<ImpuestosService> log) { _db = db; _log = log; }
@@ -48,6 +49,14 @@ public class ImpuestosService
         try { (mails, nuevos) = await LeerMailsAsync(ct); }
         catch (Exception ex) { error = "No se pudo leer el mail: " + ex.Message; _log.LogWarning(ex, "[Impuestos] mail"); }
         var (pagados, delBanco) = await CruzarConBancoAsync(ct);
+        // 18/11/2026: la tarjeta Impuestos muestra "revisado hh:mm" y el resultado.
+        try
+        {
+            await ComprasAfipRobot.GuardarAsync(_db, KeyUltima, DateTime.UtcNow.ToString("o"));
+            await ComprasAfipRobot.GuardarAsync(_db, KeyResultado, error is not null ? "⚠ " + error
+                : $"{mails} mail{(mails == 1 ? "" : "s")} leído{(mails == 1 ? "" : "s")} · {nuevos} VEP nuevo{(nuevos == 1 ? "" : "s")} · {pagados} pagado{(pagados == 1 ? "" : "s")} con el banco");
+        }
+        catch { }
         return new ResultadoRevision(mails, nuevos, pagados, delBanco, error);
     }
 

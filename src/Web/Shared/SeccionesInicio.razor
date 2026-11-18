@@ -121,14 +121,44 @@
                     }
                 }
             </div>
-            @if (g.Titulo == "Plata" && avisosImpuestos.Count > 0 && !arreglando)
+            @if (g.Titulo == "Impuestos" && esAdmin && !arreglando)
             {
-                @* 17/11/2026: impuestos / VEP (sin pagar · vencidos · pagado del mes) → /impuestos. Solo admin. *@
-                <div class="si-pagos">
+                @* 17/11/2026: impuestos / VEP (sin pagar · vencidos · pagado del mes) → /impuestos. Solo admin.
+                   18/11/2026: pasó de Plata a su propia tarjeta + "revisado hh:mm · ↻ Traer ahora". *@
+                <div class="si-av">
                     @foreach (var (txt, css) in avisosImpuestos)
                     {
-                        <a class="si-pago @css" href="/impuestos" title="Ver impuestos y VEP">@txt</a>
+                        <a class="si-avr @css" href="/impuestos" title="Ver impuestos y VEP">@txt</a>
                     }
+                    <div class="si-avq">
+                        <span>@(impRevisando ? "Revisando mails de María y el banco…" : impUltima is DateTime iu ? "revisado " + Cuando(iu) : "")</span>
+                        <button class="si-trae" disabled="@impRevisando" @onclick="TraerImpuestos" @onclick:stopPropagation="true" title="Leer ya los mails de la contadora y cruzar con el banco">↻ Traer ahora</button>
+                    </div>
+                </div>
+            }
+            @if (g.Titulo == "Compras" && esAdmin && facturas is not null && !arreglando)
+            {
+                @* 18/11/2026: facturas recibidas nuevas (las trae de ARCA a las 7) + última vez + Traer ahora. *@
+                <div class="si-av">
+                    @if (facturas.Nuevas > 0)
+                    {
+                        <a class="si-avr" href="/compras/facturas-recibidas" title="Ver las facturas recibidas">
+                            <span>🧾 <b>@facturas.Nuevas factura@(facturas.Nuevas == 1 ? "" : "s") nueva@(facturas.Nuevas == 1 ? "" : "s")</b></span><b class="si-avn">@P0(facturas.TotalNuevas)</b>
+                        </a>
+                        @foreach (var pp in facturas.PorProveedor.Take(4))
+                        {
+                            <a class="si-avr si-avg" href="/compras/facturas-recibidas"><span>· @pp.Nombre@(pp.Cantidad > 1 ? $" ×{pp.Cantidad}" : "")</span><span class="si-avn">@P0(pp.Total)</span></a>
+                        }
+                        @if (facturas.PorProveedor.Count > 4)
+                        {
+                            <a class="si-avr si-avg" href="/compras/facturas-recibidas"><span>· y @(facturas.PorProveedor.Count - 4) más</span><span class="si-avn">@P0(facturas.PorProveedor.Skip(4).Sum(x => x.Total))</span></a>
+                        }
+                    }
+                    <div class="si-avq">
+                        <span>@(facturas.Estado.Corriendo || factTrayendo ? "Trayendo de ARCA…" : facturas.Estado.Ultima is DateTime fu ? "facturas de ARCA " + Cuando(fu) : "facturas de ARCA: todavía no")
+                            @if (facturas.Estado.Resultado?.StartsWith("⚠") == true && !(facturas.Estado.Corriendo || factTrayendo)) { <span class="si-avm" title="@facturas.Estado.Resultado"> ⚠</span> }</span>
+                        <button class="si-trae" disabled="@(facturas.Estado.Corriendo || factTrayendo)" @onclick="TraerFacturas" @onclick:stopPropagation="true" title="Entrar ya a ARCA y traer las facturas (1 a 3 minutos)">↻ Traer ahora</button>
+                    </div>
                 </div>
             }
             @if (g.Titulo == "Compras" && avisosPagos.Count > 0 && !arreglando)
@@ -158,6 +188,18 @@
     .si-tit:hover .si-nom { text-decoration: underline; }
     .si-ico { font-size: 1.5rem; line-height: 1.2; }
     .si-nom { font-weight: 800; font-size: 0.98rem; }
+    /* 18/11/2026: renglones de aviso (facturas nuevas, impuestos) + "última vez · Traer ahora" */
+    .si-av { margin-top: 0.55rem; padding-top: 0.45rem; border-top: 1px dashed #e5e7eb; text-align: left; font-size: 0.8rem; line-height: 1.6; }
+    .si-avr { display: flex; justify-content: space-between; gap: 0.4rem; color: #111827; text-decoration: none; }
+    .si-avr:hover { text-decoration: underline; }
+    .si-avr.si-avg { color: #6b7280; }
+    .si-avr.atr { color: #b91c1c; font-weight: 600; }
+    .si-avn { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .si-avq { display: flex; justify-content: space-between; align-items: center; gap: 0.4rem; color: #9ca3af; font-size: 0.72rem; margin-top: 0.25rem; }
+    .si-avm { color: #b45309; cursor: help; }
+    .si-trae { border: 1px solid #e5e7eb; background: #fff; border-radius: 10px; padding: 0.05rem 0.45rem; font-size: 0.7rem; color: #374151; cursor: pointer; white-space: nowrap; }
+    .si-trae:hover { border-color: #9ca3af; }
+    .si-trae:disabled { opacity: 0.55; cursor: default; }
     .si-pagos { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem; margin-top: 0.55rem; padding-top: 0.5rem; border-top: 1px dashed #e5e7eb; }
     .si-pago { font-size: 0.72rem; border: 1px solid #e5e7eb; border-radius: 12px; padding: 0.1rem 0.5rem; color: #374151; text-decoration: none; background: #fff; white-space: nowrap; }
     .si-pago:hover { border-color: #9ca3af; }
@@ -209,6 +251,60 @@
         Armar();
         await CargarAvisosPagos();
         await CargarAvisosImpuestos();
+        await CargarFacturas();
+    }
+
+    // 18/11/2026: facturas recibidas nuevas en Compras + "Traer ahora" (Compras e Impuestos). Solo admin.
+    private bool esAdmin, factTrayendo, impRevisando;
+    private ApiClient.FacturasResumenDto? facturas;
+    private DateTime? impUltima;
+    private System.Threading.Timer? factTimer;
+    private static string P0(decimal v) => "$" + v.ToString("N0", CultureInfo.GetCultureInfo("es-AR"));
+    private static string Cuando(DateTime utc)
+    {
+        var d = utc.ToArTime();
+        var hoy = FechaPalabras.HoyAr;
+        return (d.Date == hoy ? "hoy" : d.Date == hoy.AddDays(-1) ? "ayer" : d.ToString("dd/MM")) + " " + d.ToString("HH:mm");
+    }
+
+    private async Task CargarFacturas()
+    {
+        try
+        {
+            if (!esAdmin) return;
+            facturas = await Api.GetFacturasRecibidasResumenAsync();
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private async Task TraerFacturas()
+    {
+        factTrayendo = true;
+        try
+        {
+            if (!await Api.TraerFacturasRecibidasAhoraAsync()) { factTrayendo = false; return; }
+            factTimer?.Dispose();
+            factTimer = new System.Threading.Timer(async _ => await InvokeAsync(async () =>
+            {
+                var e = await Api.GetFacturasRecibidasEstadoAsync();
+                if (e is { Corriendo: false })
+                {
+                    factTimer?.Dispose(); factTimer = null; factTrayendo = false;
+                    await CargarFacturas();
+                }
+            }), null, 5000, 5000);
+        }
+        catch { factTrayendo = false; }
+    }
+
+    private async Task TraerImpuestos()
+    {
+        impRevisando = true;
+        StateHasChanged();
+        try { await Api.RevisarImpuestosAsync(); } catch { }
+        impRevisando = false;
+        await CargarAvisosImpuestos();
     }
 
     // 17/11/2026: avisos de impuestos / VEP en la tarjeta Plata (solo admin).
@@ -219,6 +315,7 @@
         {
             var u = await Auth.GetUserAsync();
             if (!string.Equals(u?.Role, "admin", StringComparison.OrdinalIgnoreCase)) return;
+            esAdmin = true;
             var a = await Api.GetImpuestosAvisosAsync();
             if (a is null) return;
             var ar = CultureInfo.GetCultureInfo("es-AR");
@@ -231,7 +328,8 @@
                 r.Add(($"🧾 {a.Pendientes} sin pagar {P(a.PendientesImporte)}{vence}", a.ProximoVence is { } pv2 && pv2.Date <= FechaPalabras.HoyAr.AddDays(2) ? "atr" : "hoy"));
             }
             if (a.SinVepsEsteMes) r.Add(("🧾 María no mandó los VEP del mes", "atr"));
-            if (a.PagadosMes > 0) r.Add(($"impuestos del mes {P(a.PagadosMesImporte)} ✓", ""));
+            if (a.PagadosMes > 0) r.Add(($"✓ pagado este mes {P(a.PagadosMesImporte)}", ""));
+            impUltima = a.UltimaRevision;
             avisosImpuestos = r;
             StateHasChanged();
         }
@@ -344,7 +442,7 @@
     private static string IconoFabrica(string titulo) => titulo switch
     {
         "Clientes" => "👥", "Frikaf" => "☕", "MercadoLibre" => "🤝", "Intereventos" => "🎪", "Logística" => "🚚",
-        "Stock" => "📦", "Compras" => "🏭", "Productos y precios" => "🏷", "Plata" => "💵", "Empleados" => "👷",
+        "Stock" => "📦", "Compras" => "🏭", "Productos y precios" => "🏷", "Plata" => "💵", "Impuestos" => "🏛", "Empleados" => "👷",
         _ => "📁",
     };
 
@@ -355,5 +453,5 @@
     };
 
     private void Repintar() => InvokeAsync(() => { Armar(); StateHasChanged(); });
-    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; Operator.OnChange -= Repintar; }
+    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; Operator.OnChange -= Repintar; factTimer?.Dispose(); }
 }

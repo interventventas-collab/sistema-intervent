@@ -7,7 +7,7 @@ using Web.Models;
 
 namespace Web.Services;
 
-public class ApiClient
+public partial class ApiClient
 {
     private readonly HttpClient _http;
     // Cliente con timeout largo para operaciones lentas (ej: leer saldo de Shell,
@@ -8715,7 +8715,8 @@ public class ApiClient
         decimal Importe, DateTime? Vence, string Origen, string? MailAsunto, DateTime? MailFecha, string Estado,
         DateTime? PagadoFecha, string? PagadoComo, bool TienePdf, string? Nota, bool DelBanco);
     public record ImpuestosAvisosDto(int Pendientes, decimal PendientesImporte, DateTime? ProximoVence, string? ProximoTexto,
-        int VencidosSinPago, int PagadosMes, decimal PagadosMesImporte, bool SinVepsEsteMes);
+        int VencidosSinPago, int PagadosMes, decimal PagadosMesImporte, bool SinVepsEsteMes,
+        DateTime? UltimaRevision = null, string? ResultadoRevision = null, int VencenPronto = 0);
     public record ImpuestosRevisionDto(int MailsLeidos, int Nuevos, int Pagados, int DelBanco, string? Error);
     public record ImpuestosSubidaDto(int Leidos, int Nuevos, int Pagados);
     public async Task<List<ImpuestoDto>> GetImpuestosAsync()

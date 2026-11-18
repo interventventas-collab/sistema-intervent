@@ -114,7 +114,8 @@ public static class MenuNuevoCatalogo
         {
             new("Proveedores", "/cafe/proveedores"),
             new("¿A quién le debo?", "/cafe/proveedores-ctacte"),
-            new("Facturas de compra", "/contadora?tab=comp", "contadora"),
+            // 18/11/2026: "Facturas de compra" (pestaña de Contadora) → lista propia con las nuevas marcadas.
+            new("Facturas recibidas", "/compras/facturas-recibidas", "contadora"),
             new("Pagos a proveedores", "/cafe/tesoreria/pagos"),
             new("Compras", "/cafe/compras"),
         }, Nuevo: "compra"),
@@ -133,9 +134,15 @@ public static class MenuNuevoCatalogo
             new("Cobranzas a aprobar", "/cafe/cobranzas-pendientes", "cafe-tesoreria"),
             new("Pagos a confirmar", "/tesoreria/pagos-pendientes", "cafe-tesoreria"),
             new("Extracto banco", "/cafe/tesoreria/extracto-banco", "cafe-tesoreria"),
-            new("Impuestos y VEP", "/impuestos"),
             new("Resumen tesorería", "/cafe/tesoreria/resumen", "cafe-tesoreria"),
             new("Nitro", "/vault"),
+        }),
+        // 18/11/2026: tarjeta propia de Impuestos (antes "Impuestos y VEP" estaba en Plata). Solo admin.
+        new("Impuestos", "", false, new Item[]
+        {
+            new("Impuestos y VEP", "/impuestos"),
+            new("ARCA (AFIP)", "/impuestos?ver=AFIP"),
+            new("Ingresos brutos", "/impuestos?ver=IIBB"),
         }),
         new("Empleados", "", false, new Item[]
         {
@@ -338,6 +345,17 @@ public static class MenuNuevoCatalogo
         var directos = Directos.Concat(guardados.Where(i => i.Nuevo == null && !EsDirectoDeFabrica(i.Href))).ToList();
         // Cada pantalla una sola vez: lo que tiene botón directo no se repite en los desplegables.
         foreach (var d in directos) usados.Add(d.Href);
+        // 18/11/2026: si aparece una sección nueva que el dueño todavía no acomodó (ej. "Impuestos"),
+        // sus pantallas se mudan a ella aunque lo guardado las tuviera en otra sección.
+        if (o.Grupos is { Count: > 0 })
+        {
+            var reservados = Grupos
+                .Where(g => !o.Grupos.Any(x => x.Titulo == g.Titulo || (g.Titulo == "Clientes" && x.Titulo == TITULO_VIEJO_CLIENTES)))
+                .SelectMany(g => g.Items.Select(i => i.Href))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (reservados.Count > 0)
+                o = o with { Grupos = o.Grupos.Select(go => new GrupoOrden(go.Titulo, (go.Items ?? new()).Where(h => !reservados.Contains(h)).ToList())).ToList() };
+        }
         var grupos = Grupos.Select(g =>
         {
             var go = o.Grupos?.FirstOrDefault(x => x.Titulo == g.Titulo)
