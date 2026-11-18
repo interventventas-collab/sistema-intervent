@@ -135,7 +135,7 @@ public static class MenuNuevoCatalogo
             new("Extracto banco", "/cafe/tesoreria/extracto-banco", "cafe-tesoreria"),
             new("Impuestos y VEP", "/impuestos"),
             new("Resumen tesorería", "/cafe/tesoreria/resumen", "cafe-tesoreria"),
-            new("Bóveda de claves", "/vault"),
+            new("Nitro", "/vault"),
         }),
         new("Empleados", "", false, new Item[]
         {

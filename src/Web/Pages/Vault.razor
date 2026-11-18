@@ -67,7 +67,7 @@
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <h3 style="margin: 0;">
-            🔐 Bóveda de contraseñas
+            🔐 Nitro
             @if (token is not null)
             {
                 <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;"> · @(entries?.Count ?? 0) entradas</span>
@@ -96,7 +96,7 @@
             @* ═══════════════ PANTALLA DE DESBLOQUEO ═══════════════ *@
             <div style="max-width: 460px; margin: 2rem auto; text-align: center;">
                 <div style="font-size: 4rem;">🔒</div>
-                <h4 style="margin: 0.4rem 0;">Bóveda bloqueada</h4>
+                <h4 style="margin: 0.4rem 0;">Nitro bloqueado</h4>
                 <p style="color: #6b7280; font-size: 0.9rem;">
                     Esta sección está protegida con una contraseña maestra independiente del login.
                     Sin la maestra correcta, los datos no se pueden leer (están cifrados).
@@ -405,7 +405,7 @@
                     Solo <strong>nombre</strong> es obligatorio.
                 </p>
                 <p style="color: #6b7280; font-size: 0.78rem;">
-                    Si el <strong>nombre</strong> ya existe en la bóveda, esa entrada se <strong>actualiza</strong> (no se duplica).
+                    Si el <strong>nombre</strong> ya existe en Nitro, esa entrada se <strong>actualiza</strong> (no se duplica).
                 </p>
                 <p>
                     <button class="btn btn-secondary" @onclick="DownloadTemplate" style="font-size: 0.85rem;">📥 Descargar plantilla vacía</button>
@@ -665,7 +665,7 @@
     {
         if (token is not null) { try { await Api.LockVaultAsync(token); } catch { } }
         await ForceLock();
-        ToastService.Success("Bóveda bloqueada");
+        ToastService.Success("Nitro bloqueado");
     }
 
     private async Task ForceLock()
@@ -693,7 +693,7 @@
                 await InvokeAsync(async () =>
                 {
                     await ForceLock();
-                    ToastService.Info("Bóveda bloqueada por inactividad");
+                    ToastService.Info("Nitro bloqueado por inactividad");
                 });
             }
             else { await InvokeAsync(StateHasChanged); }
@@ -846,7 +846,7 @@
             {
                 OldPassword = cmOld, NewPassword = cmNew
             });
-            ToastService.Success("Maestra cambiada. Bóveda bloqueada — entrá con la nueva clave.");
+            ToastService.Success("Maestra cambiada. Nitro bloqueado — entrá con la nueva clave.");
             showChangeMaster = false;
             await ForceLock();
         }
