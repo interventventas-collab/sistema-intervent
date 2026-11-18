@@ -91,6 +91,12 @@
                     <a class="bf-item" title="@it.Texto" href="@href" @onclick="() => abierto = false">@Contenido(it)</a>
                 }
             }
+            @* 2026-11-18: 📚 Listas fijo para todos (no cuenta en los 10 y no se saca): listas de precios y
+               catálogos para ver, descargar, mandar por mail o compartir. *@
+            <button type="button" class="bf-item" title="Listas de precios y catálogos" @onclick="AbrirListas">
+                <span class="bf-circ">📚</span>
+                <span class="bf-lab" title="Listas de precios y catálogos">Listas</span>
+            </button>
             <span class="bf-pie">
                 <button type="button" class="bf-lapiz" title="Elegir qué botones tengo acá (hasta @MAX)" @onclick="AbrirEditor">✏</button>
                 @if (!EnBarra)
@@ -107,6 +113,8 @@
         </button>
     </div>
 }
+
+<ListasCatalogosVentana @ref="listasVentana" />
 
 @if (arrastrando)
 {
@@ -596,6 +604,13 @@
     private int arrDer, arrAba, anchoVentana, altoVentana;
     private bool arrLabDer;
     private bool accAbajo;
+
+    private ListasCatalogosVentana? listasVentana;
+    private async Task AbrirListas()
+    {
+        abierto = false;
+        if (listasVentana is not null) await listasVentana.Abrir();
+    }
 
     private async Task AbrirCerrarAcciones()
     {

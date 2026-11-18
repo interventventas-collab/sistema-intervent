@@ -8932,3 +8932,13 @@ GO
 IF COL_LENGTH('Cafe_Proveedores','Alias') IS NULL
     ALTER TABLE Cafe_Proveedores ADD Alias NVARCHAR(100) NULL, Cbu NVARCHAR(30) NULL;
 GO
+
+-- 18/11/2026: facturas recibidas "nuevas" (cuándo entró cada comprobante por primera vez).
+-- ⚠ En PROD correr a mano ANTES de publicar la API (sqlcmd con -I).
+IF COL_LENGTH('ContadoraComprobantes','PrimeraVezEn') IS NULL
+BEGIN
+    ALTER TABLE ContadoraComprobantes ADD PrimeraVezEn DATETIME2 NOT NULL
+        CONSTRAINT DF_ContadoraComprobantes_PrimeraVez DEFAULT SYSUTCDATETIME();
+    EXEC('UPDATE ContadoraComprobantes SET PrimeraVezEn = CASE WHEN FechaEmision IS NOT NULL AND DATEADD(day,1,FechaEmision) < ImportadoEn THEN DATEADD(hour,10,FechaEmision) ELSE ImportadoEn END');
+END
+GO

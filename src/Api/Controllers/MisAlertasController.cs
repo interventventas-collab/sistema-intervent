@@ -348,6 +348,8 @@ public class MisAlertasController : ControllerBase
     }
 
     // ---------- Campanita de la topbar ----------
+    /// <summary>18/11/2026: la campanita ya mostró los avisos de facturas nuevas / VEP (deja de titilar).</summary>
+    private const string KeyCampanaVista = "campana.compras_impuestos.vista";
     public record AlertaDisparadaDto(int Id, string Tipo, string Mensaje, string? Detalle, DateTime? DisparadaAt, bool Vista);
     public record AlertasBellDto(int NoVistas, List<AlertaDisparadaDto> Disparadas);
 
@@ -413,6 +415,41 @@ public class MisAlertasController : ControllerBase
                     DateTime.UtcNow, vista));
             }
         }
+        if (bucket == "admin")
+        {
+            var ar2 = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+            var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
+            var campVista = ComprasAfipRobot.ParseUtc(await ComprasAfipRobot.LeerAsync(_db, KeyCampanaVista));
+            // 18/11/2026: facturas recibidas nuevas (las que no viste en "Facturas recibidas"). Id -1000000.
+            var vistasHasta = ComprasAfipRobot.ParseUtc(await ComprasAfipRobot.LeerAsync(_db, ComprasAfipRobot.KeyVistas));
+            if (vistasHasta.HasValue)
+            {
+                var nuevas = await _db.ContadoraComprobantes.AsNoTracking()
+                    .Where(c => c.Naturaleza == "COMPRA" && !c.EsNotaCredito && c.PrimeraVezEn > vistasHasta.Value)
+                    .Select(c => new { c.ReceptorNombre, c.Total, c.PrimeraVezEn }).ToListAsync();
+                if (nuevas.Count > 0)
+                {
+                    var ult = nuevas.Max(n => n.PrimeraVezEn);
+                    var nombres = nuevas.Select(n => FacturasRecibidasController.Lindo(n.ReceptorNombre)).Distinct().ToList();
+                    lista.Add(new AlertaDisparadaDto(-1000000, "FACTURAS_NUEVAS",
+                        $"{nuevas.Count} factura{(nuevas.Count == 1 ? "" : "s")} nueva{(nuevas.Count == 1 ? "" : "s")} de proveedores " + nuevas.Sum(n => n.Total).ToString("$#,0", ar2),
+                        string.Join(" · ", nombres.Take(3)) + (nombres.Count > 3 ? $" y {nombres.Count - 3} más" : ""),
+                        ult, campVista.HasValue && campVista.Value >= ult));
+                }
+            }
+            // 18/11/2026: VEP que vencen en 3 días o ya vencieron sin pago. Id -2000000-Id.
+            var veps = await _db.ImpuestosVeps.AsNoTracking()
+                .Where(v => v.Estado == "PENDIENTE" && v.Vence != null && v.Vence <= hoyAr.AddDays(3) && v.Vence >= hoyAr.AddDays(-30))
+                .ToListAsync();
+            foreach (var v in veps)
+            {
+                var d = v.Vence!.Value.Date;
+                var cuando = d < hoyAr ? $"VENCIÓ el {d:dd/MM}" : d == hoyAr ? "Vence HOY" : d == hoyAr.AddDays(1) ? "Vence mañana" : $"Vence el {d:dd/MM}";
+                lista.Add(new AlertaDisparadaDto(-2000000 - v.Id, d < hoyAr ? "VEP_VENCIDO" : "VEP_VENCE",
+                    $"{cuando}: {v.Concepto} {v.Importe.ToString("$#,0", ar2)}", "Impuestos · tocá para verlo",
+                    DateTime.UtcNow, campVista.HasValue && campVista.Value.AddHours(-3).Date >= hoyAr));
+            }
+        }
         lista = lista.OrderByDescending(x => x.DisparadaAt ?? DateTime.MinValue).ToList();
         return Ok(new AlertasBellDto(lista.Count(a => !a.Vista), lista));
     }
@@ -435,6 +472,7 @@ public class MisAlertasController : ControllerBase
                 .Where(p => p.Estado == "PENDIENTE" && p.TransferidoAt == null && p.Fecha <= manana).ToListAsync();
             foreach (var p in progs) p.AvisoVistoAt = DateTime.UtcNow;
             n += progs.Count;
+            await ComprasAfipRobot.GuardarAsync(_db, KeyCampanaVista, DateTime.UtcNow.ToString("o"));
         }
         if (_db.ChangeTracker.HasChanges()) await _db.SaveChangesAsync();
         return Ok(new { marcadas = n });

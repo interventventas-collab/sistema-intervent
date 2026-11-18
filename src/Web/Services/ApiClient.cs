@@ -7,7 +7,7 @@ using Web.Models;
 
 namespace Web.Services;
 
-public class ApiClient
+public partial class ApiClient
 {
     private readonly HttpClient _http;
     // Cliente con timeout largo para operaciones lentas (ej: leer saldo de Shell,
@@ -8715,7 +8715,8 @@ public class ApiClient
         decimal Importe, DateTime? Vence, string Origen, string? MailAsunto, DateTime? MailFecha, string Estado,
         DateTime? PagadoFecha, string? PagadoComo, bool TienePdf, string? Nota, bool DelBanco);
     public record ImpuestosAvisosDto(int Pendientes, decimal PendientesImporte, DateTime? ProximoVence, string? ProximoTexto,
-        int VencidosSinPago, int PagadosMes, decimal PagadosMesImporte, bool SinVepsEsteMes);
+        int VencidosSinPago, int PagadosMes, decimal PagadosMesImporte, bool SinVepsEsteMes,
+        DateTime? UltimaRevision = null, string? ResultadoRevision = null, int VencenPronto = 0);
     public record ImpuestosRevisionDto(int MailsLeidos, int Nuevos, int Pagados, int DelBanco, string? Error);
     public record ImpuestosSubidaDto(int Leidos, int Nuevos, int Pagados);
     public async Task<List<ImpuestoDto>> GetImpuestosAsync()
@@ -10381,6 +10382,43 @@ public class ApiClient
             return (null, err);
         }
         catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    // ── 2026-11-18: botón "Listas" de la barra (listas de precios + catálogos) ──
+    public record LcItemDto(string Tipo, int Id, string Nombre, string Detalle, DateTime Fecha, string Extension);
+    public record LcTodoDto(List<LcItemDto> Listas, List<LcItemDto> Catalogos);
+    public record LcMailSugeridoDto(string Cliente, string Email);
+    public static string LcArchivoUrl(string tipo, int id, bool descargar) => $"/api/listas-catalogos/{tipo}/{id}/archivo{(descargar ? "?descargar=1" : "")}";
+    public async Task<LcTodoDto?> GetListasCatalogosAsync()
+    {
+        try { return await _http.GetFromJsonAsync<LcTodoDto>("/api/listas-catalogos"); } catch { return null; }
+    }
+    public async Task<List<LcMailSugeridoDto>> GetLcMailsAsync(string q)
+    {
+        try { return await _http.GetFromJsonAsync<List<LcMailSugeridoDto>>($"/api/listas-catalogos/mails?q={Uri.EscapeDataString(q)}") ?? new(); } catch { return new(); }
+    }
+    public async Task<(bool ok, string? error)> EnviarLcMailAsync(string tipo, int id, string para, string? mensaje)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync($"/api/listas-catalogos/{tipo}/{id}/mail", new { Para = para, Mensaje = mensaje });
+            if (resp.IsSuccessStatusCode) return (true, null);
+            string err = "No se pudo mandar";
+            try { using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync()); if (doc.RootElement.TryGetProperty("error", out var e)) err = e.GetString() ?? err; } catch { }
+            return (false, err);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+    public async Task<string?> CrearLcLinkAsync(string tipo, int id)
+    {
+        try
+        {
+            var resp = await _http.PostAsync($"/api/listas-catalogos/{tipo}/{id}/link", null);
+            if (!resp.IsSuccessStatusCode) return null;
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            return doc.RootElement.TryGetProperty("url", out var u) ? u.GetString() : null;
+        }
+        catch { return null; }
     }
 
     public async Task<bool> DeleteTwCatalogoAsync(int id)

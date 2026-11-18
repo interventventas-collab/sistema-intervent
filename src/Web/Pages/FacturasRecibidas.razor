@@ -1,0 +1,199 @@
+@page "/compras/facturas-recibidas"
+@attribute [Authorize(Roles = "admin")]
+@inject ApiClient Api
+@inject ToastService ToastService
+@implements IDisposable
+
+@* 18/11/2026 — Facturas recibidas: lo que nos facturan los proveedores. Las trae de ARCA un robot
+   todos los días a las 7 (ARCA las muestra recién al día siguiente) y con "↻ Traer ahora".
+   Las que llegaron desde la última vez que abriste esta lista llevan el punto azul ("nuevas");
+   al abrirla dejan de ser nuevas en la tarjeta Compras y en la campanita.
+   Maqueta aprobada: scratchpad/Compras_e_Impuestos_inicio_PROPUESTA.png *@
+
+<style>
+    .fr-top { display:flex; justify-content:space-between; align-items:flex-start; gap:0.8rem; flex-wrap:wrap; }
+    .fr-sub { color:#6b7280; font-size:0.85rem; margin-top:0.2rem; }
+    .fr-btn { border:1px solid #d1d5db; background:#fff; border-radius:6px; padding:0.35rem 0.7rem; font-size:0.85rem; cursor:pointer; white-space:nowrap; color:#374151; }
+    .fr-btn:disabled { opacity:0.55; cursor:default; }
+    .fr-fil { display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.9rem 0 0.4rem; }
+    .fr-fil .form-input { max-width:260px; }
+    .fr { width:100%; border-collapse:collapse; font-size:0.9rem; }
+    .fr th { font-size:0.7rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; font-weight:600; text-align:left; padding:0.4rem 0.4rem; border-bottom:1px solid #e5e7eb; }
+    .fr td { padding:0.45rem 0.4rem; border-bottom:1px solid #f3f4f6; vertical-align:middle; }
+    .fr .num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .fr .gris { color:#6b7280; font-size:0.84rem; }
+    .fr .ok { color:#15803d; font-size:0.84rem; }
+    .fr .debe { color:#b45309; font-size:0.84rem; }
+    .fr .punto { display:inline-block; width:8px; height:8px; border-radius:50%; background:#2563eb; margin-right:0.35rem; }
+    .fr-dia td { font-size:0.7rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; padding-top:0.8rem; border-bottom:1px solid #e5e7eb; }
+    .fr a { color:inherit; }
+    .fr-pdf { text-decoration:none; }
+</style>
+
+<div class="card">
+    <div class="card-body">
+        <div class="fr-top">
+            <div>
+                <h3 style="margin:0;">🧾 Facturas recibidas</h3>
+                <div class="fr-sub">
+                    Lo que te facturan los proveedores. Se trae de ARCA todos los días a las 7 (ARCA las muestra al día siguiente de hechas).
+                </div>
+                <div class="fr-sub">@EstadoTexto()</div>
+            </div>
+            <button class="fr-btn" disabled="@(estado?.Corriendo == true || iniciando)" @onclick="TraerAhora">
+                @(estado?.Corriendo == true || iniciando ? "⏳ Trayendo de ARCA…" : "↻ Traer ahora")
+            </button>
+        </div>
+
+        <div class="fr-fil">
+            <select class="form-input" @bind="mes" @bind:after="Cargar">
+                <option value="">Últimos 60 días</option>
+                @foreach (var m in Meses())
+                {
+                    <option value="@m.ToString("yyyy-MM")">@m.ToString("MMMM yyyy", Ar)</option>
+                }
+            </select>
+            <input class="form-input" placeholder="🔍 Proveedor o CUIT" @bind="busca" @bind:event="oninput" @bind:after="BuscarConPausa" />
+        </div>
+
+        @if (lista is null)
+        {
+            <p class="text-muted">Cargando...</p>
+        }
+        else if (lista.Count == 0)
+        {
+            <p class="text-muted">No hay facturas para mostrar.</p>
+        }
+        else
+        {
+            <div class="fr-sub" style="margin-bottom:0.3rem;">
+                @lista.Count comprobante@(lista.Count == 1 ? "" : "s") · @Plata(lista.Sum(f => f.Total))
+                @if (lista.Any(f => f.Nueva)) { <span> · <span class="punto"></span>@lista.Count(f => f.Nueva) nueva@(lista.Count(f => f.Nueva) == 1 ? "" : "s")</span> }
+            </div>
+            <div class="table-responsive">
+                <table class="fr">
+                    <tr><th>Llegó</th><th>Proveedor</th><th>Comprobante</th><th>Fecha</th><th class="num">Importe</th><th>¿Pagada?</th><th></th></tr>
+                    @foreach (var f in lista)
+                    {
+                        <tr>
+                            <td style="white-space:nowrap;">@if (f.Nueva) { <span class="punto" title="Nueva"></span> }@f.Llego.ToArTime().ToString("dd/MM")</td>
+                            <td>
+                                @if (f.ProveedorId is int pid)
+                                {
+                                    <a href="/cafe/proveedores/@pid/estado-cuenta"><b>@f.Proveedor</b></a>
+                                }
+                                else { <b>@f.Proveedor</b> }
+                            </td>
+                            <td class="gris">@(f.EsNotaCredito ? "Nota de crédito" : f.Tipo) @f.Numero</td>
+                            <td class="gris">@f.Fecha?.ToString("dd/MM/yy")</td>
+                            <td class="num">@Plata(f.Total)</td>
+                            <td class="@(f.Pago == "pagada" ? "ok" : f.Pago?.StartsWith("debe") == true || f.Pago == "a pagar" ? "debe" : "gris")">@(f.Pago ?? "—")</td>
+                            <td style="text-align:right;">
+                                @if (f.TienePdf)
+                                {
+                                    <a class="fr-pdf" href="/api/contadora/factura-pdf?id=@Uri.EscapeDataString(f.Id)" target="_blank" title="Ver el PDF">📎</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </table>
+            </div>
+            <div class="fr-sub" style="margin-top:0.6rem;">"¿Pagada?" se sabe solo de los proveedores que llevan cuenta corriente (¿A quién le debo?).</div>
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly System.Globalization.CultureInfo Ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+    private List<ApiClient.FacturaRecibidaDto>? lista;
+    private ApiClient.FacturasEstadoDto? estado;
+    private string mes = "", busca = "";
+    private bool iniciando;
+    private System.Threading.Timer? timer;
+    private CancellationTokenSource? pausa;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+        // Al abrirla, lo que hay deja de ser "nuevo" (los puntos azules se ven esta vez).
+        try { await Api.MarcarFacturasRecibidasVistasAsync(); } catch { }
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            lista = await Api.GetFacturasRecibidasAsync(mes, busca);
+            estado = await Api.GetFacturasRecibidasEstadoAsync();
+        }
+        catch (Exception ex) { lista ??= new(); ToastService.Error(ex.Message); }
+    }
+
+    private async Task BuscarConPausa()
+    {
+        pausa?.Cancel();
+        pausa = new CancellationTokenSource();
+        var t = pausa.Token;
+        try { await Task.Delay(350, t); } catch { return; }
+        await Cargar();
+    }
+
+    private static IEnumerable<DateTime> Meses()
+    {
+        var h = FechaPalabras.HoyAr;
+        var m = new DateTime(h.Year, h.Month, 1);
+        for (var i = 0; i < 12; i++) yield return m.AddMonths(-i);
+    }
+
+    private string EstadoTexto()
+    {
+        if (estado is null) return "";
+        if (estado.Corriendo || iniciando) return "Entrando a ARCA… tarda 1 a 3 minutos.";
+        var u = estado.Ultima is DateTime d ? "Última vez que se trajo: " + Cuando(d) : "Todavía no se trajo con el robot nuevo.";
+        var r = estado.Resultado;
+        return string.IsNullOrWhiteSpace(r) ? u : (r.StartsWith("⚠") ? $"{u} · {r}" : u);
+    }
+
+    public static string Cuando(DateTime utc)
+    {
+        var d = utc.ToArTime();
+        var hoy = FechaPalabras.HoyAr;
+        var dia = d.Date == hoy ? "hoy" : d.Date == hoy.AddDays(-1) ? "ayer" : d.ToString("dd/MM");
+        return $"{dia} {d:HH:mm}";
+    }
+
+    private async Task TraerAhora()
+    {
+        iniciando = true;
+        try
+        {
+            if (!await Api.TraerFacturasRecibidasAhoraAsync()) { ToastService.Error("No se pudo arrancar"); iniciando = false; return; }
+            ToastService.Success("Entrando a ARCA… cuando termine se actualiza la lista sola");
+            timer?.Dispose();
+            timer = new System.Threading.Timer(async _ => await InvokeAsync(Revisar), null, 5000, 5000);
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); iniciando = false; }
+    }
+
+    private async Task Revisar()
+    {
+        try
+        {
+            estado = await Api.GetFacturasRecibidasEstadoAsync();
+            if (estado is { Corriendo: false })
+            {
+                timer?.Dispose(); timer = null; iniciando = false;
+                lista = await Api.GetFacturasRecibidasAsync(mes, busca);
+                if (estado.Resultado?.StartsWith("⚠") == true) ToastService.Error(estado.Resultado);
+                else ToastService.Success("Listo: facturas actualizadas");
+                try { await Api.MarcarFacturasRecibidasVistasAsync(); } catch { }
+            }
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private static string Plata(decimal v) => "$" + v.ToString("N0", Ar);
+
+    public void Dispose() { timer?.Dispose(); pausa?.Cancel(); }
+}

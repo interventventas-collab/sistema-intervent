@@ -331,6 +331,8 @@ builder.Services.AddHostedService<ResumenFinancieroDiarioService>();
 // 2026-07-23: Centro de Automatizaciones — despachador multi-canal (campanita/Telegram/WhatsApp/correo)
 builder.Services.AddScoped<AutoAvisoSender>();
 builder.Services.AddHostedService<MeliCodigoColectaBackgroundService>();
+builder.Services.AddSingleton<ComprasAfipRobot>(); // 18/11/2026 facturas de ARCA a las 7 + Traer ahora
+builder.Services.AddHostedService<ComprasAfipDiarioService>();
 builder.Services.AddHostedService<PagosProgramadosBackgroundService>(); // 17/11/2026
 builder.Services.AddHostedService<ImpuestosBackgroundService>(); // 17/11/2026 lee VEP de la contadora + cruza con Galicia
 // 2026-06-12: reactivado. Solo LECTURA informativa: pobla Cafe_StockPorDeposito[Full MeLi]

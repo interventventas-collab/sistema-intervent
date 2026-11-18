@@ -1,0 +1,470 @@
+@* 2026-11-18: ventana del botón 📚 "Listas" de la barra de arriba (pedido del dueño). Dos pestañas:
+   listas de precios personalizadas (el PDF se arma en el momento, con precios de HOY) y catálogos subidos
+   (los mismos del WhatsApp del sistema). Cada uno: Ver · Descargar · Mail · Compartir.
+   Compartir = WhatsApp del sistema (abre el chat con el archivo listo en la bandeja), copiar link de 7 días,
+   o el menú de compartir del celu/compu (mp-compartir.js, el mismo de los repartidores). *@
+@inject ApiClient Api
+@inject ToastService Toast
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@if (abierta)
+{
+    <div class="lcv-fondo" @onclick="Cerrar"></div>
+    <div class="lcv" role="dialog" aria-label="Listas de precios y catálogos">
+        <div class="lcv-h">
+            <h3>Listas de precios y catálogos</h3>
+            <button type="button" class="lcv-x" title="Cerrar" @onclick="Cerrar">✕</button>
+        </div>
+        <div class="lcv-tabs">
+            <button type="button" class="lcv-tab @(tab == "LISTA" ? "on" : "")" @onclick='() => CambiarTab("LISTA")'>💲 Listas de precios <span>@(todo?.Listas.Count ?? 0)</span></button>
+            <button type="button" class="lcv-tab @(tab == "CATALOGO" ? "on" : "")" @onclick='() => CambiarTab("CATALOGO")'>📚 Catálogos <span>@(todo?.Catalogos.Count ?? 0)</span></button>
+        </div>
+        <div class="lcv-top">
+            <input class="lcv-buscar" placeholder="🔍 Buscar @(tab == "LISTA" ? "lista" : "catálogo")…" @bind="filtro" @bind:event="oninput" />
+            @if (tab == "CATALOGO")
+            {
+                <label class="lcv-b @(subiendo ? "dis" : "")" title="PDF, documento o imagen (hasta 16 MB)">
+                    @(subiendo ? "⏳ Subiendo…" : "⬆ Subir catálogo")
+                    <InputFile OnChange="Subir" disabled="@subiendo" accept=".pdf,.doc,.docx,.xls,.xlsx,image/*" style="display:none;" />
+                </label>
+            }
+        </div>
+        <div class="lcv-lista">
+            @if (todo is null)
+            {
+                <div class="lcv-vacio">@(cargando ? "Cargando…" : "No se pudo cargar. Cerrá y volvé a abrir.")</div>
+            }
+            else
+            {
+                var its = (tab == "LISTA" ? todo.Listas : todo.Catalogos)
+                    .Where(i => string.IsNullOrWhiteSpace(filtro) || i.Nombre.Contains(filtro.Trim(), StringComparison.OrdinalIgnoreCase)
+                                || i.Detalle.Contains(filtro.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+                @if (its.Count == 0)
+                {
+                    <div class="lcv-vacio">@(string.IsNullOrWhiteSpace(filtro) ? (tab == "LISTA" ? "No hay listas activas." : "Todavía no hay catálogos. Subí uno con ⬆.") : "Nada con ese nombre.")</div>
+                }
+                @foreach (var it in its)
+                {
+                    var abiertoEste = accTipo == it.Tipo && accId == it.Id;
+                    <div class="lcv-it @(abiertoEste ? "sel" : "")">
+                        <div class="lcv-ic">@it.Extension.ToUpperInvariant()</div>
+                        <div class="lcv-nom">
+                            <div class="lcv-n">@it.Nombre</div>
+                            <div class="lcv-s">@it.Detalle@(it.Detalle != "" ? " · " : "")@(it.Tipo == "LISTA" ? "actualizada" : "subido") @it.Fecha.ToArTime().ToString("dd/MM")</div>
+                        </div>
+                        <div class="lcv-acts">
+                            <button type="button" class="lcv-b p" title="Verlo acá adelante" @onclick="() => Ver(it)">👁 Ver</button>
+                            <a class="lcv-b" href="@ApiClient.LcArchivoUrl(it.Tipo, it.Id, true)" title="Bajar el archivo">⬇ Descargar</a>
+                            <button type="button" class="lcv-b @(abiertoEste && acc == "mail" ? "on" : "")" @onclick='() => Accion(it, "mail")'>✉ Mail</button>
+                            <button type="button" class="lcv-b @(abiertoEste && acc == "compartir" ? "on" : "")" @onclick='() => Accion(it, "compartir")'>📤 Compartir</button>
+                        </div>
+                    </div>
+                    @if (abiertoEste && acc == "mail")
+                    {
+                        <div class="lcv-panel">
+                            <div class="lcv-lbl">Para</div>
+                            <input class="lcv-inp" placeholder="nombre del cliente o mail…" value="@mailPara" @oninput="BuscarMail" />
+                            @if (mailSug.Count > 0)
+                            {
+                                <div class="lcv-sug">
+                                    @foreach (var m in mailSug)
+                                    {
+                                        <button type="button" @onclick="() => ElegirMail(m)"><b>@m.Cliente</b> · @m.Email</button>
+                                    }
+                                </div>
+                            }
+                            else if (mailPara.Trim().Length >= 2 && !mailPara.Contains('@'))
+                            {
+                                <div class="lcv-hint">Escribí el cliente y te trae el mail de su ficha (solo los que tienen mail cargado).</div>
+                            }
+                            <div class="lcv-lbl">Mensaje</div>
+                            <textarea class="lcv-inp" rows="3" @bind="mailMsg"></textarea>
+                            <div class="lcv-pie">
+                                <button type="button" class="lcv-b" @onclick="CerrarAccion">Cancelar</button>
+                                <button type="button" class="lcv-b p" disabled="@(mandando || !mailPara.Contains('@'))" @onclick="() => MandarMail(it)">
+                                    @(mandando ? "Mandando…" : "Enviar con el archivo adjunto")
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    else if (abiertoEste && acc == "compartir")
+                    {
+                        <div class="lcv-panel">
+                            <button type="button" class="lcv-op" @onclick="() => waBuscando = !waBuscando">
+                                <span class="lcv-op-i">💬</span>
+                                <span><b>Por el WhatsApp del sistema</b><small>Elegís el chat y se abre con el archivo listo para mandar</small></span>
+                            </button>
+                            @if (waBuscando)
+                            {
+                                <div class="lcv-wa">
+                                    <input class="lcv-inp" placeholder="nombre o teléfono del chat…" @bind="waFiltro" @bind:event="oninput" />
+                                    @if (waConvs is null)
+                                    {
+                                        <div class="lcv-hint">Cargando chats…</div>
+                                    }
+                                    else
+                                    {
+                                        var cs = WaFiltrados();
+                                        @if (cs.Count == 0)
+                                        {
+                                            <div class="lcv-hint">@(string.IsNullOrWhiteSpace(waFiltro) ? "No hay chats." : "Ningún chat con eso.")</div>
+                                        }
+                                        @foreach (var c in cs)
+                                        {
+                                            <button type="button" class="lcv-wa-it" @onclick="() => AbrirChat(it, c)">
+                                                <b>@NombreChat(c)</b> <small>@c.Numero.Replace("whatsapp:", "")</small>
+                                                @if (!VentanaAbierta(c))
+                                                {
+                                                    <small class="lcv-24">· más de 24 hs: WhatsApp pide primero una plantilla</small>
+                                                }
+                                            </button>
+                                        }
+                                    }
+                                </div>
+                            }
+                            <button type="button" class="lcv-op" @onclick="() => CopiarLink(it)">
+                                <span class="lcv-op-i">🔗</span>
+                                <span><b>@(linkCopiado ? "✓ Link copiado" : "Copiar link")</b><small>Para pegarlo donde quieras · dura 7 días</small></span>
+                            </button>
+                            <button type="button" class="lcv-op" @onclick="() => CompartirEquipo(it)">
+                                <span class="lcv-op-i">📱</span>
+                                <span><b>Compartir desde el celu o la compu</b><small>Abre el menú de compartir (WhatsApp normal, Gmail, etc.)</small></span>
+                            </button>
+                        </div>
+                    }
+                }
+            }
+        </div>
+        <div class="lcv-foot">
+            <span>@(tab == "LISTA" ? "El PDF de la lista sale siempre con los precios de HOY." : "Son los mismos catálogos del WhatsApp del sistema.")</span>
+            @if (tab == "LISTA")
+            {
+                <a href="/cafe/listas-precios-custom" @onclick="Cerrar">Editar listas →</a>
+            }
+        </div>
+    </div>
+}
+
+@* 2026-11-18 (pedido del dueño): "Ver" lo abre acá adelante, en una ventana que se agranda/achica.
+   El PDF se dibuja con pdf.js (mp-compartir.js), igual en compu y celu (Chrome de Android no muestra
+   un PDF adentro de una página). + / − agrandan y achican (se vuelve a dibujar nítido); en la compu la
+   ventana se estira desde la esquina y tiene pantalla completa. *@
+@if (verItem is not null)
+{
+    var vi = verItem;
+    var esPdf = vi.Extension == "pdf";
+    var esImg = vi.Extension is "jpg" or "jpeg" or "png" or "gif" or "webp";
+    @* 18/11 2ª: sin fondo oscuro — la ventana flota y se sigue usando el sistema por detrás. *@
+    <div id="lcv-ver" class="lcv-ver @(verCompleta ? "completa" : "")" role="dialog" aria-label="@vi.Nombre">
+        <div class="lcv-ver-h" title="@(verCelu ? "" : "Arrastrá desde acá para moverla")">
+            <b class="lcv-ver-t">@vi.Nombre</b>
+            @if (esPdf || esImg)
+            {
+                <button type="button" class="lcv-b" title="Achicar" @onclick="() => Zoom(-25)">−</button>
+                <button type="button" class="lcv-ver-z" title="Volver al tamaño justo" @onclick="() => Zoom(0)">@verZoom%</button>
+                <button type="button" class="lcv-b" title="Agrandar" @onclick="() => Zoom(25)">+</button>
+            }
+            <a class="lcv-b" href="@ApiClient.LcArchivoUrl(vi.Tipo, vi.Id, true)" title="Bajar el archivo">⬇</a>
+            <a class="lcv-b" href="@ApiClient.LcArchivoUrl(vi.Tipo, vi.Id, false)" target="_blank" rel="noopener" title="Abrir en una pestaña nueva">↗</a>
+            @if (!verCelu)
+            {
+                <button type="button" class="lcv-b" title="Pegarla a la derecha para seguir trabajando a la izquierda" @onclick="AlCostado">◧</button>
+                <button type="button" class="lcv-b" title="@(verCompleta ? "Volver al tamaño de ventana" : "Pantalla completa")" @onclick="() => verCompleta = !verCompleta">@(verCompleta ? "🗗" : "⛶")</button>
+            }
+            <button type="button" class="lcv-x" title="Cerrar" @onclick="CerrarVer">✕</button>
+        </div>
+        <div class="lcv-ver-cuerpo">
+            @if (esImg)
+            {
+                <div class="lcv-ver-scroll"><img src="@ApiClient.LcArchivoUrl(vi.Tipo, vi.Id, false)" alt="@vi.Nombre" style="width:@(verZoom)%; display:block; margin:0 auto;" /></div>
+            }
+            else if (esPdf)
+            {
+                <div class="lcv-ver-scroll">
+                    @if (verCargando) { <div class="lcv-vacio">Cargando…</div> }
+                    <div id="lcv-pdf" style="width:@(verZoom)%; margin:0 auto;"></div>
+                </div>
+            }
+            else
+            {
+                <div class="lcv-vacio">Este tipo de archivo (@vi.Extension.ToUpperInvariant()) no se puede mostrar acá. Bajalo con ⬇.</div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .lcv-fondo { position: fixed; inset: 0; background: rgba(15,23,42,.35); z-index: 1200; }
+    .lcv { position: fixed; z-index: 1201; top: 64px; left: 50vw; transform: translateX(-50%); width: min(820px, calc(100vw - 24px));
+           max-height: calc(100vh - 90px); display: flex; flex-direction: column; background: #fff; border-radius: 12px;
+           box-shadow: 0 12px 36px rgba(0,0,0,.2); color: #111827; font-size: 13px; overflow: hidden; }
+    .lcv-h { display: flex; align-items: center; padding: 14px 18px; border-bottom: 1px solid #e5e7eb; }
+    .lcv-h h3 { margin: 0; font-size: 16px; flex: 1; }
+    .lcv-x { border: 0; background: none; font-size: 18px; color: #9ca3af; cursor: pointer; }
+    .lcv-tabs { display: flex; gap: 22px; padding: 0 18px; border-bottom: 1px solid #e5e7eb; }
+    .lcv-tab { border: 0; background: none; padding: 10px 0; color: #6b7280; font-weight: 600; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; }
+    .lcv-tab.on { color: #111827; border-bottom-color: #111827; }
+    .lcv-tab span { color: #9ca3af; font-weight: 400; }
+    .lcv-top { display: flex; gap: 8px; padding: 12px 18px; align-items: center; }
+    .lcv-buscar { flex: 1; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px; }
+    .lcv-lista { overflow-y: auto; flex: 1; min-height: 0; }
+    .lcv-vacio { padding: 24px 18px; color: #6b7280; text-align: center; }
+    .lcv-it { display: flex; align-items: center; gap: 12px; padding: 10px 18px; border-top: 1px solid #f1f5f9; }
+    .lcv-it.sel { background: #f9fafb; }
+    .lcv-ic { flex: 0 0 34px; height: 42px; border: 1px solid #e5e7eb; border-radius: 4px; display: flex; align-items: center; justify-content: center;
+              font-size: 10px; font-weight: 700; color: #b91c1c; background: #fafafa; }
+    .lcv-nom { min-width: 0; flex: 1; }
+    .lcv-n { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lcv-s { color: #6b7280; font-size: 12px; margin-top: 2px; }
+    .lcv-acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+    .lcv-b { border: 1px solid #d1d5db; background: #fff; border-radius: 7px; padding: 5px 9px; font-size: 12px; color: #374151; white-space: nowrap;
+             cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 3px; }
+    .lcv-b:hover { background: #f3f4f6; }
+    .lcv-b.p { background: #111827; color: #fff; border-color: #111827; }
+    .lcv-b.on { border-color: #111827; font-weight: 700; }
+    .lcv-b.dis, .lcv-b:disabled { opacity: .55; cursor: default; }
+    .lcv-panel { margin: 0 18px 10px 64px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; }
+    .lcv-lbl { font-size: 11px; color: #6b7280; margin: 6px 0 3px; }
+    .lcv-inp { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 7px; padding: 7px 9px; font-size: 13px; font-family: inherit; }
+    .lcv-hint { font-size: 11px; color: #6b7280; margin-top: 4px; }
+    .lcv-sug { display: flex; flex-direction: column; border: 1px solid #e5e7eb; border-radius: 7px; margin-top: 4px; max-height: 180px; overflow-y: auto; }
+    .lcv-sug button { border: 0; border-top: 1px solid #f1f5f9; background: #fff; text-align: left; padding: 6px 9px; font-size: 12px; cursor: pointer; color: #374151; }
+    .lcv-sug button:hover { background: #eff6ff; }
+    .lcv-pie { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+    .lcv-op { display: flex; gap: 10px; align-items: center; width: 100%; border: 0; border-top: 1px solid #f1f5f9; background: none; padding: 8px 2px; text-align: left; cursor: pointer; color: #111827; font-size: 13px; }
+    .lcv-op:first-child { border-top: 0; }
+    .lcv-op:hover { background: #f9fafb; }
+    .lcv-op small { display: block; font-size: 11px; color: #6b7280; font-weight: 400; }
+    .lcv-op-i { font-size: 16px; width: 22px; text-align: center; }
+    .lcv-wa { margin: 2px 0 8px 32px; }
+    .lcv-wa-it { display: block; width: 100%; text-align: left; border: 0; border-bottom: 1px solid #f1f5f9; background: none; padding: 6px 4px; cursor: pointer; font-size: 12.5px; }
+    .lcv-wa-it:hover { background: #f0fdf4; }
+    .lcv-wa-it small { color: #9ca3af; margin-left: 6px; }
+    .lcv-wa-it small.lcv-24 { color: #b45309; margin-left: 4px; }
+    .lcv-foot { padding: 10px 18px; color: #6b7280; font-size: 12px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; gap: 10px; }
+    .lcv-foot a { color: #374151; text-decoration: none; }
+    .lcv-ver { position: fixed; z-index: 1301; top: 4vh; left: 50vw; transform: translateX(-50%); width: min(1100px, 94vw); height: 90vh;
+               min-width: 360px; min-height: 300px; max-width: 100vw; max-height: 100vh; resize: both; overflow: hidden;
+               display: flex; flex-direction: column; background: #fff; border-radius: 12px; box-shadow: 0 16px 48px rgba(0,0,0,.3); }
+    .lcv-ver.completa { top: 0 !important; left: 0 !important; transform: none !important; width: 100vw !important; height: 100vh !important; border-radius: 0; resize: none; }
+    .lcv-ver-h { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; cursor: move; user-select: none; touch-action: none; }
+    .lcv-ver-h button, .lcv-ver-h a { cursor: pointer; }
+    .lcv-ver.moviendo { opacity: .92; }
+    .lcv-ver.moviendo .lcv-ver-cuerpo { pointer-events: none; }
+    /* esquina para estirar, que se vea */
+    .lcv-ver::after { content: ""; position: absolute; right: 2px; bottom: 2px; width: 14px; height: 14px; pointer-events: none;
+                      background: linear-gradient(135deg, transparent 0 45%, #9ca3af 45% 52%, transparent 52% 64%, #9ca3af 64% 71%, transparent 71%); }
+    .lcv-ver-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+    .lcv-ver-z { font-size: 12px; color: #374151; min-width: 44px; text-align: center; border: 0; background: none; cursor: pointer; }
+    .lcv-ver-cuerpo { flex: 1; min-height: 0; background: #525659; }
+    .lcv-ver-scroll { width: 100%; height: 100%; overflow: auto; padding: 8px; box-sizing: border-box; }
+    .lcv-ver-cuerpo .lcv-vacio { color: #e5e7eb; }
+    @@media (max-width: 768px) {
+        .lcv-ver { top: 0; left: 0; transform: none; width: 100vw; height: 100vh; border-radius: 0; resize: none; min-width: 0; }
+        .lcv-ver-h { cursor: default; touch-action: auto; }
+        .lcv-ver::after { display: none; }
+        .lcv { top: 8px; max-height: calc(100vh - 16px); }
+        .lcv-it { flex-wrap: wrap; }
+        .lcv-acts { width: 100%; justify-content: flex-start; padding-left: 46px; }
+        .lcv-panel { margin-left: 18px; }
+    }
+</style>
+
+@code {
+    private bool abierta, cargando, subiendo, mandando, linkCopiado, waBuscando;
+    private ApiClient.LcTodoDto? todo;
+    private string tab = "LISTA";
+    private string filtro = "";
+    private string? accTipo; private int accId; private string acc = "";
+    private string mailPara = "", mailMsg = "";
+    private List<ApiClient.LcMailSugeridoDto> mailSug = new();
+    private List<ApiClient.TwConvDto>? waConvs;
+    private string waFiltro = "";
+    private CancellationTokenSource? mailCts;
+
+    public async Task Abrir()
+    {
+        abierta = true; filtro = ""; CerrarAccion();
+        StateHasChanged();
+        cargando = true;
+        todo = await Api.GetListasCatalogosAsync();
+        cargando = false;
+        StateHasChanged();
+    }
+
+    private void Cerrar() { abierta = false; CerrarAccion(); CerrarVer(); }
+    private void CambiarTab(string t) { tab = t; filtro = ""; CerrarAccion(); }
+    private void CerrarAccion() { accTipo = null; accId = 0; acc = ""; mailSug.Clear(); waBuscando = false; linkCopiado = false; }
+
+    private void Accion(ApiClient.LcItemDto it, string que)
+    {
+        if (accTipo == it.Tipo && accId == it.Id && acc == que) { CerrarAccion(); return; }
+        CerrarAccion();
+        accTipo = it.Tipo; accId = it.Id; acc = que;
+        if (que == "mail")
+        {
+            mailPara = "";
+            mailMsg = it.Tipo == "LISTA"
+                ? "Hola, te paso nuestra lista de precios actualizada.\nSaludos, Inter Vent"
+                : "Hola, te paso nuestro catálogo.\nSaludos, Inter Vent";
+        }
+    }
+
+    // ───── Mail ─────
+    private async Task BuscarMail(ChangeEventArgs e)
+    {
+        mailPara = e.Value?.ToString() ?? "";
+        mailCts?.Cancel();
+        var q = mailPara.Trim();
+        if (q.Length < 2 || q.Contains('@') && q.Contains('.')) { mailSug.Clear(); return; }
+        var cts = mailCts = new CancellationTokenSource();
+        try { await Task.Delay(250, cts.Token); } catch { return; }
+        var r = await Api.GetLcMailsAsync(q);
+        if (cts.IsCancellationRequested) return;
+        mailSug = r;
+        StateHasChanged();
+    }
+    private void ElegirMail(ApiClient.LcMailSugeridoDto m) { mailPara = m.Email; mailSug.Clear(); }
+
+    private async Task MandarMail(ApiClient.LcItemDto it)
+    {
+        mandando = true;
+        var (ok, err) = await Api.EnviarLcMailAsync(it.Tipo, it.Id, mailPara.Trim(), mailMsg);
+        mandando = false;
+        if (ok) { Toast.Success($"✉ Mandado a {mailPara.Trim()}"); CerrarAccion(); }
+        else Toast.Error(err ?? "No se pudo mandar el mail");
+    }
+
+    // ───── Compartir ─────
+    private async Task CopiarLink(ApiClient.LcItemDto it)
+    {
+        var url = await Api.CrearLcLinkAsync(it.Tipo, it.Id);
+        if (url is null) { Toast.Error("No se pudo armar el link"); return; }
+        try { await JS.InvokeVoidAsync("copyToClipboard", url); linkCopiado = true; Toast.Success("🔗 Link copiado · dura 7 días"); }
+        catch { Toast.Error("No se pudo copiar: " + url); }
+    }
+
+    private async Task CompartirEquipo(ApiClient.LcItemDto it)
+    {
+        var nombre = it.Nombre + "." + it.Extension;
+        string r;
+        try { r = await JS.InvokeAsync<string>("mpCompartir.compartir", ApiClient.LcArchivoUrl(it.Tipo, it.Id, true), nombre, ""); }
+        catch { r = "error"; }
+        switch (r)
+        {
+            case "bajado": Toast.Success("Este equipo no tiene menú de compartir: el archivo se descargó"); break;
+            case "tocar-de-nuevo": Toast.Success("Ya está listo: tocá de nuevo para compartir"); break;
+            case "error": Toast.Error("No se pudo compartir"); break;
+        }
+    }
+
+    // ───── Visor ─────
+    private ApiClient.LcItemDto? verItem;
+    private bool verCelu, verCompleta, verCargando, verPendienteDibujar, verPrepararMover;
+    private async Task AlCostado()
+    {
+        verCompleta = false;
+        try { await JS.InvokeVoidAsync("lcvVisor.costado", "lcv-ver"); } catch { }
+    }
+    private int verZoom = 100;
+
+    private async Task Ver(ApiClient.LcItemDto it)
+    {
+        try { verCelu = await JS.InvokeAsync<bool>("eval", "window.matchMedia('(max-width: 768px)').matches"); } catch { verCelu = false; }
+        verItem = it; verZoom = 100; verCompleta = false;
+        verPrepararMover = !verCelu;
+        // La lista se cierra: el visor queda solo, flotando, y se puede seguir trabajando.
+        abierta = false; CerrarAccion();
+        verCargando = it.Extension == "pdf";
+        verPendienteDibujar = verCargando;
+    }
+    private void CerrarVer() { verItem = null; verPendienteDibujar = false; }
+    /// <summary>d = 0 vuelve al 100 %. El PDF se vuelve a dibujar al nuevo ancho, así no se ve borroso.</summary>
+    private void Zoom(int d)
+    {
+        var antes = verZoom;
+        verZoom = d == 0 ? 100 : Math.Clamp(verZoom + d, 50, 400);
+        if (verZoom != antes && verItem?.Extension == "pdf") verPendienteDibujar = true;
+    }
+
+    private async Task AbrirBusquedaWa()
+    {
+        if (waConvs is null)
+        {
+            waConvs = await Api.GetTwConversacionesAsync();
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (waBuscando && waConvs is null) await AbrirBusquedaWa();
+        if (verPrepararMover && verItem is not null)
+        {
+            verPrepararMover = false;
+            try { await JS.InvokeVoidAsync("lcvVisor.arrastrable", "lcv-ver"); } catch { }
+        }
+        if (verPendienteDibujar && verItem is { } v)
+        {
+            verPendienteDibujar = false;
+            string r;
+            try { r = await JS.InvokeAsync<string>("mpCompartir.ver", ApiClient.LcArchivoUrl(v.Tipo, v.Id, true), v.Nombre + ".pdf", "lcv-pdf"); }
+            catch { r = "error"; }
+            verCargando = false;
+            if (r != "ok") Toast.Error("No se pudo mostrar el archivo: abrilo con ↗ o bajalo con ⬇");
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Meta solo deja mandar archivos si el cliente escribió en las últimas 24 hs (Instagram no tiene esa regla).</summary>
+    private static bool VentanaAbierta(ApiClient.TwConvDto c)
+        => c.Numero.StartsWith("ig:") || c.Canal == "INSTAGRAM"
+           || (c.UltimoEntranteAt is DateTime u && DateTime.UtcNow - DateTime.SpecifyKind(u, DateTimeKind.Utc) < TimeSpan.FromHours(24));
+
+    private static string NombreChat(ApiClient.TwConvDto c)
+        => !string.IsNullOrWhiteSpace(c.ClienteNombre) ? c.ClienteNombre!
+         : !string.IsNullOrWhiteSpace(c.NombrePerfil) ? c.NombrePerfil! : c.Numero.Replace("whatsapp:", "");
+
+    private List<ApiClient.TwConvDto> WaFiltrados()
+    {
+        var f = (waFiltro ?? "").Trim();
+        var digitos = new string(f.Where(char.IsDigit).ToArray());
+        return (waConvs ?? new())
+            .Where(c => f == ""
+                        || NombreChat(c).Contains(f, StringComparison.OrdinalIgnoreCase)
+                        || (c.NombrePerfil ?? "").Contains(f, StringComparison.OrdinalIgnoreCase)
+                        || (digitos.Length >= 3 && c.Numero.Contains(digitos)))
+            .OrderByDescending(c => c.UltimoAt)
+            .GroupBy(c => c.Numero).Select(g => g.First())
+            .Take(8).ToList();
+    }
+
+    private void AbrirChat(ApiClient.LcItemDto it, ApiClient.TwConvDto c)
+    {
+        var url = $"/whatsapp?numero={Uri.EscapeDataString(c.Numero)}"
+                + (string.IsNullOrEmpty(c.Linea) ? "" : $"&linea={Uri.EscapeDataString(c.Linea)}")
+                + $"&adjuntar={it.Tipo}-{it.Id}&adjnombre={Uri.EscapeDataString(it.Nombre)}";
+        Cerrar();
+        Nav.NavigateTo(url);
+    }
+
+    // ───── Subir catálogo ─────
+    private async Task Subir(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        const long max = 16 * 1024 * 1024;
+        if (file.Size > max) { Toast.Error($"{file.Name} pesa más de 16 MB"); return; }
+        subiendo = true; StateHasChanged();
+        try
+        {
+            using var s = file.OpenReadStream(max);
+            var (resp, err) = await Api.UploadTwCatalogoAsync(s, file.Name, file.ContentType);
+            if (resp is null) Toast.Error(err ?? "No se pudo subir");
+            else { Toast.Success($"📚 {resp.OriginalFilename} guardado"); todo = await Api.GetListasCatalogosAsync() ?? todo; }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { subiendo = false; StateHasChanged(); }
+    }
+}

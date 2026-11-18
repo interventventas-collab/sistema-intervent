@@ -268,7 +268,7 @@ public class EnvioComprobanteService
     /// una cobranza — la config del correo vive en UN solo lugar.</summary>
     public async Task<(bool ok, string? error)> EnviarEmailConAdjuntoAsync(
         string to, string subject, string body, byte[]? pdfBytes = null, string? filename = null,
-        bool esHtml = false)
+        bool esHtml = false, string contentType = "application/pdf")
     {
         if (string.IsNullOrWhiteSpace(to)) return (false, "No hay dirección de correo a la que mandar.");
 
@@ -317,7 +317,7 @@ public class EnvioComprobanteService
         if (pdfBytes is { Length: > 0 })
         {
             ms = new MemoryStream(pdfBytes);
-            message.Attachments.Add(new System.Net.Mail.Attachment(ms, filename ?? "adjunto.pdf", "application/pdf"));
+            message.Attachments.Add(new System.Net.Mail.Attachment(ms, filename ?? "adjunto.pdf", contentType));
         }
         try { await client.SendMailAsync(message); }
         finally { ms?.Dispose(); }

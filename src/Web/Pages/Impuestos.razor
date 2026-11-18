@@ -43,11 +43,13 @@
     <div class="card-body">
         <div class="im-top">
             <div>
-                <h3 style="margin:0;">🧾 Impuestos y VEP</h3>
+                <h3 style="margin:0;">🧾 Impuestos y VEP@(TituloVer)</h3>
+                @if (!string.IsNullOrEmpty(TituloVer)) { <a href="/impuestos" style="font-size:0.8rem; color:#6b7280;">ver todos</a> }
                 <div class="im-sub">Lo que manda María por mail y lo que sale del Galicia. Cuando el banco muestra un pago de AFIP por el mismo importe, el VEP queda pagado solo.</div>
             </div>
             <div class="im-acc">
-                <button class="im-btn" disabled="@revisando" @onclick="Revisar">@(revisando ? "Revisando..." : "↻ Revisar mails y banco")</button>
+                @if (avisos?.UltimaRevision is DateTime ur) { <span style="color:#9ca3af; font-size:0.78rem; align-self:center;">revisado @FacturasRecibidas.Cuando(ur)</span> }
+                <button class="im-btn" disabled="@revisando" @onclick="Revisar">@(revisando ? "Revisando..." : "↻ Traer ahora")</button>
                 <label class="im-btn" style="margin:0;">📎 Subir VEP (PDF)
                     <InputFile OnChange="SubirPdf" accept="application/pdf" multiple style="display:none;" />
                 </label>
@@ -194,13 +196,32 @@
     private DateTime? eVence;
     private string? eNota;
 
-    protected override async Task OnInitializedAsync() => await Cargar();
+    // 18/11/2026: la tarjeta Impuestos del inicio abre esta pantalla filtrada: ?ver=AFIP (todo menos
+    // Ingresos brutos y honorarios) o ?ver=IIBB (solo Ingresos brutos).
+    [Parameter, SupplyParameterFromQuery(Name = "ver")] public string? Ver { get; set; }
+    private string? verCargado;
+
+    private List<ApiClient.ImpuestoDto> Filtrar(List<ApiClient.ImpuestoDto> l) => Ver?.ToUpperInvariant() switch
+    {
+        "IIBB" => l.Where(v => v.Concepto == "Ingresos brutos").ToList(),
+        "AFIP" => l.Where(v => v.Concepto != "Ingresos brutos" && v.Concepto != "Honorarios contadora").ToList(),
+        _ => l,
+    };
+
+    private string TituloVer => Ver?.ToUpperInvariant() switch { "IIBB" => " · Ingresos brutos", "AFIP" => " · ARCA (AFIP)", _ => "" };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (verCargado == (Ver ?? "") && lista is not null) return;
+        verCargado = Ver ?? "";
+        await Cargar();
+    }
 
     private async Task Cargar()
     {
         try
         {
-            lista = await Api.GetImpuestosAsync();
+            lista = Filtrar(await Api.GetImpuestosAsync());
             avisos = await Api.GetImpuestosAvisosAsync();
         }
         catch (Exception ex) { lista ??= new(); ToastService.Error(ex.Message); }

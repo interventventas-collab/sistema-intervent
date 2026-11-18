@@ -7814,6 +7814,29 @@
     public string? SoloParam { get; set; }
     private bool soloMode => SoloParam == "1";
 
+    // 2026-11-18: el botón 📚 Listas de la barra abre el chat con una lista de precios o un catálogo
+    // ya puesto en la bandeja de adjuntos (adjuntar=LISTA-5 / CATALOGO-3). No se manda solo: el
+    // operador lo ve y aprieta enviar como siempre.
+    [SupplyParameterFromQuery(Name = "adjuntar")]
+    public string? AdjuntarParam { get; set; }
+    [SupplyParameterFromQuery(Name = "adjnombre")]
+    public string? AdjNombreParam { get; set; }
+    string? _adjuntarAplicado;
+    void AplicarAdjuntarInicial()
+    {
+        if (string.IsNullOrWhiteSpace(AdjuntarParam) || AdjuntarParam == _adjuntarAplicado) return;
+        _adjuntarAplicado = AdjuntarParam;
+        var p = AdjuntarParam.Split('-', 2);
+        if (p.Length != 2 || p[0] is not ("LISTA" or "CATALOGO") || !int.TryParse(p[1], out var id)) return;
+        if (pendientes.Any(x => x.Kind == "SERVER" && x.ServerTipo == p[0] && x.ServerId == id)) return;
+        pendientes.Add(new PendingAdjunto
+        {
+            Kind = "SERVER", ServerTipo = p[0], ServerId = id,
+            Label = string.IsNullOrWhiteSpace(AdjNombreParam) ? (p[0] == "LISTA" ? "Lista de precios" : "Catálogo") : AdjNombreParam!,
+            Icono = "📄"
+        });
+    }
+
     // 2026-08-17: "← Volver" de la pantalla completa. Como esta pantalla tapa el menú del sistema
     // (igual que el Mapeo), este botón es la salida: lleva al Dashboard.
     private void VolverAlSistema() => Nav.NavigateTo("/");
@@ -7841,13 +7864,14 @@
     protected override async Task OnParametersSetAsync()
     {
         if (!_inicioListo || string.IsNullOrWhiteSpace(NumeroInicial)) return;
-        if (NumeroInicial == _numeroInicialAplicado) return;
+        if (NumeroInicial == _numeroInicialAplicado) { AplicarAdjuntarInicial(); return; }
         _numeroInicialAplicado = NumeroInicial;
         await LoadConversaciones(silent: true);
         var conv = conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial
                         && (string.IsNullOrEmpty(LineaInicial) || c.Linea == LineaInicial))
                     ?? conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial);
         await SelectConv(NumeroInicial, conv?.Linea);
+        AplicarAdjuntarInicial();
     }
 
     protected override async Task OnInitializedAsync()
@@ -7902,6 +7926,7 @@
                             && (string.IsNullOrEmpty(LineaInicial) || c.Linea == LineaInicial))
                         ?? conversaciones.FirstOrDefault(c => c.Numero == NumeroInicial);
             await SelectConv(NumeroInicial, conv?.Linea);
+            AplicarAdjuntarInicial();
         }
         _numeroInicialAplicado = NumeroInicial;
         _inicioListo = true;

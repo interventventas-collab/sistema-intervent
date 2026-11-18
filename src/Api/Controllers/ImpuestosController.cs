@@ -68,6 +68,10 @@ public class ImpuestosController : ControllerBase
             pagadosMes = pagadosMes.Count,
             pagadosMesImporte = pagadosMes.Sum(),
             sinVepsEsteMes = hoy.Day >= 20 && !hayDelMes,
+            // 18/11/2026: última vez que leyó los mails de la contadora y cruzó con el banco.
+            ultimaRevision = ComprasAfipRobot.ParseUtc(await ComprasAfipRobot.LeerAsync(_db, ImpuestosService.KeyUltima)),
+            resultadoRevision = await ComprasAfipRobot.LeerAsync(_db, ImpuestosService.KeyResultado),
+            vencenPronto = pend.Count(p => p.Vence.HasValue && p.Vence.Value.Date >= hoy && p.Vence.Value.Date <= hoy.AddDays(3)),
         });
     }
 
