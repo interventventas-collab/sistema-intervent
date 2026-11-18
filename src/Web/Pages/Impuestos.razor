@@ -99,9 +99,9 @@
                         <span>@(v.Estado switch
                         {
                             "PAGADO" => $"✓ pagado {v.PagadoFecha:dd/MM} · {Plata(v.Importe ?? 0)}",
-                            "BANCO" => $"✓ débito AFIP del {v.PagadoFecha:dd/MM} (el banco no dice de qué)",
+                            "BANCO" => $"✓ débito AFIP del {v.PagadoFecha:dd/MM} · {Plata(v.Importe ?? 0)} (el banco no dice de qué)",
                             "VEP" => $"VEP llegó · {Plata(v.Importe ?? 0)} sin pagar",
-                            _ => d < hoyV ? "venció · no veo VEP ni pago" : "VEP no llegó todavía",
+                            _ => d < hoyV ? "venció · no veo VEP ni pago" : "VEP no llegó todavía · el importe viene con el VEP",
                         })</span>
                     </div>
                 }
