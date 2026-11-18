@@ -545,6 +545,44 @@ public class AlqReservasController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    public record DevolucionItem(int ItemId, int Devuelto);
+    public record DevolucionRequest(bool Todo, List<DevolucionItem>? Items);
+
+    /// <summary>
+    /// 18/11/2026 — "✓ Volvió todo" / "Volvió parte…" desde Pendientes de retiro.
+    /// Todo = todas las cosas volvieron → la reserva queda Finalizada.
+    /// Parte = se anota cuántas volvieron de cada cosa; lo que falta sigue "en la calle"
+    /// (la reserva queda Entregada). Si con lo anotado ya volvió todo, se finaliza igual.
+    /// </summary>
+    [HttpPost("{id:int}/devolucion")]
+    public async Task<IActionResult> Devolucion(int id, [FromBody] DevolucionRequest req)
+    {
+        var r = await _db.AlqReservas.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        if (r is null) return NotFound(new { error = "Reserva no encontrada" });
+        if (r.Estado == "cancelado") return BadRequest(new { error = "La reserva está cancelada" });
+
+        if (req.Todo)
+        {
+            foreach (var it in r.Items) it.CantidadDevuelta = it.Cantidad;
+        }
+        else
+        {
+            foreach (var d in req.Items ?? new())
+            {
+                var it = r.Items.FirstOrDefault(x => x.Id == d.ItemId);
+                if (it is null) continue;
+                it.CantidadDevuelta = Math.Clamp(d.Devuelto, 0, it.Cantidad);
+            }
+        }
+
+        var volvioTodo = r.Items.All(x => x.CantidadDevuelta >= x.Cantidad);
+        if (volvioTodo) r.Estado = "finalizado";
+        else if (r.Estado is "reservado" or "confirmado" or "finalizado") r.Estado = "entregado";
+        r.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, estado = r.Estado });
+    }
+
     // 2026-08-19 — Candado contra fechas con el año a medio escribir (año 0001, 0002, 0202...).
     // El <input type="date"> del navegador avisa el cambio en cada dígito del año, así que una
     // pantalla puede llegar a mandar una fecha con año basura. Acá no entra.
@@ -1000,7 +1038,8 @@ public class AlqReservasController : ControllerBase
                 && i.ReservaNav!.FechaEntrega <= t
                 && i.ReservaNav!.FechaRetiro >= f);
         if (excluirReservaId.HasValue) q = q.Where(i => i.ReservaId != excluirReservaId.Value);
-        return await q.SumAsync(i => (int?)i.Cantidad) ?? 0;
+        // 18/11/2026: lo que ya volvió (devolución parcial) deja de estar comprometido.
+        return await q.SumAsync(i => (int?)(i.Cantidad - i.CantidadDevuelta)) ?? 0;
     }
 
     private async Task<string> GenerarNumeroAsync()
@@ -1047,7 +1086,7 @@ public class AlqReservasController : ControllerBase
             i.EquipoId.HasValue ? (i.EquipoNav?.Sku ?? "—") : "",
             i.EquipoId.HasValue ? (i.EquipoNav?.Nombre ?? "—") : (i.Descripcion ?? "—"),
             i.Cantidad, i.PrecioUnitario, EsLibre: !i.EquipoId.HasValue,
-            MultiplicaPorDias: i.MultiplicaPorDias)).ToList(),
+            MultiplicaPorDias: i.MultiplicaPorDias, CantidadDevuelta: i.CantidadDevuelta)).ToList(),
         r.FechaEvento,
         r.MapeoLink,
         r.PublicToken, r.MontoCobrado,

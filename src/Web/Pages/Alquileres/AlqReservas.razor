@@ -19,6 +19,44 @@
     .cell-cliente-hover:hover .venta-tooltip { display: block; }
     .vta-ojito { background: #fff; border: 1px solid #d1d5db; border-radius: 6px; padding: 0 0.3rem; margin-right: 0.35rem; font-size: 0.85rem; line-height: 1.5; cursor: pointer; vertical-align: middle; }
     .vta-ojito:hover { background: #f3f4f6; border-color: #9ca3af; }
+    /* 18/11/2026: vistas, rango de fechas y cantidades grandes. Texto plano; rojo solo lo atrasado y lo que falta. */
+    .alq-bar { display:flex; align-items:center; gap:8px; padding:10px 1.25rem; border-top:0.5px solid #f0f0f0; flex-wrap:wrap; }
+    .alq-tabs { display:flex; border:1px solid #d1d5db; border-radius:7px; overflow:hidden; margin-right:10px; }
+    .alq-tabs span { padding:7px 14px; font-size:0.85rem; border-left:1px solid #d1d5db; color:#374151; cursor:pointer; background:#fff; white-space:nowrap; }
+    .alq-tabs span:first-child { border-left:0; }
+    .alq-tabs span.on { background:#111827; color:#fff; font-weight:600; }
+    .alq-tab-rojo { color:#dc2626; } .alq-tabs span.on .alq-tab-rojo { color:#fca5a5; }
+    .alq-lbl { color:#6b7280; font-size:0.78rem; }
+    .alq-fecha { width:auto; max-width:150px; font-size:0.85rem; padding:4px 8px; }
+    .alq-atajo { font-size:0.78rem; color:#2563eb; padding:4px 7px; border-radius:5px; cursor:pointer; white-space:nowrap; }
+    .alq-atajo:hover { background:#f3f4f6; } .alq-atajo.on { background:#eff6ff; font-weight:600; }
+    .alq-sec { padding:12px 1.25rem 6px; font-size:0.7rem; letter-spacing:.06em; color:#6b7280; font-weight:600; border-top:0.5px solid #f0f0f0; }
+    .alq-vacio { padding:0 1.25rem 14px; color:#9ca3af; font-size:0.85rem; }
+    .alq-strip { display:flex; padding:0 1.25rem 14px; overflow-x:auto; }
+    .alq-dia { flex:0 0 auto; min-width:175px; max-width:260px; padding:6px 16px; border-left:1px solid #e5e7eb; }
+    .alq-dia:first-child { border-left:0; padding-left:0; }
+    .alq-dh { font-weight:600; font-size:0.78rem; color:#374151; margin-bottom:5px; white-space:nowrap; }
+    .alq-dia.hoy .alq-dh { color:#111; }
+    .alq-dia.rojo .alq-dh, .alq-dia.rojo .alq-ln b { color:#dc2626; }
+    .alq-ln { display:grid; grid-template-columns:auto 1fr; column-gap:7px; margin:3px 0; align-items:baseline; }
+    .alq-ln b { font-size:1.4rem; font-weight:800; text-align:right; line-height:1.05; color:#111; min-width:2.2rem; }
+    .alq-ln span { font-size:0.82rem; color:#1f2937; } .alq-ln i { font-style:normal; color:#6b7280; font-size:0.76rem; }
+    .alq-ln em { grid-column:2; font-style:normal; font-size:0.7rem; color:#9ca3af; margin-top:-1px; }
+    .alq-ln em.falta { color:#dc2626; font-weight:700; }
+    .alq-calle { padding:0 1.25rem 12px; font-size:0.8rem; color:#6b7280; display:flex; gap:14px; flex-wrap:wrap; }
+    .alq-calle b { color:#111; } .alq-calle b.alq-rojo { color:#dc2626; }
+    .alq-lleva { min-width:240px; }
+    .alq-it { margin:1px 0; font-size:0.85rem; white-space:nowrap; }
+    .alq-it b { font-size:1.5rem; font-weight:800; display:inline-block; min-width:3.2rem; text-align:right; margin-right:6px; color:#111; line-height:1.1; }
+    .alq-it i { font-style:normal; color:#6b7280; font-size:0.78rem; }
+    .alq-volv { font-size:0.74rem; color:#6b7280; margin-top:3px; }
+    .alq-fe { white-space:nowrap; font-size:0.82rem; }
+    .alq-plata { text-align:right; white-space:nowrap; font-size:0.82rem; }
+    .alq-fe .g, .alq-plata .g { color:#9ca3af; }
+    .alq-rojo { color:#dc2626; }
+    .data-table tr.alq-atr > td { background:#fef2f2; }
+    .alq-nomarc { color:#b45309; font-size:0.72rem; margin-top:2px; }
+    .alq-volvio { font-size:0.78rem; padding:4px 9px; }
 </style>
 
 <div class="card">
@@ -27,8 +65,33 @@
             📅 Reservas de Alquileres
             <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@ReservasMostradas().Count)</span>
         </h3>
-        <div style="flex: 1; display: flex; gap: 0.5rem; align-items: center; justify-content: center; flex-wrap: wrap;">
-            <select class="form-input" style="max-width: 190px; font-size: 0.85rem;" @bind="filtroEstado">
+        <div style="flex: 1;"></div>
+        <button class="btn btn-secondary" @onclick="ShowCondicionesEditor" title="Editar las condiciones que aparecen al pie del PDF">📝 Condiciones</button>
+        <button class="btn btn-primary" style="white-space: nowrap;" @onclick="ShowCreate">+ Nueva Reserva</button>
+    </div>
+    @* 18/11/2026: tres vistas (Para entregar / Pendientes de retiro / Todas) + rango de fechas con atajos.
+       Reemplazan al botón "En calle": Pendientes de retiro muestra todo lo que está afuera, también lo
+       que pasó la fecha de entrega y nadie marcó "Entregada". *@
+    <div class="alq-bar">
+        <div class="alq-tabs">
+            <span class="@(vista == "entregar" ? "on" : "")" @onclick='() => vista = "entregar"'>Para entregar (@ContarVista("entregar"))</span>
+            <span class="@(vista == "retiro" ? "on" : "")" @onclick='() => vista = "retiro"'>
+                Pendientes de retiro (@ContarVista("retiro"))@if (AtrasadasCount > 0) {<b class="alq-tab-rojo"> · @AtrasadasCount atrasadas</b>}
+            </span>
+            <span class="@(vista == "todas" ? "on" : "")" @onclick='() => vista = "todas"'>Todas</span>
+        </div>
+        <span class="alq-lbl">Desde</span>
+        <input type="date" class="form-input alq-fecha" value="@(rangoDesde?.ToString("yyyy-MM-dd"))" @onchange="e => CambiarFecha(e, true)" />
+        <span class="alq-lbl">hasta</span>
+        <input type="date" class="form-input alq-fecha" value="@(rangoHasta?.ToString("yyyy-MM-dd"))" @onchange="e => CambiarFecha(e, false)" />
+        @foreach (var (k, lbl) in Atajos)
+        {
+            var key = k;
+            <span class="alq-atajo @(atajo == key ? "on" : "")" @onclick="() => ElegirAtajo(key)">@lbl</span>
+        }
+        @if (vista == "todas")
+        {
+            <select class="form-input" style="max-width: 190px; font-size: 0.85rem; margin-left: auto;" @bind="filtroEstado">
                 <option value="activas">Activas (sin finalizar)</option>
                 <option value="">Todos los estados</option>
                 <option value="reservado">Reservado</option>
@@ -37,17 +100,11 @@
                 <option value="finalizado">Finalizado</option>
                 <option value="cancelado">Cancelado</option>
             </select>
-            <button class="btn @(soloEnCalle ? "btn-primary" : "btn-secondary")" @onclick="() => soloEnCalle = !soloEnCalle"
-                    title="Mostrar solo lo entregado que falta retirar (equipos en la calle)">
-                🚚 En calle@(EnCalleCount > 0 ? $" ({EnCalleCount})" : "")
-            </button>
-            <button class="btn btn-secondary" @onclick="() => ordenProximas = !ordenProximas"
-                    title="Cambiar el orden por proximidad de la fecha de entrega">
-                @(ordenProximas ? "🔽 Próximas entregas primero" : "🔼 Más lejanas primero")
-            </button>
-            <button class="btn btn-secondary" @onclick="ShowCondicionesEditor" title="Editar las condiciones que aparecen al pie del PDF">📝 Condiciones</button>
-        </div>
-        <button class="btn btn-primary" style="white-space: nowrap;" @onclick="ShowCreate">+ Nueva Reserva</button>
+        }
+        <button class="btn btn-secondary" style="@(vista == "todas" ? "" : "margin-left: auto;")" @onclick="() => ordenProximas = !ordenProximas"
+                title="Cambiar el orden por fecha">
+            @(ordenProximas ? "🔽 Más cercanas primero" : "🔼 Más lejanas primero")
+        </button>
     </div>
     @* 🔎 Buscador libre: cliente, dirección, teléfono, N° de reserva, equipos y notas. 2026-08-19 *@
     <div style="display: flex; align-items: center; gap: 0.6rem; padding: 10px 1.25rem; flex-wrap: wrap; border-top: 0.5px solid #f0f0f0;">
@@ -63,8 +120,8 @@
         </div>
         @if (BuscandoAlgo)
         {
-            <span style="font-size: 0.78rem; color: #6b7280;">
-                <strong>@ReservasMostradas().Count</strong> @(ReservasMostradas().Count == 1 ? "reserva encontrada" : "reservas encontradas") · busca en <strong>todas</strong>, también en las finalizadas y canceladas
+            <span style="font-size: 0.78rem; color: #92400e;">
+                <strong>@ReservasMostradas().Count</strong> @(ReservasMostradas().Count == 1 ? "reserva encontrada" : "reservas encontradas") · mientras buscás se busca en <strong>todas</strong> (también finalizadas y canceladas) y no se aplican las fechas ni las pestañas
             </span>
         }
         else
@@ -72,51 +129,51 @@
             <span style="font-size: 0.78rem; color: #9ca3af;">Escribí parte del nombre, de la dirección o del teléfono. Podés poner varias palabras.</span>
         }
     </div>
-    @* Chips de filtros aplicados *@
-    <div style="display: flex; align-items: center; gap: 8px; padding: 10px 1.25rem; flex-wrap: wrap; border-top: 0.5px solid #f0f0f0;">
-        <span style="font-size: 0.78rem; color: #6b7280;">Filtros aplicados:</span>
-        @if (BuscandoAlgo)
+    @* Resumen de cantidades: qué hay que armar cada día / qué tiene que volver. *@
+    @if (!isLoading && !BuscandoAlgo && reservas is not null)
+    {
+        var cols = ColumnasResumen();
+        <div class="alq-sec">@TituloResumen()</div>
+        @if (cols.Count == 0)
         {
-            @* Mientras se busca, los filtros de arriba NO se aplican: si buscás un cliente lo tenés que
-               encontrar aunque su reserva esté finalizada. Se avisa acá para que no parezca un error. *@
-            <span style="display:inline-flex; align-items:center; gap:6px; background:#fef3c7; color:#92400e; border:0.5px solid #fde68a; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
-                🔎 Buscando “@busqueda” en todas las reservas — mientras buscás, los demás filtros no se aplican
-                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Borrar la búsqueda" @onclick='() => busqueda = ""'>&times;</span>
-            </span>
+            <div class="alq-vacio">Nada en estas fechas.</div>
         }
-        else if (filtroEstado == "activas")
+        else
         {
-            <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
-                Ocultando finalizadas y canceladas
-                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Ver todas" @onclick='() => filtroEstado = ""'>&times;</span>
-            </span>
+            <div class="alq-strip">
+                @foreach (var c in cols)
+                {
+                    <div class="alq-dia @(c.Rojo ? "rojo" : "") @(c.Hoy ? "hoy" : "")">
+                        <div class="alq-dh">@c.Titulo</div>
+                        @foreach (var l in c.Lineas)
+                        {
+                            <div class="alq-ln">
+                                <b>@l.Cant.ToString("N0", Ar)</b>
+                                <span>@l.Nombre <i>@l.Resto</i>@if (l.Libre) {<i> (escrito a mano)</i>}</span>
+                                @if (l.Quedan.HasValue)
+                                {
+                                    <em class="@(l.Quedan < 0 ? "falta" : "")">@(l.Quedan < 0 ? $"faltan {(-l.Quedan.Value).ToString("N0", Ar)}" : $"quedan {l.Quedan.Value.ToString("N0", Ar)}")</em>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
         }
-        else if (!string.IsNullOrEmpty(filtroEstado))
+        @if (vista == "retiro")
         {
-            <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
-                Estado: @EstadoLabel(filtroEstado)
-                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Quitar filtro de estado" @onclick='() => filtroEstado = "activas"'>&times;</span>
-            </span>
+            var calle = EnLaCalleAhora();
+            @if (calle.Count > 0)
+            {
+                <div class="alq-calle">En la calle ahora:
+                    @foreach (var (nom, cant, stock) in calle)
+                    {
+                        <span><b>@cant.ToString("N0", Ar)</b> @nom de @stock.ToString("N0", Ar)@if (cant > stock) {<b class="alq-rojo"> (@((cant - stock).ToString("N0", Ar)) de más: ¿volvieron y no se marcó?)</b>}</span>
+                    }
+                </div>
+            }
         }
-        @if (soloEnCalle && !BuscandoAlgo)
-        {
-            <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
-                Solo en calle
-                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Quitar" @onclick="() => soloEnCalle = false">&times;</span>
-            </span>
-        }
-        @if (!ordenProximas && !BuscandoAlgo)
-        {
-            <span style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; border:0.5px solid #bfdbfe; border-radius:20px; padding:3px 10px; font-size:0.76rem;">
-                Entregas más lejanas primero
-                <span style="cursor:pointer; font-weight:700; line-height:1;" title="Volver a próximas entregas primero" @onclick="() => ordenProximas = true">&times;</span>
-            </span>
-        }
-        @if (filtroEstado == "" && !soloEnCalle && ordenProximas && !BuscandoAlgo)
-        {
-            <span style="font-size: 0.76rem; color: #9ca3af;">mostrando todas las reservas</span>
-        }
-    </div>
+    }
     <div class="card-body" style="padding: 0;">
         @if (isLoading)
         {
@@ -150,16 +207,12 @@
                         <tr>
                             <th>Número</th>
                             <th>Cliente</th>
-                            <th>Entrega</th>
-                            <th>Retiro</th>
-                            <th>Hora</th>
-                            <th style="text-align: right;">Total</th>
-                            <th style="text-align: right;">Seña</th>
-                            @* 2026-08-27: lo cobrado estaba escondido dentro de la cuenta del saldo (se veia
-                               solo en el comprobante impreso): "Seña $0 · Saldo $144.000" no cerraba a la vista. *@
-                            <th style="text-align: right;">Cobrado</th>
-                            <th style="text-align: right;">Saldo</th>
+                            <th>@(vista == "retiro" && !BuscandoAlgo ? "Tiene que devolver" : "Lleva")</th>
+                            <th>Fechas</th>
+                            @* 18/11/2026: Total, seña, cobrado y saldo juntos en una columna para dejarle lugar a las cantidades. *@
+                            <th style="text-align: right;">Plata</th>
                             <th>Estado</th>
+                            @if (vista == "retiro" && !BuscandoAlgo) { <th></th> }
                             <th style="width: 96px; text-align:right;">Acciones</th>
                         </tr>
                     </thead>
@@ -168,20 +221,15 @@
                         {
                             var saldo = r.MontoTotal - r.Sena - r.MontoCobrado;
                             var enCalle = r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
-                            var retiroVencido = enCalle && r.FechaRetiro.Date < DateTime.Today;
+                            var atrasada = RetiroVencido(r);
+                            var modoRetiro = vista == "retiro" && !BuscandoAlgo;
                             @* 09/10/2026: antes tocar CUALQUIER parte del renglon abria la edicion (molesto al querer
                                copiar un telefono o una direccion). Ahora se edita solo con el lapiz. *@
-                            <tr style="@(retiroVencido ? "background:#fef2f2;" : "")">
+                            <tr class="@(atrasada ? "alq-atr" : "")">
                                 <td style="font-family: monospace; font-weight: 600; white-space: nowrap;">
                                     @* 09/10/2026: ojito = ver el comprobante en pantalla sin descargarlo (lo mismo que la 🖨). *@
                                     <button type="button" class="vta-ojito" title="Ver el comprobante de la reserva (sin descargar)"
                                             @onclick="() => ShowPrint(r)">👁️</button>@r.Numero
-                                    @if (enCalle)
-                                    {
-                                        <div style="font-size:0.66rem; color:@(retiroVencido ? "#b91c1c" : "#9a3412"); font-weight:700; margin-top:0.15rem;">
-                                            🚚 @(retiroVencido ? "RETIRO VENCIDO" : "en calle") · retiro @r.FechaRetiro.ToString("dd/MM")
-                                        </div>
-                                    }
                                 </td>
                                 <td style="position: relative;" class="cell-cliente-hover">
                                     @if (r.ClienteId > 0)
@@ -206,7 +254,7 @@
                                         </div>
                                     }
                                     @{
-                                        var enCalleRow = r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
+                                        var enCalleRow = enCalle;
                                     }
                                     @if (r.EntregadoPorRepartidorId.HasValue || r.RetiradoPorRepartidorId.HasValue || r.AsignadoARepartidorId.HasValue)
                                     {
@@ -284,13 +332,47 @@
                                         }
                                     </div>
                                 </td>
-                                <td style="font-size: 0.85rem;">@r.FechaEntrega.ToString("dd/MM/yyyy")</td>
-                                <td style="font-size: 0.85rem;">@r.FechaRetiro.ToString("dd/MM/yyyy")</td>
-                                <td style="font-size: 0.85rem; color: #6b7280;">@FormatHorario(r)</td>
-                                <td style="text-align: right; font-weight: 700;">$@FormatMoney(r.MontoTotal)</td>
-                                <td style="text-align: right; color: #059669;">$@FormatMoney(r.Sena)</td>
-                                <td style="text-align: right; color: @(r.MontoCobrado > 0 ? "#059669" : "#9ca3af");">$@FormatMoney(r.MontoCobrado)</td>
-                                <td style="text-align: right; color: @(saldo > 0 ? "#dc2626" : "#059669"); font-weight: 600;">$@FormatMoney(saldo)</td>
+                                @* 18/11/2026: lo primordial al armar = las cantidades, en número grande. *@
+                                <td class="alq-lleva">
+                                    @foreach (var it in r.Items)
+                                    {
+                                        var cant = modoRetiro ? it.Falta : it.Cantidad;
+                                        if (cant <= 0) continue;
+                                        var (nom, resto) = Corto(it.EquipoNombre);
+                                        <div class="alq-it"><b>@cant.ToString("N0", Ar)</b> @nom <i>@resto</i>@if (it.EsLibre) {<i> (escrito a mano)</i>}</div>
+                                    }
+                                    @{
+                                        var volvieron = r.Items.Where(i => i.CantidadDevuelta > 0).ToList();
+                                    }
+                                    @if (volvieron.Count > 0 && !EstaCerrada(r))
+                                    {
+                                        <div class="alq-volv">ya volvieron: @string.Join(" · ", volvieron.Select(i => $"{i.CantidadDevuelta.ToString("N0", Ar)} {Corto(i.EquipoNombre).nom}"))</div>
+                                    }
+                                </td>
+                                <td class="alq-fe">
+                                    <div><span class="g">sale</span> @r.FechaEntrega.ToString("dd/MM/yy")</div>
+                                    @if (atrasada)
+                                    {
+                                        <div class="alq-rojo"><b>vuelve @r.FechaRetiro.ToString("dd/MM/yy") · hace @((HoyAr - r.FechaRetiro.Date).Days) @((HoyAr - r.FechaRetiro.Date).Days == 1 ? "día" : "días")</b></div>
+                                    }
+                                    else
+                                    {
+                                        <div><span class="g">vuelve</span> @r.FechaRetiro.ToString("dd/MM/yy")</div>
+                                    }
+                                    @{ var hor = FormatHorario(r); }
+                                    @if (!string.IsNullOrWhiteSpace(hor) && hor != "—") { <div class="g">@hor</div> }
+                                    @if (NoMarcadaEntregada(r))
+                                    {
+                                        <div class="alq-nomarc" title="Ya pasó la fecha de entrega y la reserva sigue como Reservada: por eso se cuenta como que está afuera">no la marcaron “Entregada”</div>
+                                    }
+                                </td>
+                                <td class="alq-plata">
+                                    <div style="font-weight:700;">$@FormatMoney(r.MontoTotal)</div>
+                                    @if (r.Sena > 0) { <div class="g">seña $@FormatMoney(r.Sena)</div> }
+                                    <div class="g">cobró $@FormatMoney(r.MontoCobrado)</div>
+                                    @if (saldo > 0) { <div class="alq-rojo">debe $@FormatMoney(saldo)</div> }
+                                    else { <div class="g">al día</div> }
+                                </td>
                                 @* El estado va en TEXTO: el color queda para lo que es alarma de verdad (el saldo). *@
                                 <td style="font-size:0.78rem; color:#6b7280;">
                                     @EstadoTexto(r.Estado)@if (r.NcEstado == "autorizado" && !string.IsNullOrEmpty(r.NcCae))
@@ -302,6 +384,13 @@
                                         <text> · <b style="color:#374151;">facturada</b></text>
                                     }
                                 </td>
+                                @if (modoRetiro)
+                                {
+                                    <td style="white-space:nowrap;">
+                                        <button class="btn btn-secondary alq-volvio" disabled="@devolviendo" @onclick="() => VolvioTodo(r)" title="Volvió todo: la reserva queda Finalizada">✓ Volvió todo</button>
+                                        <button class="btn btn-secondary alq-volvio" disabled="@devolviendo" @onclick="() => AbrirVolvioParte(r)" title="Anotar cuántas volvieron de cada cosa; lo que falta sigue en la calle">Volvió parte…</button>
+                                    </td>
+                                }
                                 @* 2026-08-27: antes cada fila tenia una cantidad distinta de botones (una
                                    reserva facturada mostraba 8 y una comun 5), asi que la columna se estiraba y
                                    la grilla quedaba desprolija. Ahora SIEMPRE los mismos tres — editar, imprimir
@@ -1376,6 +1465,39 @@
     <Web.Shared.Tareas.MandarTareaModal AlqReservaId="md.Id" AlqNumero="@md.Numero" OnCerrar="() => mandarDeposito = null" OnMandada="() => mandarDeposito = null" />
 }
 
+
+@* 18/11/2026: "Volvió parte…" — cuántas volvieron de cada cosa. Lo que falta sigue en la calle. *@
+@if (devParte is not null)
+{
+    <div class="modal-overlay" @onclick="() => devParte = null">
+        <div class="modal-card" @onclick:stopPropagation="true" style="max-width: 560px;">
+            <div class="modal-header">
+                <h3 style="margin:0;">Volvió parte · @devParte.Numero</h3>
+                <button class="btn-close" @onclick="() => devParte = null">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-top:0; color:#6b7280; font-size:0.85rem;">Poné cuántas volvieron de cada cosa. Lo que falta sigue contando como “en la calle”. Si vuelve todo, la reserva queda Finalizada.</p>
+                @foreach (var it in devParte.Items)
+                {
+                    var id = it.Id;
+                    var (nom, resto) = Corto(it.EquipoNombre);
+                    <div style="display:flex; align-items:center; gap:0.6rem; padding:0.45rem 0; border-bottom:1px solid #f0f1f3;">
+                        <div style="flex:1;"><b style="font-size:1.15rem;">@it.Cantidad.ToString("N0", Ar)</b> @nom <span style="color:#6b7280;">@resto</span></div>
+                        <span style="color:#6b7280; font-size:0.82rem;">volvieron</span>
+                        <input type="number" min="0" max="@it.Cantidad" class="form-input" style="width:90px; text-align:right; font-size:1rem;"
+                               value="@devCant.GetValueOrDefault(id)" @oninput="e => devCant[id] = int.TryParse(e.Value?.ToString(), out var n) ? n : 0" />
+                        <button type="button" class="btn btn-secondary" style="padding:0.2rem 0.5rem; font-size:0.78rem;" @onclick="() => devCant[id] = it.Cantidad">todas</button>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:0.5rem;">
+                <button class="btn btn-secondary" @onclick="() => devParte = null">Cancelar</button>
+                <button class="btn btn-primary" disabled="@devolviendo" @onclick="GuardarVolvioParte">Guardar</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     // 2026-11-16: reserva que se está mandando al depósito (📋 en el menú ⋯ del renglón)
     private (int Id, string Numero)? mandarDeposito;
@@ -1510,15 +1632,219 @@
     private AlqReservaDto? reservaAsignar;
     private int asignarRepartidorId;
     private bool asignando;
-    private string filtroEstado = "activas"; // por defecto: solo las que no están finalizadas ni canceladas
-    private bool soloEnCalle;
-    private bool ordenProximas = true; // por defecto: las entregas más próximas primero
+    private string filtroEstado = "activas"; // pestaña "Todas": por defecto solo las que no están finalizadas ni canceladas
+    private bool ordenProximas = true; // por defecto: las fechas más próximas primero
 
-    private bool EsEnCalle(AlqReservaDto r) => r.EntregadoPorRepartidorId.HasValue && !r.RetiradoPorRepartidorId.HasValue;
-    private int EnCalleCount => reservas?.Count(EsEnCalle) ?? 0;
+    // ═══════ 18/11/2026: vistas + rango de fechas + resumen de cantidades ═══════
+    private string vista = "entregar"; // entregar | retiro | todas
+    private DateTime? rangoDesde;
+    private DateTime? rangoHasta;
+    private string atajo = "todo";
+    private static readonly CultureInfo Ar = new("es-AR");
+    private static DateTime HoyAr => DateTimeExt.AhoraAr().Date;
+
     private bool EstaCerrada(AlqReservaDto r) => r.Estado == "finalizado" || r.Estado == "cancelado";
-    // Retiro vencido = ya se entregó, todavía no se retiró y la fecha de retiro ya pasó (equipo urgente de recuperar)
-    private bool RetiroVencido(AlqReservaDto r) => EsEnCalle(r) && r.FechaRetiro.Date < DateTime.Today;
+    // Afuera = se entregó (estado, repartidor o ya volvió una parte) o ya pasó la fecha de entrega y nadie la cerró.
+    private bool EnLaCalle(AlqReservaDto r) => !EstaCerrada(r) && (r.Estado == "entregado" || r.EntregadoPorRepartidorId.HasValue
+        || r.FechaEntrega.Date < HoyAr || r.Items.Any(i => i.CantidadDevuelta > 0));
+    private bool ParaEntregar(AlqReservaDto r) => !EstaCerrada(r) && !EnLaCalle(r);
+    private bool NoMarcadaEntregada(AlqReservaDto r) => EnLaCalle(r) && r.Estado != "entregado" && !r.EntregadoPorRepartidorId.HasValue
+        && !r.Items.Any(i => i.CantidadDevuelta > 0);
+    // Retiro vencido = está afuera y la fecha de retiro ya pasó (equipo urgente de recuperar)
+    private bool RetiroVencido(AlqReservaDto r) => EnLaCalle(r) && r.FechaRetiro.Date < HoyAr;
+    private int AtrasadasCount => reservas?.Count(RetiroVencido) ?? 0;
+
+    private bool EnRango(DateTime d) => (!rangoDesde.HasValue || d.Date >= rangoDesde.Value) && (!rangoHasta.HasValue || d.Date <= rangoHasta.Value);
+    private bool RangoIncluyeHoy => EnRango(HoyAr);
+
+    private IEnumerable<AlqReservaDto> FiltrarVista(string v)
+    {
+        if (reservas is null) return Enumerable.Empty<AlqReservaDto>();
+        return v switch
+        {
+            "entregar" => reservas.Where(r => ParaEntregar(r) && EnRango(r.FechaEntrega)),
+            // Las atrasadas se ven siempre que el rango incluya hoy (son lo más urgente).
+            "retiro" => reservas.Where(r => EnLaCalle(r) && (EnRango(r.FechaRetiro) || (RetiroVencido(r) && RangoIncluyeHoy))),
+            _ => reservas.Where(r =>
+                    (filtroEstado == "activas" ? !EstaCerrada(r) : string.IsNullOrEmpty(filtroEstado) || r.Estado == filtroEstado)
+                    && (!rangoHasta.HasValue || r.FechaEntrega.Date <= rangoHasta.Value)
+                    && (!rangoDesde.HasValue || r.FechaRetiro.Date >= rangoDesde.Value)),
+        };
+    }
+    private int ContarVista(string v) => FiltrarVista(v).Count();
+
+    private static readonly (string key, string label)[] Atajos =
+    {
+        ("todo", "Sin límite"), ("hoy", "Hoy"), ("semana", "Esta semana"), ("prox15", "Próx. 15 días"),
+        ("mes", "Este mes"), ("mesant", "Mes pasado"),
+    };
+
+    private void ElegirAtajo(string k)
+    {
+        var hoy = HoyAr;
+        atajo = k;
+        switch (k)
+        {
+            case "hoy": rangoDesde = hoy; rangoHasta = hoy; break;
+            case "semana":
+                var lunes = hoy.AddDays(-(((int)hoy.DayOfWeek + 6) % 7));
+                rangoDesde = lunes; rangoHasta = lunes.AddDays(6); break;
+            case "prox15": rangoDesde = hoy; rangoHasta = hoy.AddDays(14); break;
+            case "mes": rangoDesde = new DateTime(hoy.Year, hoy.Month, 1); rangoHasta = rangoDesde.Value.AddMonths(1).AddDays(-1); break;
+            case "mesant":
+                rangoDesde = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(-1); rangoHasta = rangoDesde.Value.AddMonths(1).AddDays(-1);
+                // Para atrás no hay nada "para entregar": se pasa a Todas, con las finalizadas incluidas.
+                vista = "todas"; filtroEstado = ""; break;
+            default: rangoDesde = null; rangoHasta = null; break;
+        }
+    }
+
+    private void CambiarFecha(ChangeEventArgs e, bool desde)
+    {
+        DateTime? d = DateTime.TryParse(e.Value?.ToString(), out var x) && x.Year >= 2000 && x.Year <= 2100 ? x.Date : null;
+        if (!string.IsNullOrEmpty(e.Value?.ToString()) && d is null) return; // año a medio escribir
+        if (desde) rangoDesde = d; else rangoHasta = d;
+        atajo = "";
+        // Fechas para atrás en "Para entregar" no muestran nada: se pasa a Todas con las finalizadas.
+        if (rangoHasta.HasValue && rangoHasta.Value < HoyAr && vista == "entregar") { vista = "todas"; filtroEstado = ""; }
+    }
+
+    // "SILLAS SIN APOYABRAZOS BLANCA (p/ 8)" → ("sillas", "sin apoyabrazos blanca")
+    private static (string nom, string resto) Corto(string? nombre)
+    {
+        var n = System.Text.RegularExpressions.Regex.Replace(nombre ?? "", @"\(.*?\)", " ");
+        n = System.Text.RegularExpressions.Regex.Replace(n, @"\s+", " ").Trim().ToLowerInvariant();
+        var sp = n.IndexOf(' ');
+        return sp < 0 ? (n, "") : (n[..sp], n[(sp + 1)..]);
+    }
+
+    private record LineaResumen(string Nombre, string Resto, int Cant, int? Quedan, bool Libre, int Orden);
+    private record ColumnaResumen(string Titulo, bool Rojo, bool Hoy, List<LineaResumen> Lineas);
+
+    private string TituloResumen() => vista switch
+    {
+        "retiro" => "QUÉ TIENE QUE VOLVER · POR DÍA DE RETIRO",
+        "todas" => "QUÉ SALE · POR DÍA DE ENTREGA",
+        _ => "QUÉ HAY QUE ARMAR · POR DÍA DE ENTREGA",
+    };
+
+    // Cuántas de un equipo están afuera un día: las reservas que lo cubren + las atrasadas que todavía no volvieron.
+    private int FueraEseDia(int equipoId, DateTime dia)
+    {
+        if (reservas is null) return 0;
+        var n = 0;
+        foreach (var r in reservas)
+        {
+            if (EstaCerrada(r)) continue;
+            var cubre = r.FechaEntrega.Date <= dia && r.FechaRetiro.Date >= dia;
+            var sigueAfuera = EnLaCalle(r) && r.FechaRetiro.Date < dia;
+            if (!cubre && !sigueAfuera) continue;
+            n += r.Items.Where(i => i.EquipoId == equipoId).Sum(i => i.Falta);
+        }
+        return n;
+    }
+
+    private List<LineaResumen> Sumar(IEnumerable<AlqReservaDto> rs, bool soloFalta, DateTime? diaQuedan)
+    {
+        var orden = (equipos ?? new()).ToDictionary(e => e.Id, e => (e.Orden, e.StockTotal));
+        return rs.SelectMany(r => r.Items)
+            .GroupBy(i => i.EquipoId is int id ? $"E{id}" : "L" + (i.EquipoNombre ?? "").Trim().ToLowerInvariant())
+            .Select(g =>
+            {
+                var f = g.First();
+                var cant = g.Sum(i => soloFalta ? i.Falta : i.Cantidad);
+                var (nom, resto) = Corto(f.EquipoNombre);
+                int? quedan = null;
+                var ord = 9999;
+                if (f.EquipoId is int eid && orden.TryGetValue(eid, out var o))
+                {
+                    ord = o.Orden;
+                    if (diaQuedan.HasValue) quedan = o.StockTotal - FueraEseDia(eid, diaQuedan.Value);
+                }
+                return new LineaResumen(nom, resto, cant, quedan, f.EsLibre, ord);
+            })
+            .Where(l => l.Cant > 0)
+            .OrderBy(l => l.Orden).ThenByDescending(l => l.Cant).ToList();
+    }
+
+    private static readonly string[] DiasCortos = { "Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb" };
+    private static string TituloDia(DateTime d) => $"{DiasCortos[(int)d.DayOfWeek]} {d:dd/MM}" + (d == HoyAr ? " · HOY" : "");
+
+    private List<ColumnaResumen> ColumnasResumen()
+    {
+        var hoy = HoyAr;
+        var lista = FiltrarVista(vista).ToList();
+        var cols = new List<ColumnaResumen>();
+        if (vista == "retiro")
+        {
+            var atr = lista.Where(RetiroVencido).ToList();
+            if (atr.Count > 0)
+                cols.Add(new ColumnaResumen($"YA TENDRÍAN QUE HABER VUELTO · {atr.Count} {(atr.Count == 1 ? "reserva" : "reservas")}", true, false, Sumar(atr, true, null)));
+            foreach (var g in lista.Where(r => !RetiroVencido(r)).GroupBy(r => r.FechaRetiro.Date).OrderBy(g => g.Key))
+                cols.Add(new ColumnaResumen(TituloDia(g.Key), false, g.Key == hoy, Sumar(g, true, null)));
+        }
+        else
+        {
+            foreach (var g in lista.GroupBy(r => r.FechaEntrega.Date).OrderBy(g => g.Key))
+                cols.Add(new ColumnaResumen(TituloDia(g.Key), false, g.Key == hoy, Sumar(g, false, g.Key >= hoy ? g.Key : null)));
+        }
+        return cols.Where(c => c.Lineas.Count > 0).ToList();
+    }
+
+    // Por equipo del catálogo: cuántas hay afuera ahora (lo que falta volver) contra el stock.
+    private List<(string nom, int cant, int stock)> EnLaCalleAhora()
+    {
+        if (reservas is null || equipos is null) return new();
+        var afuera = reservas.Where(EnLaCalle).SelectMany(r => r.Items).Where(i => i.EquipoId.HasValue)
+            .GroupBy(i => i.EquipoId!.Value).ToDictionary(g => g.Key, g => g.Sum(i => i.Falta));
+        return equipos.Where(e => afuera.TryGetValue(e.Id, out var n) && n > 0).OrderBy(e => e.Orden)
+            .Select(e => { var c = Corto(e.Nombre); return ($"{c.nom} {c.resto}", afuera[e.Id], e.StockTotal); }).ToList();
+    }
+
+    // ── Volvió todo / Volvió parte… ──
+    private bool devolviendo;
+    private AlqReservaDto? devParte;
+    private Dictionary<int, int> devCant = new();
+
+    private async Task VolvioTodo(AlqReservaDto r)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"¿Volvió todo de {r.Numero} ({r.ClienteNombre})?\n\nLa reserva queda Finalizada.");
+        if (!ok) return;
+        await GuardarDevolucion(r, true, null);
+    }
+
+    private void AbrirVolvioParte(AlqReservaDto r)
+    {
+        devParte = r;
+        devCant = r.Items.ToDictionary(i => i.Id, i => i.CantidadDevuelta);
+    }
+
+    private async Task GuardarVolvioParte()
+    {
+        if (devParte is null) return;
+        var items = devParte.Items.Select(i => (i.Id, Math.Clamp(devCant.GetValueOrDefault(i.Id), 0, i.Cantidad))).ToList();
+        if (await GuardarDevolucion(devParte, false, items)) devParte = null;
+    }
+
+    private async Task<bool> GuardarDevolucion(AlqReservaDto r, bool todo, List<(int, int)>? items)
+    {
+        devolviendo = true;
+        try
+        {
+            var (ok, error) = await Api.DevolucionAlqAsync(r.Id, todo, items);
+            if (!ok) { ToastService.Error("No se pudo guardar: " + error); return false; }
+            var fresh = await Api.GetAlqReservaAsync(r.Id);
+            if (fresh is not null && reservas is not null)
+            {
+                var idx = reservas.FindIndex(x => x.Id == r.Id);
+                if (idx >= 0) reservas[idx] = fresh;
+            }
+            ToastService.Success(fresh?.Estado == "finalizado" ? $"{r.Numero}: volvió todo, quedó Finalizada" : $"{r.Numero}: anotado lo que volvió; lo que falta sigue en la calle");
+            return true;
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); return false; }
+        finally { devolviendo = false; }
+    }
 
     private string EstadoLabel(string e) => e switch
     {
@@ -1608,21 +1934,26 @@
     {
         if (reservas is null) return new();
         // 🔎 La búsqueda le gana a los filtros: si buscás un cliente lo tenés que encontrar aunque su
-        // reserva esté finalizada o aunque esté puesto "En calle". El chip de arriba lo avisa.
+        // reserva esté finalizada o fuera de las fechas elegidas. El aviso al lado del buscador lo dice.
         if (BuscandoAlgo)
         {
             var palabras = NormBusq(busqueda).Split(' ', StringSplitOptions.RemoveEmptyEntries);
             return reservas.Where(r => CoincideBusqueda(r, palabras))
                            .OrderByDescending(r => r.FechaEntrega).ThenByDescending(r => r.Id).ToList();
         }
-        // En calle: ordenar por fecha de retiro (lo más urgente primero)
-        if (soloEnCalle) return reservas.Where(EsEnCalle).OrderBy(r => r.FechaRetiro).ToList();
-        var q = reservas.AsEnumerable();
-        // Filtro de estado (client-side): "activas" oculta finalizadas/canceladas; vacío = todas
-        if (filtroEstado == "activas") q = q.Where(r => !EstaCerrada(r));
-        else if (!string.IsNullOrEmpty(filtroEstado)) q = q.Where(r => r.Estado == filtroEstado);
-        var lista = q.ToList();
-        var hoy = DateTime.Today;
+        var lista = FiltrarVista(vista).ToList();
+        if (vista == "retiro")
+        {
+            // Lo más atrasado arriba.
+            var ret = lista.OrderBy(r => r.FechaRetiro).ThenBy(r => r.Id);
+            return (ordenProximas ? ret : lista.OrderByDescending(r => r.FechaRetiro).ThenByDescending(r => r.Id)).ToList();
+        }
+        if (vista == "entregar")
+        {
+            return (ordenProximas ? lista.OrderBy(r => r.FechaEntrega).ThenBy(r => r.Id)
+                                  : lista.OrderByDescending(r => r.FechaEntrega).ThenByDescending(r => r.Id)).ToList();
+        }
+        var hoy = HoyAr;
 
         // SIEMPRE arriba: los retiros vencidos (equipos que ya deberían haber vuelto). Son lo más urgente.
         // El más atrasado primero (fecha de retiro más vieja arriba).

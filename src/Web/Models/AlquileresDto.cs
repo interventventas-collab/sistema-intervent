@@ -106,6 +106,9 @@ public class AlqReservaItemDto
     public bool EsLibre { get; set; }
     /// <summary>2026-09-10: si se multiplica por los dias cobrados (el flete no).</summary>
     public bool MultiplicaPorDias { get; set; } = true;
+    /// <summary>18/11/2026: cuántas ya volvieron (devolución parcial).</summary>
+    public int CantidadDevuelta { get; set; }
+    public int Falta => Math.Max(0, Cantidad - CantidadDevuelta);
 }
 
 public class AlqReservaDto

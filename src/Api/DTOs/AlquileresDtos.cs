@@ -141,7 +141,9 @@ public class UpdateAlqClienteRequest
 // EquipoId null + EsLibre=true => item de "descripción libre" (texto). EquipoNombre trae la descripción.
 public record AlqReservaItemDto(int Id, int? EquipoId, string EquipoSku, string EquipoNombre, int Cantidad, decimal PrecioUnitario, bool EsLibre = false,
     // 2026-09-10: si se multiplica por los dias cobrados (el flete no).
-    bool MultiplicaPorDias = true);
+    bool MultiplicaPorDias = true,
+    // 18/11/2026: cuántas ya volvieron (devolución parcial).
+    int CantidadDevuelta = 0);
 
 public record AlqReservaDto(
     int Id, string Numero,

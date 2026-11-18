@@ -8967,3 +8967,10 @@ CREATE TABLE Compras_FacturaExtra (
     UpdatedBy NVARCHAR(120) NULL
 );
 GO
+
+-- 18/11/2026: devolución parcial de alquileres ("Volvió parte…" en Pendientes de retiro).
+-- ⚠ En PROD correr a mano ANTES de publicar la API (sqlcmd con -I).
+IF COL_LENGTH('Alq_ReservaItems','CantidadDevuelta') IS NULL
+    ALTER TABLE Alq_ReservaItems ADD CantidadDevuelta INT NOT NULL
+        CONSTRAINT DF_AlqReservaItems_Devuelta DEFAULT 0;
+GO
