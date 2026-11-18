@@ -12,6 +12,7 @@
 @inject AuthService Auth
 @inject ToastService Toast
 @inject OperatorService Operator
+@inject IJSRuntime JS
 
 @* 2026-11-13: tira ⭐ Favoritos + "✏ Arreglar botones" (ocultar con ● gris para volver, color por botón).
    Todo es de cada persona (su PIN); sin PIN = lo de Osmar. Maqueta: scratchpad/Botones_ocultar_favoritos_PROPUESTA.png *@
@@ -136,6 +137,23 @@
                     </div>
                 </div>
             }
+            @if (g.Titulo == "Compras" && esAdmin && gastosWa.Count > 0 && !arreglando)
+            {
+                @* 18/11/2026: "#gasto" por WhatsApp para cargar. Tocar uno abre Nuevo pago con el mensaje. *@
+                <div class="si-av">
+                    @foreach (var gw in gastosWa.Take(5))
+                    {
+                        <a class="si-avr" href="/cafe/tesoreria/pagos?gasto=@gw.Id" title="Cargar este gasto en Nuevo pago">
+                            <span>💸 <b>@(gw.Texto.Length > 48 ? gw.Texto[..48] + "…" : gw.Texto)</b>@(string.IsNullOrEmpty(gw.MediaUrl) ? "" : " 📎")</span><b class="si-avn">@(gw.Importe is decimal gi ? P0(gi) : "")</b>
+                        </a>
+                        <a class="si-avr si-avg" href="/cafe/tesoreria/pagos?gasto=@gw.Id" style="font-size:0.72rem; margin-top:-0.2rem;"><span>WhatsApp · @(gw.Quien ?? "") · @Cuando(gw.CreatedAt) · tocá para cargar</span></a>
+                    }
+                    <div class="si-avq">
+                        <a href="/compras/gastos-whatsapp" style="color:inherit;">@(gastosWa.Count > 5 ? $"y {gastosWa.Count - 5} más · " : "")ver todos los gastos</a>
+                        <button class="si-trae" @onclick="CambiarSonidoGasto" @onclick:stopPropagation="true" title="Ruidito de caja registradora cuando entra un gasto (en esta compu / celu)">@(sonidoGasto ? "🔊" : "🔇")</button>
+                    </div>
+                </div>
+            }
             @if (g.Titulo == "Compras" && esAdmin && facturas is not null && !arreglando)
             {
                 @* 18/11/2026: facturas recibidas nuevas (las trae de ARCA a las 7) + última vez + Traer ahora. *@
@@ -252,6 +270,30 @@
         await CargarAvisosPagos();
         await CargarAvisosImpuestos();
         await CargarFacturas();
+        await CargarGastosWa();
+        gastoTimer = new System.Threading.Timer(async _ => await InvokeAsync(CargarGastosWa), null, 30_000, 30_000);
+    }
+
+    // 18/11/2026: #gasto por WhatsApp pendientes en la tarjeta Compras (solo admin). Se refresca cada 30 s.
+    private List<ApiClient.GastoWaDto> gastosWa = new();
+    private bool sonidoGasto = true;
+    private System.Threading.Timer? gastoTimer;
+    private async Task CargarGastosWa()
+    {
+        try
+        {
+            if (!esAdmin) return;
+            try { sonidoGasto = await JS.InvokeAsync<string?>("localStorage.getItem", "gasto.sonido") != "0"; } catch { }
+            gastosWa = await Api.GetGastosWaAsync("PENDIENTE");
+            StateHasChanged();
+        }
+        catch { }
+    }
+    private async Task CambiarSonidoGasto()
+    {
+        sonidoGasto = !sonidoGasto;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "gasto.sonido", sonidoGasto ? "1" : "0"); } catch { }
+        if (sonidoGasto) { try { await JS.InvokeVoidAsync("playCajaSound"); } catch { } }
     }
 
     // 18/11/2026: facturas recibidas nuevas en Compras + "Traer ahora" (Compras e Impuestos). Solo admin.
@@ -472,5 +514,5 @@
     };
 
     private void Repintar() => InvokeAsync(() => { Armar(); StateHasChanged(); });
-    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; Operator.OnChange -= Repintar; factTimer?.Dispose(); }
+    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; Operator.OnChange -= Repintar; factTimer?.Dispose(); gastoTimer?.Dispose(); }
 }

@@ -312,6 +312,9 @@ public class AppDbContext : DbContext
     // 2026-08-26: mensajes agendados para salir mas tarde (cola + historial).
     public DbSet<WhatsAppMensajeProgramado> WhatsAppMensajesProgramados => Set<WhatsAppMensajeProgramado>();
     public DbSet<WhatsAppLineaConfig> WhatsAppLineasConfig => Set<WhatsAppLineaConfig>();
+    // 18/11/2026: "#gasto" por WhatsApp (ver Models/GastoWhatsApp.cs)
+    public DbSet<GastoWhatsApp> GastosWhatsApp => Set<GastoWhatsApp>();
+    public DbSet<GastoWhatsAppComentario> GastosWhatsAppComentarios => Set<GastoWhatsAppComentario>();
     public DbSet<WhatsAppSonido> WhatsAppSonidos => Set<WhatsAppSonido>();
     public DbSet<WhatsAppSector> WhatsAppSectores => Set<WhatsAppSector>();
     public DbSet<WhatsAppSectorOperario> WhatsAppSectorOperarios => Set<WhatsAppSectorOperario>();
@@ -337,6 +340,12 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // 2026-11-18: segunda sociedad en el Galicia. Todo lo que ya existe (cobranzas, Salieron,
+        // saldo, cheques, impuestos...) ve SOLO la cuenta principal (GaliciaAccountId NULL).
+        // Lo de las otras cuentas se lee a propósito con IgnoreQueryFilters().
+        modelBuilder.Entity<CafeExtractoMovimiento>().HasQueryFilter(m => m.GaliciaAccountId == null);
+        modelBuilder.Entity<CafeChequeBanco>().HasQueryFilter(c => c.GaliciaAccountId == null);
 
         modelBuilder.Entity<User>(entity =>
         {

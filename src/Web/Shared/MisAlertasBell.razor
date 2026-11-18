@@ -116,7 +116,8 @@
 @code {
     private List<ApiClient.AlertaDisparadaDto> disparadas = new();
     private int noVistas;
-    private int? prevNoVistas;   // para detectar alertas nuevas y sonar solo entonces
+    private int? prevNoVistas;
+    private HashSet<int>? gastosVistos;   // para detectar alertas nuevas y sonar solo entonces
     private bool showDropdown;
     private System.Threading.Timer? timer;
 
@@ -134,9 +135,26 @@
             disparadas = r?.Disparadas ?? new();
             noVistas = r?.NoVistas ?? 0;
 
+            // 18/11/2026: #gasto por WhatsApp nuevo → ruidito de caja registradora (se apaga en
+            // Compras → Gastos por WhatsApp; queda guardado en esta compu/celu).
+            var gastosAhora = disparadas.Where(a => a.Tipo == "GASTO_WA").Select(a => a.Id).ToHashSet();
+            var gastoNuevo = gastosVistos is not null && gastosAhora.Any(id => !gastosVistos.Contains(id));
+            gastosVistos = gastosAhora;
+
             // Suena solo cuando ENTRA una alerta nueva (el contador sin ver subió).
             // En la primera carga fijamos la línea de base sin sonar.
-            if (prevNoVistas.HasValue && noVistas > prevNoVistas.Value)
+            if (gastoNuevo)
+            {
+                try
+                {
+                    if (await JS.InvokeAsync<string?>("localStorage.getItem", "gasto.sonido") != "0")
+                        await JS.InvokeVoidAsync("playCajaSound");
+                    else
+                        await JS.InvokeVoidAsync("playAlertaSound");
+                }
+                catch { }
+            }
+            else if (prevNoVistas.HasValue && noVistas > prevNoVistas.Value)
             {
                 try { await JS.InvokeVoidAsync("playAlertaSound"); } catch { }
             }
@@ -181,6 +199,7 @@
         "FACTURAS_NUEVAS" => "🧾",
         "VEP_VENCE" => "🏛",
         "VEP_VENCIDO" => "🔴",
+        "GASTO_WA" => "💸",
         _ => "🔔"
     };
 
@@ -190,6 +209,7 @@
         => a.Tipo.StartsWith("PAGO_PROG") ? $"/cafe/proveedores-ctacte?transferir={-a.Id}"
          : a.Tipo == "FACTURAS_NUEVAS" ? "/compras/facturas-recibidas"
          : a.Tipo.StartsWith("VEP_") ? "/impuestos"
+         : a.Tipo == "GASTO_WA" ? $"/cafe/tesoreria/pagos?gasto={-4000000 - a.Id}"
          : RutaPorTipo(a.Tipo);
 
     private static string RutaPorTipo(string tipo) => tipo switch

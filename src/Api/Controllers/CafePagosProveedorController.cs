@@ -174,6 +174,11 @@ public class CafePagosProveedorController : ControllerBase
             prog.PagoId = null;
             prog.UpdatedAt = DateTime.UtcNow;
         }
+        // 18/11/2026: si el pago venía de un "#gasto" por WhatsApp, el gasto vuelve a "para cargar".
+        foreach (var g in await _db.GastosWhatsApp.Where(x => x.PagoId == id && x.Estado == "APLICADO").ToListAsync())
+        {
+            g.Estado = "PENDIENTE"; g.PagoId = null; g.PagoNumero = null; g.ResueltoPor = null; g.ResueltoAt = null;
+        }
         await _db.SaveChangesAsync();
         await _audit.LogAsync("CafePagoProveedor", id.ToString(), "ANULAR", $"Pago {p.Numero} anulado");
         return Ok(new { ok = true });

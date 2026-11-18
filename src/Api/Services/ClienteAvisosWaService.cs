@@ -143,6 +143,13 @@ public class ClienteAvisosWaService
             var plan = await _db.CafePlanesBonificacion.AsNoTracking().FirstOrDefaultAsync(p => p.ClienteId == cid);
             if (plan is not { Activo: true, AvisarEnCadaVenta: true }) return;
 
+            // 2026-11-18: interruptor general "Avisos automáticos por WhatsApp" (Mis alertas).
+            if (!await WaAvisosAutomaticos.EstanPrendidosAsync(_db))
+            {
+                _log.LogInformation("[Avisos cliente] aviso de la venta {VentaId} no se encola: avisos automáticos por WhatsApp apagados", ventaId);
+                return;
+            }
+
             var destinos = await DestinosAsync(await PersonasDeClaveAsync(CafeBonificacionService.ClaveAvisoVenta(cid)));
             if (destinos.Count == 0) return;
 
@@ -314,8 +321,22 @@ public class ClienteAvisosWaService
         var toca = await _db.CafeAvisosDeuda
             .Where(a => a.Activo && a.ProximoEnvio != null && a.ProximoEnvio <= ahora)
             .OrderBy(a => a.ProximoEnvio).Take(20).ToListAsync();
+        if (toca.Count == 0) return;
+        // 2026-11-18: interruptor general "Avisos automáticos por WhatsApp" (Mis alertas). Apagado = este
+        // envío se saltea (queda anotado) y se calcula el próximo como siempre.
+        var waPrendido = await WaAvisosAutomaticos.EstanPrendidosAsync(_db);
         foreach (var a in toca)
         {
+            if (!waPrendido)
+            {
+                _log.LogInformation("[Avisos deuda] programado {Id} no sale: avisos automáticos por WhatsApp apagados", a.Id);
+                a.UltimoEnvioAt = DateTime.UtcNow;
+                a.UltimoResultado = "No salió: los avisos automáticos por WhatsApp estaban apagados.";
+                a.ProximoEnvio = CalcularProximo(a, DateTime.UtcNow);
+                if (a.ProximoEnvio == null) a.Activo = false;
+                await _db.SaveChangesAsync();
+                continue;
+            }
             try
             {
                 var (enviados, error) = await EncolarDeudaAsync(a.ClienteId,

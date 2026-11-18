@@ -77,6 +77,34 @@
                 }
                 else
                 {
+                @if (gastoWa is not null)
+                {
+                    @* 18/11/2026: abierto desde un "#gasto" de WhatsApp: el mensaje (y la foto) arriba. *@
+                    <div style="display:flex; gap:0.7rem; border-left:3px solid #2563eb; background:#f7f9ff; padding:0.6rem 0.8rem; margin-bottom:0.9rem; border-radius:4px;">
+                        @if (!string.IsNullOrEmpty(gastoWa.MediaUrl))
+                        {
+                            <a href="@gastoWa.MediaUrl" target="_blank" title="Ver el ticket grande">
+                                @if ((gastoWa.MediaFilename ?? "").EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span style="font-size:0.85rem;">📎 @gastoWa.MediaFilename</span>
+                                }
+                                else
+                                {
+                                    <img src="@gastoWa.MediaUrl" alt="ticket" style="width:70px; height:90px; object-fit:cover; border-radius:4px; border:1px solid #e5e7eb;" />
+                                }
+                            </a>
+                        }
+                        <div style="font-size:0.9rem;">
+                            <div style="color:#6b7280; font-size:0.78rem;">💸 #gasto por WhatsApp · @(gastoWa.Quien ?? gastoWa.Numero) · @gastoWa.CreatedAt.ToArTime().ToString("dd/MM HH:mm")</div>
+                            <b>@gastoWa.Texto</b>
+                            @foreach (var c in gastoWa.Comentarios)
+                            {
+                                <div style="font-size:0.8rem; color:#374151;">💬 @c.Texto <span style="color:#9ca3af;">· @c.Usuario</span></div>
+                            }
+                            <div style="color:#6b7280; font-size:0.78rem; margin-top:0.2rem;">Elegí a quién se le pagó. Importe y forma de pago vienen del mensaje: revisalos. Al guardar, el gasto queda con ✅.</div>
+                        </div>
+                    </div>
+                }
                 @if (programado is not null)
                 {
                     <div style="margin-bottom:0.8rem; font-size:0.85rem; color:#374151;">
@@ -377,6 +405,10 @@
     /// guardarlo, el programado queda pagado.</summary>
     [Parameter, SupplyParameterFromQuery(Name = "programado")] public int? PreProgramadoId { get; set; }
     private ApiClient.PagoProgramadoDto? programado;
+    /// <summary>18/11/2026: "Cargar" de un #gasto por WhatsApp: abre el pago con el mensaje arriba y, al
+    /// guardarlo, el gasto queda APLICADO (con tilde).</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "gasto")] public int? PreGastoId { get; set; }
+    private ApiClient.GastoWaDto? gastoWa;
     /// <summary>17/09/2026: botón "Pago" de la barra (y N+P): abre el formulario vacío. Trae una marca de
     /// tiempo para que vuelva a abrirse aunque ya se esté en esta pantalla.</summary>
     [Parameter, SupplyParameterFromQuery(Name = "nueva")] public long? PreNueva { get; set; }
@@ -430,7 +462,12 @@
         cajas = await Api.GetCafeCajasAsync() ?? new();
         chequesEnCartera = (await Api.GetCafeChequesAsync("EN_CARTERA")) ?? new();
         await Load();
-        if (PreProgramadoId is > 0)
+        if (PreGastoId is > 0)
+        {
+            gastoAtendido = PreGastoId;
+            await AbrirDesdeGasto(PreGastoId.Value);
+        }
+        else if (PreProgramadoId is > 0)
         {
             await AbrirDesdeProgramado(PreProgramadoId.Value);
         }
@@ -441,7 +478,19 @@
         }
     }
 
-    protected override void OnParametersSet()
+    private int? gastoAtendido;
+    protected override async Task OnParametersSetAsync()
+    {
+        // 18/11/2026: tocar otro #gasto (campanita / tarjeta) estando ya en esta pantalla.
+        if (PreGastoId is > 0 && PreGastoId != gastoAtendido && cajas is not null)
+        {
+            gastoAtendido = PreGastoId;
+            await AbrirDesdeGasto(PreGastoId.Value);
+        }
+        OnParametersSetNueva();
+    }
+
+    private void OnParametersSetNueva()
     {
         if (PreNueva is > 0 && PreNueva != nuevaAtendida)
         {
@@ -493,9 +542,35 @@
         formObservaciones = p.Nota;
     }
 
+    private async Task AbrirDesdeGasto(int id)
+    {
+        ApiClient.GastoWaDto? g = null;
+        try { g = await Api.GetGastoWaAsync(id); } catch { }
+        if (g is null) { ToastService.Error("No encontré ese gasto"); return; }
+        if (g.Estado != "PENDIENTE") { ToastService.Error(g.Estado == "APLICADO" ? $"Ese gasto ya está cargado (pago {g.PagoNumero})" : "Ese gasto está rechazado"); return; }
+        ShowNuevo();
+        gastoWa = g;
+        formObservaciones = g.Texto.Length > 400 ? g.Texto[..400] : g.Texto;
+        if (g.Importe is decimal imp && imp > 0)
+        {
+            // Sin factura que imputar: va "a cuenta" del proveedor que elijas (se puede cambiar).
+            aCuentaActivo = true; aCuentaImporte = imp;
+            CafeCajaDto? caja = g.Medio switch
+            {
+                "TRANSFERENCIA" => cajas?.Where(c => c.IsActive && c.Tipo == "BANCO" && !c.EnDolares)
+                    .OrderByDescending(c => c.Nombre.Contains("Galicia")).ThenBy(c => c.Id).FirstOrDefault(),
+                "EFECTIVO" => cajas?.Where(c => c.IsActive && c.Tipo == "EFECTIVO" && !c.EnDolares).OrderBy(c => c.Id).FirstOrDefault(),
+                "MERCADOPAGO" => cajas?.Where(c => c.IsActive && !c.EnDolares && c.Nombre.Contains("Mercado", StringComparison.OrdinalIgnoreCase)).OrderBy(c => c.Id).FirstOrDefault(),
+                _ => null,
+            };
+            formMedios.Add(new MedioForm { CajaId = caja?.Id ?? 0, TipoCaja = caja?.Tipo ?? "", Importe = imp });
+        }
+    }
+
     private void ShowNuevo()
     {
         programado = null;
+        gastoWa = null;
         selProveedorId = 0; provSearch = ""; provSearchOpen = false;
         pendientes = null; imputaciones = new(); echeqsPropios = new();
         aCuentaActivo = false; aCuentaImporte = 0;
@@ -639,6 +714,12 @@
             var r = await Api.CrearCafePagoProveedorAsync(selProveedorId, formRetenciones, null, formObservaciones, comps, medios);
             if (r is null) { ToastService.Error("No se pudo guardar"); return; }
             ToastService.Success($"Pago {r.Numero} creado");
+            if (gastoWa is not null)
+            {
+                if (await Api.AplicarGastoWaAsync(gastoWa.Id, r.Id)) ToastService.Success("✅ Gasto de WhatsApp aplicado");
+                else ToastService.Error("El pago quedó guardado, pero el gasto sigue pendiente: avisame");
+                gastoWa = null;
+            }
             if (programado is not null)
             {
                 try { await Api.MarcarPagoProgramadoPagadoAsync(programado.Id, r.Id); }

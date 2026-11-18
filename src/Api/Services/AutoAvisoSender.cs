@@ -75,8 +75,17 @@ public class AutoAvisoSender
             else partes.Add("📲 Telegram: nadie con Telegram vinculado");
         }
 
+        // 2026-11-18: interruptor general "Avisos automáticos por WhatsApp" (Mis alertas). Apagado = no sale
+        // por WhatsApp; campanita, Telegram y mail siguen igual.
+        var waGeneralPrendido = !cfg.CanalWhatsApp || await WaAvisosAutomaticos.EstanPrendidosAsync(_db);
+        if (cfg.CanalWhatsApp && !waGeneralPrendido)
+        {
+            _log.LogInformation("[AutoAviso:{Key}] WhatsApp no sale: avisos automáticos por WhatsApp apagados (general)", autoKey);
+            partes.Add("📱 WhatsApp apagado (general)");
+        }
+
         // 📱 WhatsApp por persona (sale si su ventana de 24hs está abierta; sino queda en el log)
-        if (cfg.CanalWhatsApp)
+        if (cfg.CanalWhatsApp && waGeneralPrendido)
         {
             int ok = 0, tot = 0;
             foreach (var p in personas.Where(x => !string.IsNullOrWhiteSpace(x.WhatsAppNumero)))

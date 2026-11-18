@@ -57,6 +57,14 @@ public class AvisoVentanaBackgroundService : BackgroundService
         var reglas = await db.WhatsAppAvisoVentanaReglas.Where(r => r.Activa).ToListAsync();
         if (reglas.Count == 0) return;
 
+        // 2026-11-18: interruptor general "Avisos automáticos por WhatsApp" (Mis alertas). Apagado = no se
+        // manda nada ni se marca como avisado (al prenderlo, solo sale el momento más urgente, como siempre).
+        if (!await WaAvisosAutomaticos.EstanPrendidosAsync(db))
+        {
+            _logger.LogDebug("[AvisoVentana] avisos automáticos por WhatsApp apagados: no se revisa");
+            return;
+        }
+
         var ahora = DateTime.UtcNow;
         var desde = ahora.AddHours(-24);
 
