@@ -260,7 +260,7 @@
                         {
                             var idx = i; var m = formMedios[idx];
                             <div style="display:grid; grid-template-columns: 2fr 1fr 2fr 30px; gap:0.4rem; margin-bottom:0.4rem; align-items:start;">
-                                <select class="form-input" value="@m.CajaId" @onchange="@(e => OnCajaChange(idx, e.Value?.ToString()))" disabled="@(m.ChequeBancoId.HasValue)">
+                                <select class="form-input" style="@(m.CajaId <= 0 ? "border-color:#dc2626;" : "")" value="@m.CajaId" @onchange="@(e => OnCajaChange(idx, e.Value?.ToString()))" disabled="@(m.ChequeBancoId.HasValue)">
                                     <option value="0">— Caja —</option>
                                     @if (cajas is not null)
                                     {
@@ -697,6 +697,7 @@
     {
         if (selProveedorId <= 0) { ToastService.Error("Elegí un proveedor"); return; }
         if (!CuadraTotal) { ToastService.Error("No cuadra"); return; }
+        if (formMedios.Any(m => m.CajaId <= 0)) { ToastService.Error("Elegí la caja en la forma de pago (de dónde sale la plata)"); return; }
 
         var comps = new List<ApiClient.CrearCompraItemRequest>();
         foreach (var kv in imputaciones)
