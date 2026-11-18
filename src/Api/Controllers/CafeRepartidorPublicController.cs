@@ -1569,6 +1569,146 @@ public class CafeRepartidorPublicController : ControllerBase
         return Ok(new { ok = true, pendienteId = pend.Id, mensaje = $"✓ Cobro $ {importe:N2} cargado (pendiente de aprobar)" });
     }
 
+    // ══════════════════════════════════════════════════════════════════════════════
+    // 18/11/2026: "↩ Me equivoqué" — el repartidor corrige solo lo que marcó mal HOY.
+    // Pedido del dueño: "que cuando cargan algo mal, ya sea entrega o cobranza, puedan arreglarlo".
+    // (Caso: Walter marcó El Túnel "solo entregué" y lo había cobrado.)
+    //   cobre       → "También lo cobré": carga el cobro (queda PENDIENTE para Osmar, como siempre).
+    //   importe     → "Cobré otro importe": cambia el monto del cobro pendiente.
+    //   no_cobre    → "No lo cobré": el cobro pendiente pasa a RECHAZADA (no se borra: queda el rastro).
+    //   no_entregue → "No lo entregué": vuelve a su lista (estado de armado anterior) y sus cobros
+    //                 pendientes de esa venta pasan a RECHAZADA.
+    // Límites: solo ventas entregadas por él HOY (hora AR). Si Osmar ya APROBÓ el cobro, la plata ya
+    // está en la caja: no se toca desde el celu, se le dice que avise a la oficina.
+    // Cada corrección deja un renglón "me equivoqué: …" en el historial de la venta.
+    // ══════════════════════════════════════════════════════════════════════════════
+    public record CorregirRequest(string Accion, decimal? Importe = null);
+
+    [HttpPost("mis-pedidos/{tokenRepartidor}/corregir/{ventaId:int}")]
+    public async Task<IActionResult> MisPedidosCorregir(string tokenRepartidor, int ventaId, [FromBody] CorregirRequest req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido" });
+
+        var v = await _db.CafeVentas.FirstOrDefaultAsync(x => x.Id == ventaId);
+        if (v is null) return NotFound(new { error = "Venta no encontrada" });
+
+        var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
+        if (v.EntregadoPorRepartidorId != r.Id || v.EntregadoAt is null || v.EntregadoAt.Value.AddHours(-3).Date != hoyAr)
+            return BadRequest(new { error = "Solo podés corregir lo que entregaste hoy. Para lo de otros días avisale a la oficina." });
+
+        var cobros = await _db.CafeCobranzasPendientes
+            .Where(p => p.VentaId == v.Id && p.RepartidorId == r.Id && p.Estado != "RECHAZADA")
+            .OrderByDescending(p => p.Id)
+            .ToListAsync();
+        if (cobros.Any(p => p.Estado == "APROBADA"))
+            return BadRequest(new { error = "Osmar ya aprobó el cobro de este pedido. Avisale a la oficina para que lo corrija." });
+        var pendiente = cobros.FirstOrDefault(p => p.Estado == "PENDIENTE");
+
+        var ahora = DateTime.UtcNow;
+        var totalCobrable = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+        string detalle, mensaje;
+
+        void Rechazar(CafeCobranzaPendiente p, string motivo)
+        {
+            p.Estado = "RECHAZADA";
+            p.RechazadaMotivo = motivo;
+            p.RevisadaPor = $"repartidor: {r.Nombre}";
+            p.RevisadaAt = ahora;
+        }
+
+        switch ((req?.Accion ?? "").Trim().ToLowerInvariant())
+        {
+            case "cobre":
+            {
+                if (pendiente is not null)
+                    return BadRequest(new { error = "Ya tiene un cobro cargado. Si el monto está mal, usá \"Cobré otro importe\"." });
+                var imp = Math.Round(req!.Importe ?? totalCobrable, 2);
+                if (imp <= 0m) return BadRequest(new { error = "Ingresá un importe mayor a 0" });
+                _db.CafeCobranzasPendientes.Add(new CafeCobranzaPendiente
+                {
+                    VentaId = v.Id, RepartidorId = r.Id, Importe = imp, MarcadoEntregado = true,
+                    Notas = "Me equivoqué: lo había marcado solo entregado", Estado = "PENDIENTE", CreatedAt = ahora
+                });
+                _db.CafeQrEscaneos.Add(new CafeQrEscaneo
+                {
+                    VentaId = v.Id, RepartidorId = r.Id, Accion = "cobrado", CreatedAt = ahora,
+                    Ip = Request.HttpContext.Connection.RemoteIpAddress?.ToString()
+                });
+                detalle = $"me equivoqué: también lo cobré, {VentaHistorialRecorder.Plata(imp)} (queda para que lo apruebe Osmar)";
+                mensaje = $"💰 Cobro {VentaHistorialRecorder.Plata(imp)} cargado";
+                break;
+            }
+            case "importe":
+            {
+                if (pendiente is null) return BadRequest(new { error = "Este pedido no tiene cobro cargado." });
+                var imp = Math.Round(req!.Importe ?? 0m, 2);
+                if (imp <= 0m) return BadRequest(new { error = "Ingresá un importe mayor a 0" });
+                if (imp == pendiente.Importe) return BadRequest(new { error = "Es el mismo importe que ya estaba." });
+                var antes = pendiente.Importe;
+                pendiente.Importe = imp;
+                var nota = $"Me equivoqué: era {VentaHistorialRecorder.Plata(antes)}";
+                var notas = string.IsNullOrWhiteSpace(pendiente.Notas) ? nota : pendiente.Notas + " · " + nota;
+                pendiente.Notas = notas.Length > 500 ? notas[..500] : notas;
+                detalle = $"me equivoqué: cambió el importe cobrado de {VentaHistorialRecorder.Plata(antes)} a {VentaHistorialRecorder.Plata(imp)}";
+                mensaje = $"✏ Importe cambiado a {VentaHistorialRecorder.Plata(imp)}";
+                break;
+            }
+            case "no_cobre":
+            {
+                if (pendiente is null) return BadRequest(new { error = "Este pedido no tiene cobro cargado." });
+                foreach (var p in cobros) Rechazar(p, "El repartidor se equivocó: no lo cobró");
+                detalle = $"me equivoqué: no lo cobré (se sacó el cobro de {VentaHistorialRecorder.Plata(pendiente.Importe)})";
+                mensaje = "✕ Cobro sacado";
+                break;
+            }
+            case "no_entregue":
+            {
+                foreach (var p in cobros) Rechazar(p, "El repartidor se equivocó: no lo entregó");
+                // Vuelve al estado de armado que tenía antes de marcarla entregada (no a "Para armar":
+                // ya está armada y la tiene él en la camioneta).
+                if (v.EstadoPreparacion == "ENTREGADO")
+                {
+                    var anterior = await _db.CafeVentaPreparacionLogs
+                        .Where(l => l.VentaId == v.Id && l.EstadoNuevo == "ENTREGADO")
+                        .OrderByDescending(l => l.Id).Select(l => l.EstadoAnterior).FirstOrDefaultAsync();
+                    var volverA = string.IsNullOrEmpty(anterior) || anterior == "ENTREGADO" ? "EN_CAMINO" : anterior;
+                    _db.CafeVentaPreparacionLogs.Add(new CafeVentaPreparacionLog
+                    {
+                        VentaId = v.Id, EstadoAnterior = "ENTREGADO", EstadoNuevo = volverA,
+                        OperadorNombre = $"repartidor: {r.Nombre}",
+                        Notas = "Me equivoqué desde /mis-pedidos: no lo entregó, vuelve a su lista",
+                        CreatedAt = ahora
+                    });
+                    v.EstadoPreparacion = volverA;
+                    v.PreparacionUpdatedAt = ahora;
+                }
+                v.EntregadoPorRepartidorId = null;
+                v.EntregadoAt = null;
+                v.ComentarioEntrega = null;
+                v.FirmaBase64 = null; v.EntregaFirmadaAt = null;
+                v.NombreReceptor = null; v.DniReceptor = null; v.MotivoSinFirma = null;
+                var escEntregado = await _db.CafeQrEscaneos
+                    .Where(e => e.VentaId == v.Id && e.Accion == "entregado").ToListAsync();
+                _db.CafeQrEscaneos.RemoveRange(escEntregado);
+                detalle = "me equivoqué: no lo entregué, vuelve a su lista"
+                    + (cobros.Count > 0 ? $" (se sacó el cobro de {VentaHistorialRecorder.Plata(cobros.Sum(p => p.Importe))})" : "");
+                mensaje = "↩ Volvió a tu lista de pendientes";
+                break;
+            }
+            default:
+                return BadRequest(new { error = "Acción inválida" });
+        }
+
+        _db.CafeVentaHistorial.Add(new CafeVentaHistorial
+        {
+            VentaId = v.Id, Tipo = "ENTREGA", Quien = r.Nombre, Desde = "celu",
+            Detalle = detalle, CreatedAt = ahora
+        });
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, mensaje });
+    }
+
     public record CapturarUbicacionRequest(decimal Lat, decimal Lng);
 
     /// <summary>2026-06-11: el repartidor parado en la puerta del cliente captura su GPS actual
