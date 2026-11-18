@@ -29,6 +29,44 @@
     .fr-dia td { font-size:0.7rem; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; padding-top:0.8rem; border-bottom:1px solid #e5e7eb; }
     .fr a { color:inherit; }
     .fr-pdf { text-decoration:none; }
+    /* 18/11/2026 (3ª): tablero "¿en qué se fue la plata?" + pines por grupo */
+    .fr-barra { display:flex; height:24px; border-radius:7px; overflow:hidden; margin:0.6rem 0 0.25rem; }
+    .fr-barra div { display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; min-width:2px; cursor:pointer; }
+    .fr-ley { display:flex; gap:0.7rem; flex-wrap:wrap; font-size:0.72rem; color:#6b7280; margin-bottom:0.6rem; }
+    .fr-ley i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:0.25rem; vertical-align:-1px; }
+    .fr-tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(135px, 1fr)); gap:0.55rem; }
+    .fr-tile { border-radius:13px; padding:0.6rem 0.5rem; text-align:center; border:2px solid transparent; position:relative; cursor:pointer; }
+    .fr-tile:hover { filter:brightness(0.97); }
+    .fr-tile .ic { font-size:1.8rem; line-height:1; }
+    .fr-tile .t { font-weight:700; font-size:0.8rem; margin-top:0.3rem; }
+    .fr-tile .m { font-size:1rem; font-weight:800; margin-top:0.1rem; }
+    .fr-tile .n { font-size:0.7rem; opacity:0.75; }
+    .fr-tile .pct { position:absolute; top:0.35rem; right:0.5rem; font-size:0.66rem; font-weight:700; opacity:0.7; }
+    .fr-tile.on { border-color:#111827; box-shadow:0 4px 14px rgba(0,0,0,.12); }
+    .fr-tile.sin { background:#fff; border:2px dashed #f59e0b; color:#92400e; }
+    .fr-tile.sin.on { border-style:solid; border-color:#111827; }
+    .fr-det { margin-top:0.7rem; border-radius:12px; padding:0.6rem 0.8rem; }
+    .fr-det h4 { margin:0 0 0.4rem; font-size:0.85rem; }
+    .fr-br { display:grid; grid-template-columns:minmax(150px, 220px) 1fr 110px; gap:0.6rem; align-items:center; margin:0.25rem 0; cursor:pointer; border-radius:6px; padding:0 0.2rem; }
+    .fr-br:hover, .fr-br.on { background:rgba(0,0,0,.05); }
+    .fr-br .lab { font-weight:600; font-size:0.82rem; }
+    .fr-br .track { border-radius:6px; height:14px; background:rgba(255,255,255,.7); }
+    .fr-br .fill { border-radius:6px; height:14px; }
+    .fr-br .v { text-align:right; font-weight:700; font-size:0.82rem; }
+    .fr-av { width:30px; height:30px; flex:0 0 30px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:1rem; box-sizing:border-box; }
+    .fr-pin { border:0; border-radius:999px; padding:0.2rem 0.65rem; font-size:0.76rem; font-weight:700; white-space:nowrap; cursor:pointer; }
+    .fr-pin.vacio { border:2px dashed #f59e0b; color:#92400e; background:#fffbeb; }
+    .fr-pick { position:absolute; z-index:30; background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.18); padding:0.7rem; width:400px; margin-top:0.3rem; }
+    .fr-pick .lbl { font-size:0.72rem; color:#6b7280; margin-bottom:0.35rem; }
+    .fr-pick .grid { display:grid; grid-template-columns:1fr 1fr; gap:0.35rem; }
+    .fr-pick .gb { border:2px solid transparent; border-radius:9px; padding:0.4rem 0.6rem; font-weight:700; font-size:0.8rem; text-align:left; cursor:pointer; }
+    .fr-pick .gb.on { border-color:#111827; }
+    .fr-pick .dets { display:flex; gap:0.3rem; flex-wrap:wrap; }
+    .fr-pick .dp { border:0; border-radius:999px; padding:0.2rem 0.6rem; font-size:0.76rem; font-weight:700; cursor:pointer; }
+    .fr-pick .dp.solo { background:#fff; border:1px dashed #9ca3af; color:#6b7280; font-weight:500; }
+    .fr-pick .pie { display:flex; justify-content:space-between; margin-top:0.55rem; font-size:0.72rem; color:#6b7280; }
+    .fr-pick .pie button { border:0; background:none; color:#6b7280; text-decoration:underline; cursor:pointer; font-size:0.72rem; }
+    .fr td { position:relative; }
     /* 18/11/2026 (2ª): categoría, comentario, pagada, sugerencias */
     .fr-chips { display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center; }
     .fr-chip { border:1px solid #d1d5db; background:#fff; border-radius:14px; padding:0.15rem 0.65rem; font-size:0.8rem; color:#374151; cursor:pointer; }
@@ -77,11 +115,6 @@
                 }
             </select>
             <input class="form-input" placeholder="🔍 Proveedor, CUIT o comentario" @bind="busca" @bind:event="oninput" />
-            <select class="form-input" @bind="filtroCat" style="max-width:200px;">
-                <option value="">Categoría: todas</option>
-                <option value="-">Sin categoría</option>
-                @foreach (var c in categorias) { <option value="@c">@c</option> }
-            </select>
             <div class="fr-chips">
                 @foreach (var (k, t) in new[] { ("", "Todas"), ("sin", "Sin pagar"), ("pag", "Pagadas"), ("nose", "No sé") })
                 {
@@ -107,20 +140,20 @@
                     @if (vis.Any(f => f.Nueva)) { <span> · <span class="punto"></span>@vis.Count(f => f.Nueva) nueva@(vis.Count(f => f.Nueva) == 1 ? "" : "s")</span> }</span>
                 <span>Sin pagar <b style="color:#b45309;">@Plata(vis.Where(EsSinPagar).Sum(SaldoDe))</b></span>
                 <span>No sé <b>@Plata(vis.Where(EsNoSe).Sum(f => f.Total))</b></span>
-                @{ var porCat = vis.Where(f => !f.EsNotaCredito && f.Categoria != null).GroupBy(f => f.Categoria!).Select(g => (g.Key, g.Sum(x => x.Total))).OrderByDescending(x => x.Item2).Take(5).ToList(); }
-                @if (porCat.Count > 0)
-                {
-                    <span>@((MarkupString)string.Join(" · ", porCat.Select(c => $"{System.Net.WebUtility.HtmlEncode(c.Key)} <b>{Plata(c.Item2)}</b>")))</span>
-                }
             </div>
+            @Tablero()
             <div class="table-responsive">
                 <table class="fr">
                     <tr><th>Llegó</th><th>Proveedor</th><th>Categoría</th><th>Comprobante</th><th>Fecha</th><th class="num">Importe</th><th>¿Pagada?</th><th></th></tr>
                     @foreach (var f in vis)
                     {
+                        var (gr, de) = Cat(f.Categoria);
                         <tr>
-                            <td style="white-space:nowrap;">@if (f.Nueva) { <span class="punto" title="Nueva"></span> }@f.Llego.ToArTime().ToString("dd/MM")</td>
+                            <td style="white-space:nowrap; box-shadow: inset 5px 0 0 @(gr?.Fuerte ?? "#f59e0b");">@if (f.Nueva) { <span class="punto" title="Nueva"></span> }@f.Llego.ToArTime().ToString("dd/MM")</td>
                             <td>
+                                <div style="display:flex; gap:0.5rem; align-items:flex-start;">
+                                <span class="fr-av" style="background:@(gr?.Suave ?? "#fffbeb"); @(gr is null ? "border:2px dashed #f59e0b;" : "")">@(de?.Icono ?? gr?.Icono ?? "❔")</span>
+                                <div style="min-width:0;">
                                 @if (f.ProveedorId is int pid)
                                 {
                                     <a href="/cafe/proveedores/@pid/estado-cuenta"><b>@f.Proveedor</b></a>
@@ -139,21 +172,18 @@
                                 {
                                     <div class="fr-com vacio" title="Agregar una nota a esta factura" @onclick="() => EditarComentario(f)">✎ agregar comentario</div>
                                 }
+                                </div></div>
                             </td>
                             <td>
                                 @if (f.Cuit is null) { <span class="gris">—</span> }
-                                else if (editCat == f.Cuit + "|" + f.Id)
-                                {
-                                    <select class="fr-catsel" value="@(f.Categoria ?? "")" @onchange="e => ElegirCategoria(f, e.Value?.ToString())" @onblur="() => editCat = null">
-                                        <option value="">— sin categoría —</option>
-                                        @foreach (var c in categorias) { <option value="@c">@c</option> }
-                                        <option value="+">+ Otra categoría…</option>
-                                    </select>
-                                }
                                 else
                                 {
-                                    <button type="button" class="fr-cat @(f.Categoria is null ? "vacia" : "")" title="Es del proveedor: vale para todas sus facturas"
-                                            @onclick='() => editCat = f.Cuit + "|" + f.Id'>@(f.Categoria ?? "elegir…")</button>
+                                    <button type="button" class="fr-pin @(gr is null ? "vacio" : "")" style="@(gr is null ? "" : $"background:{gr.Suave}; color:{gr.Texto};")"
+                                            title="Es del proveedor: vale para todas sus facturas" @onclick="() => AbrirPicker(f)">
+                                        @if (gr is null) { <span>＋ ponerle categoría</span> }
+                                        else { <span>@gr.Icono @gr.Nombre@(de is null ? "" : " › " + de.Nombre)</span> }
+                                    </button>
+                                    @if (editCat == f.Id) { @Picker(f) }
                                 }
                             </td>
                             <td class="gris">@(f.EsNotaCredito ? "Nota de crédito" : f.Tipo) @f.Numero</td>
@@ -197,7 +227,6 @@
         {
             lista = await Api.GetFacturasRecibidasAsync(mes, null);
             estado = await Api.GetFacturasRecibidasEstadoAsync();
-            if (categorias.Count == 0) categorias = await Api.GetFacturasCategoriasAsync();
         }
         catch (Exception ex) { lista ??= new(); ToastService.Error(ex.Message); }
     }
@@ -269,8 +298,8 @@
     private static string Plata(decimal v) => "$" + v.ToString("N0", Ar);
 
     // ═══════════ 18/11/2026 (2ª): categorías, comentarios, pagada ═══════════
-    private List<string> categorias = new();
-    private string filtroCat = "", filtroPago = "";
+    private string filtroPago = "", filtroGrupo = "", filtroDet = "";
+    private string? pickGrupo;
     private string? editCat, editCom, menuPago;
     private string textoCom = "";
     private bool reglaSiempre;
@@ -285,13 +314,25 @@
 
     private List<ApiClient.FacturaRecibidaDto> Visibles()
     {
+        var l = FiltroPagoYBusca();
+        if (filtroGrupo == "-") l = l.Where(f => !f.EsNotaCredito && Cat(f.Categoria).Grupo is null).ToList();
+        else if (filtroGrupo != "")
+        {
+            l = l.Where(f => Cat(f.Categoria).Grupo?.Nombre == filtroGrupo).ToList();
+            if (filtroDet != "") l = l.Where(f => Cat(f.Categoria).Detalle?.Nombre == filtroDet).ToList();
+        }
+        return l;
+    }
+
+    /// <summary>Búsqueda + Todas/Sin pagar/Pagadas/No sé, SIN el filtro de grupo (las tarjetas muestran todos los grupos).</summary>
+    private List<ApiClient.FacturaRecibidaDto> FiltroPagoYBusca()
+    {
         IEnumerable<ApiClient.FacturaRecibidaDto> l = lista ?? new();
         var b = (busca ?? "").Trim();
         if (b != "")
             l = l.Where(f => f.Proveedor.Contains(b, StringComparison.OrdinalIgnoreCase) || (f.Cuit ?? "").Contains(b)
-                          || (f.Comentario ?? "").Contains(b, StringComparison.OrdinalIgnoreCase) || f.Numero.Contains(b));
-        if (filtroCat == "-") l = l.Where(f => f.Categoria is null);
-        else if (filtroCat != "") l = l.Where(f => f.Categoria == filtroCat);
+                          || (f.Comentario ?? "").Contains(b, StringComparison.OrdinalIgnoreCase) || f.Numero.Contains(b)
+                          || (f.Categoria ?? "").Contains(b, StringComparison.OrdinalIgnoreCase));
         l = filtroPago switch
         {
             "sin" => l.Where(EsSinPagar),
@@ -326,24 +367,191 @@
     }
 
     // ── Categoría (del proveedor) ──
-    private async Task ElegirCategoria(ApiClient.FacturaRecibidaDto f, string? v)
+    // 18/11/2026 (3ª): categorías en DOS niveles, como el plan de cuentas de Tango: el GRUPO (en qué se fue
+    // la plata) y adentro el DETALLE. Se guarda en Compras_ProveedorConfig.Categoria como "Grupo" o
+    // "Grupo › Detalle" (sin cambiar la base). Lo viejo que no está en la lista cae en "Otros".
+    private sealed record Det(string Nombre, string Icono);
+    private sealed record Grupo(string Nombre, string Icono, string Suave, string Fuerte, string Texto, Det[] Detalles);
+    private const string Sep = " › ";
+    private static readonly Grupo[] Grupos =
+    {
+        new("Mercadería", "📦", "#e0f2fe", "#0284c7", "#075985", Array.Empty<Det>()),
+        new("Mercado Libre", "🛒", "#fef9c3", "#ca8a04", "#854d0e", new Det[] { new("Comisiones", "💸"), new("Envíos", "🚚") }),
+        new("Vehículos", "🚗", "#fef3c7", "#d97706", "#92400e", new Det[] { new("Combustible", "⛽"), new("Peajes", "🛣"), new("Reparaciones y repuestos", "🔧"), new("Seguro", "🛡"), new("VTV y patentes", "📋") }),
+        new("Local y oficina", "🏪", "#ede9fe", "#7c3aed", "#5b21b6", new Det[] { new("Alarma", "🚨"), new("Mantenimiento", "🛠"), new("Limpieza", "🧽"), new("Imprenta y librería", "🖨"), new("Equipos y herramientas", "🧰"), new("Seguro", "🛡") }),
+        new("Teléfono e internet", "📱", "#dcfce7", "#16a34a", "#166534", Array.Empty<Det>()),
+        new("Bancos e impuestos", "🏦", "#f1f5f9", "#64748b", "#334155", Array.Empty<Det>()),
+        new("Otros", "📎", "#fce7f3", "#db2777", "#9d174d", Array.Empty<Det>()),
+    };
+
+    private static (Grupo? Grupo, Det? Detalle) Cat(string? c)
+    {
+        if (string.IsNullOrWhiteSpace(c)) return (null, null);
+        var p = c.Split(Sep, 2);
+        var g = Grupos.FirstOrDefault(x => x.Nombre == p[0]);
+        if (g is null) return (Grupos[^1], null);   // categoría vieja suelta → Otros
+        var d = p.Length > 1 ? g.Detalles.FirstOrDefault(x => x.Nombre == p[1]) : null;
+        return (g, d);
+    }
+
+    private void AbrirPicker(ApiClient.FacturaRecibidaDto f)
+    {
+        if (editCat == f.Id) { editCat = null; return; }
+        editCat = f.Id;
+        pickGrupo = Cat(f.Categoria).Grupo?.Nombre;
+    }
+
+    private async Task ElegirGrupo(ApiClient.FacturaRecibidaDto f, Grupo g)
+    {
+        pickGrupo = g.Nombre;
+        if (g.Detalles.Length == 0) await Guardar(f, g.Nombre);
+    }
+
+    private async Task Guardar(ApiClient.FacturaRecibidaDto f, string? cat)
     {
         editCat = null;
         if (f.Cuit is null) return;
-        if (v == "+")
-        {
-            string? nueva = null;
-            try { nueva = await JS.InvokeAsync<string?>("prompt", "Nombre de la categoría nueva:"); } catch { }
-            if (string.IsNullOrWhiteSpace(nueva)) return;
-            v = nueva.Trim();
-            if (!categorias.Contains(v)) categorias.Add(v);
-        }
-        var cat = string.IsNullOrWhiteSpace(v) ? null : v;
         if (!await Api.PonerCategoriaProveedorAsync(f.Cuit, cat)) { ToastService.Error("No se pudo guardar la categoría"); return; }
         if (lista is not null) lista = lista.Select(x => x.Cuit == f.Cuit ? x with { Categoria = cat } : x).ToList();
         var n = lista?.Count(x => x.Cuit == f.Cuit) ?? 1;
         ToastService.Success(cat is null ? "Categoría sacada" : $"{f.Proveedor}: {cat}" + (n > 1 ? $" (sus {n} facturas)" : ""));
     }
+
+    private void FiltrarGrupo(string g)
+    {
+        if (filtroGrupo == g) { filtroGrupo = ""; filtroDet = ""; }
+        else { filtroGrupo = g; filtroDet = ""; }
+    }
+
+    private static string Corto(decimal v)
+    {
+        var a = Math.Abs(v);
+        if (a >= 1_000_000m) return "$" + (v / 1_000_000m).ToString(a >= 100_000_000m ? "N0" : "N1", Ar) + " M";
+        return "$" + v.ToString("N0", Ar);
+    }
+
+    private static string Pct(decimal parte, decimal total)
+    {
+        if (total <= 0) return "";
+        var p = parte / total * 100m;
+        return p >= 10 ? p.ToString("N0", Ar) + "%" : p >= 0.1m ? p.ToString("N1", Ar) + "%" : "";
+    }
+
+    /// <summary>Arriba: "¿en qué se fue la plata?" — barra de proporción, una tarjeta por grupo y el detalle del elegido.</summary>
+    private RenderFragment Tablero() => __builder =>
+    {
+        var basel = FiltroPagoYBusca().Where(f => !f.EsNotaCredito).ToList();
+        var total = basel.Sum(f => f.Total);
+        var porGrupo = Grupos.Select(g => (G: g, L: basel.Where(f => Cat(f.Categoria).Grupo == g).ToList()))
+                             .Where(x => x.L.Count > 0).OrderByDescending(x => x.L.Sum(f => f.Total)).ToList();
+        var sin = basel.Where(f => Cat(f.Categoria).Grupo is null).ToList();
+        if (total <= 0) return;
+        <div class="fr-barra">
+            @foreach (var (g, l) in porGrupo)
+            {
+                var gn = g.Nombre; var t = l.Sum(f => f.Total);
+                <div style="flex:@(((double)t).ToString(System.Globalization.CultureInfo.InvariantCulture)); background:@g.Fuerte;" title="@g.Nombre @Corto(t) · @Pct(t, total)" @onclick="() => FiltrarGrupo(gn)">
+                    @(t / total >= 0.12m ? $"{g.Icono} {g.Nombre} {Pct(t, total)}" : t / total >= 0.025m ? g.Icono : "")
+                </div>
+            }
+            @if (sin.Count > 0)
+            {
+                var t = sin.Sum(f => f.Total);
+                <div style="flex:@(((double)t).ToString(System.Globalization.CultureInfo.InvariantCulture)); background:#d1d5db; color:#374151;" title="Sin categoría @Corto(t)" @onclick='() => FiltrarGrupo("-")'>@(t / total >= 0.04m ? "❔ " + Pct(t, total) : "")</div>
+            }
+        </div>
+        <div class="fr-ley">
+            @foreach (var (g, l) in porGrupo) { <span><i style="background:@g.Fuerte;"></i>@g.Nombre @Pct(l.Sum(f => f.Total), total)</span> }
+            @if (sin.Count > 0) { <span><i style="background:#d1d5db;"></i>Sin categoría</span> }
+        </div>
+        <div class="fr-tiles">
+            @foreach (var (g, l) in porGrupo)
+            {
+                var gn = g.Nombre; var t = l.Sum(f => f.Total);
+                <div class="fr-tile @(filtroGrupo == gn ? "on" : "")" style="background:@g.Suave; color:@g.Texto;" @onclick="() => FiltrarGrupo(gn)" title="Tocá para ver solo @g.Nombre">
+                    <span class="pct">@Pct(t, total)</span>
+                    <div class="ic">@g.Icono</div>
+                    <div class="t">@g.Nombre</div>
+                    <div class="m">@Corto(t)</div>
+                    <div class="n">@l.Count factura@(l.Count == 1 ? "" : "s")</div>
+                </div>
+            }
+            @if (sin.Count > 0)
+            {
+                <div class="fr-tile sin @(filtroGrupo == "-" ? "on" : "")" @onclick='() => FiltrarGrupo("-")' title="Las que falta clasificar">
+                    <div class="ic">❔</div>
+                    <div class="t">Sin categoría</div>
+                    <div class="m">@sin.Count</div>
+                    <div class="n">tocá para completarlas</div>
+                </div>
+            }
+        </div>
+        var sel = Grupos.FirstOrDefault(g => g.Nombre == filtroGrupo);
+        if (sel is not null && sel.Detalles.Length > 0)
+        {
+            var lg = basel.Where(f => Cat(f.Categoria).Grupo == sel).ToList();
+            var tg = lg.Sum(f => f.Total);
+            var filas = sel.Detalles.Select(d => (D: d, T: lg.Where(f => Cat(f.Categoria).Detalle == d).Sum(f => f.Total))).Where(x => x.T != 0).OrderByDescending(x => x.T).ToList();
+            var suelto = lg.Where(f => Cat(f.Categoria).Detalle is null).Sum(f => f.Total);
+            var max = Math.Max(1m, filas.Select(x => x.T).DefaultIfEmpty(0).Max());
+            max = Math.Max(max, suelto);
+            <div class="fr-det" style="background:@sel.Suave; color:@sel.Texto;">
+                <h4>@sel.Icono @sel.Nombre por dentro · @Corto(tg) <span style="font-weight:400; opacity:.75;">· tocá un renglón para ver solo esas</span></h4>
+                @foreach (var (d, t) in filas)
+                {
+                    var dn = d.Nombre;
+                    <div class="fr-br @(filtroDet == dn ? "on" : "")" @onclick='() => filtroDet = filtroDet == dn ? "" : dn'>
+                        <span class="lab">@d.Icono @d.Nombre</span>
+                        <div class="track"><div class="fill" style="width:@(((double)(t / max * 100m)).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%; background:@sel.Fuerte;"></div></div>
+                        <span class="v">@Plata(t)</span>
+                    </div>
+                }
+                @if (suelto != 0)
+                {
+                    <div class="fr-br" style="cursor:default;">
+                        <span class="lab" style="opacity:.75;">sin detalle</span>
+                        <div class="track"><div class="fill" style="width:@(((double)(suelto / max * 100m)).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%; background:@sel.Fuerte; opacity:.5;"></div></div>
+                        <span class="v">@Plata(suelto)</span>
+                    </div>
+                }
+            </div>
+        }
+    };
+
+    /// <summary>Selector: 1) el grupo (con su color) 2) el detalle, opcional.</summary>
+    private RenderFragment Picker(ApiClient.FacturaRecibidaDto f) => __builder =>
+    {
+        var g = Grupos.FirstOrDefault(x => x.Nombre == pickGrupo);
+        <div class="fr-pick" @onclick:stopPropagation="true">
+            <div class="lbl">1) ¿En qué se fue la plata?</div>
+            <div class="grid">
+                @foreach (var gg in Grupos)
+                {
+                    var g2 = gg;
+                    <button type="button" class="gb @(pickGrupo == gg.Nombre ? "on" : "")" style="background:@gg.Suave; color:@gg.Texto;" @onclick="() => ElegirGrupo(f, g2)">@gg.Icono @gg.Nombre</button>
+                }
+            </div>
+            @if (g is not null && g.Detalles.Length > 0)
+            {
+                <div class="lbl" style="margin-top:0.6rem;">2) Detalle (opcional)</div>
+                <div class="dets">
+                    @foreach (var d in g.Detalles)
+                    {
+                        var cat = g.Nombre + Sep + d.Nombre;
+                        <button type="button" class="dp" style="background:@g.Suave; color:@g.Texto;" @onclick="() => Guardar(f, cat)">@d.Icono @d.Nombre</button>
+                    }
+                    <button type="button" class="dp solo" @onclick="() => Guardar(f, g.Nombre)">solo "@g.Nombre"</button>
+                </div>
+            }
+            <div class="pie">
+                <span>Vale para todas las facturas de @f.Proveedor</span>
+                <span>
+                    @if (f.Categoria is not null) { <button type="button" @onclick="() => Guardar(f, null)">quitar</button> }
+                    <button type="button" @onclick="() => editCat = null">cerrar</button>
+                </span>
+            </div>
+        </div>
+    };
 
     // ── Pagada ──
     private static readonly (string Medio, string? Regla)[] Medios =
