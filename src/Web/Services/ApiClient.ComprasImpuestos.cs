@@ -8,9 +8,9 @@ public partial class ApiClient
     public record FacturaRecibidaDto(string Id, DateTime Llego, DateTime? Fecha, string Proveedor, string? Cuit, int? ProveedorId,
         string Tipo, string Numero, decimal Total, bool EsNotaCredito, bool TienePdf, bool Nueva, string? Pago,
         string? Categoria = null, string? Comentario = null, string? PagoVia = null, FacturaSugerenciaDto? Sugerencia = null,
-        bool CuentaCorriente = false, string? ReglaPago = null, bool PagoManual = false);
+        bool CuentaCorriente = false, string? ReglaPago = null, bool PagoManual = false, string? PagoAuto = null);
     /// <summary>18/11/2026 (2ª): pago que puede ser de la factura (MP o BCO = banco Galicia).</summary>
-    public record FacturaSugerenciaDto(string Origen, int MovId, DateTime Fecha, decimal Importe, string Texto);
+    public record FacturaSugerenciaDto(string Origen, long MovId, DateTime Fecha, decimal Importe, string Texto);
     public record FacturasPorProveedorDto(string Nombre, int Cantidad, decimal Total);
     public record FacturasEstadoDto(DateTime? Ultima, string? Resultado, bool Corriendo, DateTime? VistasHasta);
     public record FacturasResumenDto(int Nuevas, decimal TotalNuevas, List<FacturasPorProveedorDto> PorProveedor, FacturasEstadoDto Estado);
@@ -48,11 +48,11 @@ public partial class ApiClient
         => FrEnviar(HttpMethod.Put, $"{FrBase}/proveedor/{Uri.EscapeDataString(cuit)}/regla", new { Regla = regla });
     public Task<bool> GuardarComentarioFacturaAsync(string id, string? texto)
         => FrEnviar(HttpMethod.Put, $"{FrBase}/{Uri.EscapeDataString(id)}/comentario", new { Texto = texto });
-    public Task<bool> MarcarFacturaPagadaAsync(string id, string medio, string? origen = null, int? movId = null)
+    public Task<bool> MarcarFacturaPagadaAsync(string id, string medio, string? origen = null, long? movId = null)
         => FrEnviar(HttpMethod.Post, $"{FrBase}/{Uri.EscapeDataString(id)}/pago", new { Medio = medio, Origen = origen, MovId = movId });
     public Task<bool> DesmarcarFacturaPagadaAsync(string id)
         => FrEnviar(HttpMethod.Delete, $"{FrBase}/{Uri.EscapeDataString(id)}/pago", null);
-    public Task<bool> RechazarSugerenciaFacturaAsync(string id, string origen, int movId)
+    public Task<bool> RechazarSugerenciaFacturaAsync(string id, string origen, long movId)
         => FrEnviar(HttpMethod.Post, $"{FrBase}/{Uri.EscapeDataString(id)}/rechazar", new { Origen = origen, MovId = movId });
 
     public async Task<bool> TraerFacturasRecibidasAhoraAsync()

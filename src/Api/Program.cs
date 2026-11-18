@@ -239,6 +239,8 @@ builder.Services.AddScoped<IBienvenidaBloque, BienvenidaBloqueTraerBancos>();
 builder.Services.AddScoped<IBienvenidaBloque, BienvenidaBloqueHoy>();
 builder.Services.AddScoped<IBienvenidaBloque, BienvenidaBloqueRecordatorios>();
 builder.Services.AddScoped<MpAccountService>();
+// 2026-11-18: Facturas recibidas — compras MeLi como comprador + descripción de pagos MP (solo lectura, en memoria).
+builder.Services.AddScoped<ComprasPagosOrigenService>();
 builder.Services.AddScoped<MpSyncService>();
 // 2026-07-10: cámaras EZVIZ (API oficial). Config en /integraciones/camaras.
 builder.Services.AddScoped<EzvizAccountService>();

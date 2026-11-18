@@ -20,17 +20,21 @@ public class FacturasRecibidasController : ControllerBase
     private readonly AppDbContext _db;
     private readonly ComprasAfipRobot _robot;
     private readonly ProveedorCtaCteService _ctacte;
+    private readonly ComprasPagosOrigenService _origen;
 
-    public FacturasRecibidasController(AppDbContext db, ComprasAfipRobot robot, ProveedorCtaCteService ctacte)
-    { _db = db; _robot = robot; _ctacte = ctacte; }
+    public FacturasRecibidasController(AppDbContext db, ComprasAfipRobot robot, ProveedorCtaCteService ctacte, ComprasPagosOrigenService origen)
+    { _db = db; _robot = robot; _ctacte = ctacte; _origen = origen; }
 
     public record FacturaDto(string Id, DateTime Llego, DateTime? Fecha, string Proveedor, string? Cuit, int? ProveedorId,
         string Tipo, string Numero, decimal Total, bool EsNotaCredito, bool TienePdf, bool Nueva, string? Pago,
         // 18/11/2026 (2ª): categoría del proveedor, comentario, por dónde se pagó, sugerencia y si lleva cta cte.
         string? Categoria = null, string? Comentario = null, string? PagoVia = null, SugerenciaDto? Sugerencia = null,
-        bool CuentaCorriente = false, string? ReglaPago = null, bool PagoManual = false);
+        bool CuentaCorriente = false, string? ReglaPago = null, bool PagoManual = false,
+        // 18/11/2026 (5ª): pagada encontrada sola (CUIT en la transferencia del Galicia, débito automático, compra MeLi).
+        // Clave para deshacerla ("BCO:123" / "ORD:2000…"); null si no fue automática.
+        string? PagoAuto = null);
     /// <summary>Un pago que PUEDE ser de esta factura (mismo importe, fechas cerca). Origen MP o BCO.</summary>
-    public record SugerenciaDto(string Origen, int MovId, DateTime Fecha, decimal Importe, string Texto);
+    public record SugerenciaDto(string Origen, long MovId, DateTime Fecha, decimal Importe, string Texto);
     public record PorProveedorDto(string Nombre, int Cantidad, decimal Total);
     public record EstadoDto(DateTime? Ultima, string? Resultado, bool Corriendo, DateTime? VistasHasta);
     public record ResumenDto(int Nuevas, decimal TotalNuevas, List<PorProveedorDto> PorProveedor, EstadoDto Estado);
@@ -138,7 +142,7 @@ public class FacturasRecibidasController : ControllerBase
             {
                 pago = "pagada"; via = TextoRegla(cfg.ReglaPago);
             }
-            else if (!f.EsNotaCredito && f.ReceptorDoc == CuitMercadoLibre)
+            else if (!f.EsNotaCredito && (f.ReceptorDoc == CuitMercadoLibre || f.ReceptorDoc == CuitMeliLog))
             {
                 pago = "pagada"; via = "descontada por Mercado Pago";
             }
@@ -153,8 +157,10 @@ public class FacturasRecibidasController : ControllerBase
         var sinSaber = res.Where(r => r.Pago == null && !r.EsNotaCredito && r.Fecha != null).ToList();
         if (sinSaber.Count > 0)
         {
-            var sug = await SugerirPagosAsync(sinSaber, extras);
-            res = res.Select(r => sug.TryGetValue(r.Id, out var sg) ? r with { Sugerencia = sg } : r).ToList();
+            // 18/11/2026 (5ª): primero lo SEGURO (CUIT del Galicia, débito automático, compra MeLi), después sugerencias.
+            var (auto, sug) = await EmparejarAsync(sinSaber, extras);
+            res = res.Select(r => auto.TryGetValue(r.Id, out var a) ? r with { Pago = "pagada", PagoVia = a.Via, PagoAuto = a.Clave }
+                                : sug.TryGetValue(r.Id, out var sg) ? r with { Sugerencia = sg } : r).ToList();
         }
         return Ok(res);
     }
@@ -179,6 +185,7 @@ public class FacturasRecibidasController : ControllerBase
     // ═══════════ 18/11/2026 (2ª): categorías, comentarios y pagos ═══════════
 
     public const string CuitMercadoLibre = "30703088534";
+    public const string CuitMeliLog = "30715686054";   // envíos de MeLi: también se descuentan de lo cobrado en MP
     public static readonly string[] CategoriasBase =
         { "Mercadería", "Insumos", "Servicios", "Seguros", "Peajes", "Comisiones MeLi/MP", "Envíos", "Mantenimiento", "Impuestos y bancos", "Otros" };
 
@@ -253,7 +260,7 @@ public class FacturasRecibidasController : ControllerBase
         return Ok(new { ok = true });
     }
 
-    public record PagoReq(string Medio, DateTime? Fecha, string? Origen, int? MovId);
+    public record PagoReq(string Medio, DateTime? Fecha, string? Origen, long? MovId);
     /// <summary>Marcar pagada: a mano (medio + fecha) o confirmando una sugerencia (Origen MP/BCO + MovId).</summary>
     [HttpPost("{id}/pago")]
     public async Task<IActionResult> MarcarPago(string id, [FromBody] PagoReq req)
@@ -262,13 +269,13 @@ public class FacturasRecibidasController : ControllerBase
         if (e is null) return NotFound(new { error = "Factura no encontrada" });
         e.PagoMpMovId = null; e.PagoExtractoMovId = null;
         DateTime? fecha = req.Fecha;
-        if (req.Origen == "MP" && req.MovId is int mp)
+        if (req.Origen == "MP" && req.MovId is long mp0 && mp0 <= int.MaxValue && (int)mp0 is var mp)
         {
             var m = await _db.MpMovimientos.AsNoTracking().FirstOrDefaultAsync(x => x.Id == mp);
             if (m is null) return BadRequest(new { error = "No encontré ese movimiento de Mercado Pago" });
             e.PagoMpMovId = mp; fecha ??= m.Fecha;
         }
-        else if (req.Origen == "BCO" && req.MovId is int bc)
+        else if (req.Origen == "BCO" && req.MovId is long bc0 && bc0 <= int.MaxValue && (int)bc0 is var bc)
         {
             var m = await _db.CafeExtractoMovimientos.AsNoTracking().FirstOrDefaultAsync(x => x.Id == bc);
             if (m is null) return BadRequest(new { error = "No encontré ese movimiento del banco" });
@@ -293,7 +300,7 @@ public class FacturasRecibidasController : ControllerBase
         return Ok(new { ok = true });
     }
 
-    public record RechazoReq(string Origen, int MovId);
+    public record RechazoReq(string Origen, long MovId);
     /// <summary>"No es este": esa sugerencia no se vuelve a ofrecer para esta factura.</summary>
     [HttpPost("{id}/rechazar")]
     public async Task<IActionResult> Rechazar(string id, [FromBody] RechazoReq req)
@@ -309,55 +316,120 @@ public class FacturasRecibidasController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    private record Auto(string Via, string Clave);
+    private record MovBco(int Id, DateTime Fecha, decimal Imp, string Texto, string Desc);
+
     /// <summary>
-    /// Busca, para cada factura sin estado, un pago que salió por casi el mismo importe:
-    /// · Banco Galicia (débitos del extracto): ±1 %, de 3 días antes a 40 días después de la factura.
-    ///   Si el texto del banco trae el nombre del proveedor, va primero.
-    /// · Mercado Pago (pagos que salieron de la cuenta, tipo SETTLEMENT): ±3 % (las compras de MeLi
-    ///   suelen sumar el envío), de 10 días antes (se paga al comprar) a 20 días después.
-    /// El reporte de MP NO dice a quién se le pagó, por eso es solo una sugerencia que se confirma.
-    /// Cada movimiento se sugiere a una sola factura y no se ofrece si ya está usado o se dijo "No".
+    /// 18/11/2026 (5ª, pedido del dueño: "estoy seguro que el 90 % lo podés matchear"). Medido con datos
+    /// reales de 60 días: ~36 % sale seguro + MeLi/Meli Log automáticas + reglas por proveedor ≈ 65 %.
+    /// SEGURO (sale "pagada" sola, con ✕ para deshacer):
+    ///  1. Galicia "Trf Inmed Proveed" con el CUIT del proveedor en la leyenda. Una transferencia puede pagar
+    ///     varias facturas del mismo CUIT: se van llenando por fecha hasta su importe (+1 %).
+    ///  2. Galicia débito / pago de servicio con el nombre del proveedor y el importe ±2 %.
+    ///  3. Compra en Mercado Libre (como comprador): la orden y la factura tienen el MISMO importe (±$1),
+    ///     factura de 2 días antes a 20 después de la compra.
+    /// SUGERENCIA (amarillo, Sí/No): débito del Galicia ±1 % o pago de MP ±3 %, con la descripción del pago.
+    /// Lo que se dijo "No" (o se deshizo con ✕) queda en Rechazados y no vuelve.
     /// </summary>
-    private async Task<Dictionary<string, SugerenciaDto>> SugerirPagosAsync(List<FacturaDto> facturas, Dictionary<string, Api.Models.ComprasFacturaExtra> extras)
+    private async Task<(Dictionary<string, Auto> Auto, Dictionary<string, SugerenciaDto> Sug)> EmparejarAsync(
+        List<FacturaDto> facturas, Dictionary<string, Api.Models.ComprasFacturaExtra> extras)
     {
-        var desde = facturas.Min(f => f.Fecha!.Value).AddDays(-10);
-        var hasta = facturas.Max(f => f.Fecha!.Value).AddDays(40);
+        var auto = new Dictionary<string, Auto>();
+        var sug = new Dictionary<string, SugerenciaDto>();
+        var desde = facturas.Min(f => f.Fecha!.Value).AddDays(-25);
+        var hasta = facturas.Max(f => f.Fecha!.Value).AddDays(60);
         var usadosMp = (await _db.ComprasFacturaExtras.AsNoTracking().Where(e => e.PagoMpMovId != null).Select(e => e.PagoMpMovId!.Value).ToListAsync()).ToHashSet();
         var usadosBco = (await _db.ComprasFacturaExtras.AsNoTracking().Where(e => e.PagoExtractoMovId != null).Select(e => e.PagoExtractoMovId!.Value).ToListAsync())
             .Concat(await _db.ContadoraComprobantePagos.AsNoTracking().Where(p => p.ExtractoMovId != null && !p.Anulado).Select(p => p.ExtractoMovId!.Value).ToListAsync())
             .ToHashSet();
+        HashSet<string> Rech(string fid) => extras.TryGetValue(fid, out var ex) ? (ex.Rechazados ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet() : new();
 
-        var mps = (await _db.MpMovimientos.AsNoTracking()
-                .Where(m => m.MontoNeto < 0 && m.TipoTransaccion == "SETTLEMENT" && m.Fecha >= desde && m.Fecha <= hasta)
-                .Select(m => new { m.Id, m.Fecha, m.MontoNeto, m.ReferenciaExterna }).ToListAsync())
-            .Where(m => !usadosMp.Contains(m.Id))
-            .GroupBy(m => new { m.Fecha, m.MontoNeto, m.ReferenciaExterna }).Select(g => g.First())   // el reporte a veces repite la fila
-            .ToList();
         var bcos = (await _db.CafeExtractoMovimientos.AsNoTracking()
                 .Where(m => m.Debitos > 0 && m.IgnoradoAt == null && m.Fecha >= desde && m.Fecha <= hasta)
-                .Select(m => new { m.Id, m.Fecha, m.Debitos, m.Descripcion, m.LeyendaAdicional1, m.LeyendaAdicional2 }).ToListAsync())
-            .Where(m => !usadosBco.Contains(m.Id)).ToList();
+                .Select(m => new { m.Id, m.Fecha, m.Debitos, m.Descripcion, m.LeyendaAdicional1, m.LeyendaAdicional2, m.LeyendaAdicional3 }).ToListAsync())
+            .Where(m => !usadosBco.Contains(m.Id))
+            .Select(m => new MovBco(m.Id, m.Fecha, m.Debitos, $"{m.Descripcion} {m.LeyendaAdicional1} {m.LeyendaAdicional2} {m.LeyendaAdicional3}".ToUpperInvariant(),
+                                    Recortar($"{m.Descripcion} · {m.LeyendaAdicional1}", 60)))
+            .OrderBy(m => m.Fecha).ToList();
+        var restoBco = bcos.ToDictionary(b => b.Id, b => b.Imp);   // lo que le queda a cada movimiento por cubrir
+
+        // 1) Transferencia con el CUIT del proveedor
+        foreach (var f in facturas.Where(f => !string.IsNullOrEmpty(f.Cuit)).OrderBy(f => f.Fecha))
+        {
+            var rech = Rech(f.Id);
+            var b = bcos.FirstOrDefault(b => b.Texto.Contains(f.Cuit!) && !rech.Contains($"BCO:{b.Id}")
+                                             && (b.Fecha - f.Fecha!.Value).TotalDays is >= -3 and <= 60
+                                             && restoBco[b.Id] >= f.Total * 0.99m);
+            if (b is null) continue;
+            restoBco[b.Id] -= f.Total;
+            auto[f.Id] = new Auto($"Galicia {b.Fecha:dd/MM} · transferencia a {f.Proveedor}{(b.Imp > f.Total * 1.01m ? $" (${b.Imp.ToString("#,0", Ar)} en total)" : "")}", $"BCO:{b.Id}");
+        }
+        // 2) Débito / pago de servicio con el nombre, importe ±2 %
+        foreach (var f in facturas.Where(f => !auto.ContainsKey(f.Id)))
+        {
+            var rech = Rech(f.Id);
+            var pal = Palabras(f.Proveedor);
+            if (pal.Count == 0) continue;
+            var b = bcos.FirstOrDefault(b => restoBco[b.Id] == b.Imp && !rech.Contains($"BCO:{b.Id}")
+                                             && pal.Any(w => b.Texto.Contains(w)) && Math.Abs(b.Imp - f.Total) <= Math.Max(1m, f.Total * 0.02m)
+                                             && (b.Fecha - f.Fecha!.Value).TotalDays is >= -3 and <= 60);
+            if (b is null) continue;
+            restoBco[b.Id] = 0;
+            auto[f.Id] = new Auto($"Galicia {b.Fecha:dd/MM} · {b.Desc}", $"BCO:{b.Id}");
+        }
+        // 3) Compra en Mercado Libre con el mismo importe
+        List<ComprasPagosOrigenService.CompraMeli> compras = new();
+        try { compras = await _origen.ComprasAsync(desde); } catch { }
+        var ordUsadas = new HashSet<long>();
+        foreach (var f in facturas.Where(f => !auto.ContainsKey(f.Id)).OrderBy(f => f.Fecha))
+        {
+            var rech = Rech(f.Id);
+            var o = compras.Where(o => !ordUsadas.Contains(o.OrderId) && !rech.Contains($"ORD:{o.OrderId}")
+                                       && Math.Abs(o.Total - f.Total) <= 1m
+                                       && (f.Fecha!.Value - o.Fecha.Date).TotalDays is >= -2 and <= 20)
+                           .OrderBy(o => Math.Abs((f.Fecha!.Value - o.Fecha.Date).TotalDays)).FirstOrDefault();
+            if (o is null) continue;
+            ordUsadas.Add(o.OrderId);
+            auto[f.Id] = new Auto($"Compra MeLi {o.Fecha.ToLocalTime():dd/MM} · {Recortar(o.Titulo, 45)} · {o.Vendedor}", $"ORD:{o.OrderId}");
+        }
+        // Las compras MeLi ya emparejadas ocupan su pago de MP.
+        var pagosDeOrden = compras.Where(o => ordUsadas.Contains(o.OrderId)).SelectMany(o => o.PagosMp).ToHashSet();
+
+        // ── Sugerencias para el resto ──
+        // Del banco no se sugieren impuestos/comisiones, ni transferencias a OTRO proveedor (traen otro CUIT).
+        static bool EsGastoBanco(MovBco b) => b.Texto.StartsWith("IMP.") || b.Texto.StartsWith("ING. BRUTOS") || b.Texto.StartsWith("PERCEP")
+            || b.Texto.StartsWith("IVA ") || b.Texto.StartsWith("COMISION") || b.Texto.StartsWith("SERVICIO ACREDITAMIENTO") || b.Texto.StartsWith("IMP ");
+        static bool OtroCuit(MovBco b, string? cuit) => b.Texto.Contains("PROVEED")
+            && System.Text.RegularExpressions.Regex.Matches(b.Texto, @"\b\d{11}\b").Any(m => m.Value != cuit);
+        var resto = facturas.Where(f => !auto.ContainsKey(f.Id) && f.Total > 0).ToList();
+        if (resto.Count == 0) return (auto, sug);
+        var mps = (await _db.MpMovimientos.AsNoTracking()
+                .Where(m => m.MontoNeto < 0 && m.TipoTransaccion == "SETTLEMENT" && m.Fecha >= desde && m.Fecha <= hasta)
+                .Select(m => new { m.Id, m.Fecha, m.MontoNeto, m.ReferenciaExterna, m.SourceId }).ToListAsync())
+            .Where(m => !usadosMp.Contains(m.Id) && (m.SourceId == null || !pagosDeOrden.Contains(m.SourceId))
+                        && !(m.ReferenciaExterna ?? "").StartsWith("MELIPAYMENTS") && !(m.ReferenciaExterna ?? "").StartsWith("loyal_"))
+            .GroupBy(m => new { m.Fecha, m.MontoNeto, m.ReferenciaExterna }).Select(g => g.First())
+            .ToList();
+        var descs = new Dictionary<string, string>();
+        try { descs = await _origen.DescripcionesMpAsync(mps.Where(m => m.SourceId != null).Select(m => m.SourceId!)); } catch { }
+        var compraPorPago = compras.SelectMany(o => o.PagosMp.Select(p => (p, o))).GroupBy(x => x.p).ToDictionary(g => g.Key, g => g.First().o);
 
         var cands = new List<(string Fid, double Puntos, SugerenciaDto S)>();
-        foreach (var f in facturas)
+        foreach (var f in resto)
         {
             var fe = f.Fecha!.Value;
             var total = f.Total;
-            if (total <= 0) continue;
-            var rech = extras.TryGetValue(f.Id, out var ex) ? (ex.Rechazados ?? "").Split(',').ToHashSet() : new HashSet<string>();
-            var palabras = f.Proveedor.ToUpperInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Where(w => w.Length >= 4 && w is not ("ARGENTINA" or "SOCIEDAD" or "ANONIMA" or "S.R.L." or "SERVICIOS")).ToList();
-            foreach (var b in bcos)
+            var rech = Rech(f.Id);
+            var pal = Palabras(f.Proveedor);
+            foreach (var b in bcos.Where(b => restoBco[b.Id] == b.Imp))
             {
-                if (rech.Contains($"BCO:{b.Id}")) continue;
-                var dif = Math.Abs(b.Debitos - total) / total;
+                if (rech.Contains($"BCO:{b.Id}") || EsGastoBanco(b) || OtroCuit(b, f.Cuit)) continue;
+                var dif = Math.Abs(b.Imp - total) / total;
                 var dias = (b.Fecha - fe).TotalDays;
                 if (dif > 0.01m || dias < -3 || dias > 40) continue;
-                var txt = $"{b.Descripcion} {b.LeyendaAdicional1} {b.LeyendaAdicional2}".ToUpperInvariant();
-                var nombre = palabras.Any(w => txt.Contains(w));
-                var puntos = (double)dif * 100 + Math.Abs(dias) / 10 - (nombre ? 5 : 0);
-                cands.Add((f.Id, puntos, new SugerenciaDto("BCO", b.Id, b.Fecha, b.Debitos,
-                    $"Galicia {b.Fecha:dd/MM} · ${b.Debitos.ToString("#,0", Ar)} · {Recortar($"{b.Descripcion} {b.LeyendaAdicional1}", 60)}")));
+                var nombre = pal.Any(w => b.Texto.Contains(w));
+                cands.Add((f.Id, (double)dif * 100 + Math.Abs(dias) / 10 - (nombre ? 5 : 0),
+                    new SugerenciaDto("BCO", b.Id, b.Fecha, b.Imp, $"Galicia {b.Fecha:dd/MM} · ${b.Imp.ToString("#,0", Ar)} · {b.Desc}")));
             }
             foreach (var m in mps)
             {
@@ -366,23 +438,29 @@ public class FacturasRecibidasController : ControllerBase
                 var dif = Math.Abs(imp - total) / total;
                 var dias = (m.Fecha - fe).TotalDays;
                 if (dif > 0.03m || dias < -10 || dias > 20) continue;
-                var esMeli = m.ReferenciaExterna != null && m.ReferenciaExterna.StartsWith("2000");
-                var puntos = (double)dif * 100 + Math.Abs(dias) / 10 + 1;   // MP pesa un poco menos que el banco
-                cands.Add((f.Id, puntos, new SugerenciaDto("MP", m.Id, m.Fecha, imp,
-                    $"Mercado Pago {m.Fecha:dd/MM} · ${imp.ToString("#,0", Ar)}{(esMeli ? " (compra MeLi)" : "")}")));
+                var desc = m.SourceId != null && descs.TryGetValue(m.SourceId, out var dd) ? dd : "";
+                if (desc == "(pasado a inversión)" || desc.StartsWith("Suscripción a Meli", StringComparison.OrdinalIgnoreCase)) continue;
+                if (m.SourceId != null && compraPorPago.TryGetValue(m.SourceId, out var oc)) desc = $"compra MeLi: {oc.Titulo} · {oc.Vendedor}";
+                var nombre = pal.Any(w => desc.ToUpperInvariant().Contains(w));
+                cands.Add((f.Id, (double)dif * 100 + Math.Abs(dias) / 10 + 1 - (nombre ? 5 : 0),
+                    new SugerenciaDto("MP", m.Id, m.Fecha, imp, $"Mercado Pago {m.Fecha:dd/MM} · ${imp.ToString("#,0", Ar)}{(desc == "" ? "" : " · " + Recortar(desc, 55))}")));
             }
         }
-        // Lo mejor primero; cada factura y cada movimiento, una sola vez.
-        var res = new Dictionary<string, SugerenciaDto>();
         var tomados = new HashSet<string>();
         foreach (var c in cands.OrderBy(c => c.Puntos))
         {
             var k = $"{c.S.Origen}:{c.S.MovId}";
-            if (res.ContainsKey(c.Fid) || tomados.Contains(k)) continue;
-            res[c.Fid] = c.S; tomados.Add(k);
+            if (sug.ContainsKey(c.Fid) || tomados.Contains(k)) continue;
+            sug[c.Fid] = c.S; tomados.Add(k);
         }
-        return res;
+        return (auto, sug);
     }
+
+    private static List<string> Palabras(string proveedor)
+        => System.Text.RegularExpressions.Regex.Replace(proveedor.ToUpperInvariant(), "[^A-ZÁÉÍÓÚÑ0-9 ]", " ")
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length >= 4 && w is not ("ARGENTINA" or "SOCIEDAD" or "ANONIMA" or "SERVICIOS" or "GRUPO" or "RESPONSABILIDAD" or "LIMITADA"))
+            .ToList();
 
     private static readonly System.Globalization.CultureInfo Ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
     private static string Recortar(string? s, int n) => string.IsNullOrWhiteSpace(s) ? "" : (s.Trim().Length <= n ? s.Trim() : s.Trim()[..n] + "…");
