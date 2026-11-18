@@ -8727,7 +8727,8 @@ public partial class ApiClient
         DateTime? PagadoFecha, string? PagadoComo, bool TienePdf, string? Nota, bool DelBanco);
     public record ImpuestosAvisosDto(int Pendientes, decimal PendientesImporte, DateTime? ProximoVence, string? ProximoTexto,
         int VencidosSinPago, int PagadosMes, decimal PagadosMesImporte, bool SinVepsEsteMes,
-        DateTime? UltimaRevision = null, string? ResultadoRevision = null, int VencenPronto = 0);
+        DateTime? UltimaRevision = null, string? ResultadoRevision = null, int VencenPronto = 0,
+        List<VencimientoArcaDto>? Vencimientos = null, DateTime? AlmanaqueHasta = null);
     public record ImpuestosRevisionDto(int MailsLeidos, int Nuevos, int Pagados, int DelBanco, string? Error);
     public record ImpuestosSubidaDto(int Leidos, int Nuevos, int Pagados);
     public async Task<List<ImpuestoDto>> GetImpuestosAsync()

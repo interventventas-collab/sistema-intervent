@@ -449,6 +449,18 @@ public class MisAlertasController : ControllerBase
                     $"{cuando}: {v.Concepto} {v.Importe.ToString("$#,0", ar2)}", "Impuestos · tocá para verlo",
                     DateTime.UtcNow, campVista.HasValue && campVista.Value.AddHours(-3).Date >= hoyAr));
             }
+            // 18/11/2026: almanaque de ARCA — vence en 3 días (o venció hace ≤3) y María no mandó el VEP. Id -3000000-i.
+            var vencs = await VencimientosArca.EvaluarAsync(_db, hoyAr.AddDays(-3), hoyAr.AddDays(3));
+            for (int i = 0; i < vencs.Count; i++)
+            {
+                var v = vencs[i];
+                if (v.Estado != "SIN_VEP") continue;
+                var d = v.Vence.Date;
+                var cuando = d < hoyAr ? $"VENCIÓ el {d:dd/MM}" : d == hoyAr ? "Vence HOY" : d == hoyAr.AddDays(1) ? "Vence mañana" : $"Vence el {d:dd/MM}";
+                lista.Add(new AlertaDisparadaDto(-3000000 - i, d < hoyAr ? "VEP_VENCIDO" : "VEP_VENCE",
+                    $"{cuando}: {v.Nombre}", d < hoyAr ? "No veo el pago · Impuestos" : "María todavía no mandó el VEP · Impuestos",
+                    DateTime.UtcNow, campVista.HasValue && campVista.Value.AddHours(-3).Date >= hoyAr));
+            }
         }
         lista = lista.OrderByDescending(x => x.DisparadaAt ?? DateTime.MinValue).ToList();
         return Ok(new AlertasBellDto(lista.Count(a => !a.Vista), lista));
