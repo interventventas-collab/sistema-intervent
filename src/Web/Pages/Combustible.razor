@@ -29,6 +29,7 @@
     .cb-tab td { padding:0.45rem 0.4rem; border-bottom:1px solid #f0f1f3; vertical-align:top; }
     .cb-tab tr:last-child td { border-bottom:0; }
     .cb-tab .n { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .cb-flota td { font-size:0.95rem; }
     .cb-veh { cursor:pointer; }
     .cb-veh:hover td { background:#f9fafb; }
     .cb-veh.sel td { background:#f3f4f6; }
@@ -78,6 +79,28 @@
 else if (leerResult is { Ok: false })
 {
     <div class="cb-prog" style="background:#fef2f2;border-color:#fecaca;color:#991b1b">❌ No se pudo leer Shell: @leerResult.Error</div>
+}
+
+@* 19/11/2026: vehículos con los km de su última carga, siempre arriba y sin depender del período
+   (pedido del dueño: "los coches que tenemos y el km siempre al día"). Shell no tiene GPS: el km se
+   sabe solo cuando cargan, por eso va al lado cuándo cargó; en rojo si hace más de 5 días. *@
+@if (datos?.Flota is { Count: > 0 } flota)
+{
+    <div class="cb-sec">Vehículos · km de la última carga</div>
+    <div class="cb-card">
+        <table class="cb-tab cb-flota">
+            @foreach (var f in flota)
+            {
+                var dias = (hoyAr - f.UltimaCarga.Date).Days;
+                <tr>
+                    <td><b>@f.Nombre</b> <span class="cb-mut">· @f.Placa</span></td>
+                    <td class="n"><b>@(f.Km is int k ? k.ToString("#,0", Ar) + " km" : "—")</b></td>
+                    <td class="n @(dias > DiasSinCargarRojo ? "cb-red" : "cb-mut")" style="width:7.5rem">@CuandoCargo(f.UltimaCarga, dias)</td>
+                </tr>
+            }
+        </table>
+        <div class="cb-nota">Se actualiza solo cada vez que el robot lee Shell. En rojo: más de @DiasSinCargarRojo días sin cargar.</div>
+    </div>
 }
 
 <div class="cb-top" style="margin-top:0.9rem">
@@ -310,6 +333,15 @@ else if (datos != null)
     protected override Task OnInitializedAsync() => Task.WhenAll(Cargar(), CargarCuenta());
 
     private static string Plata(decimal v) => v.ToString("$#,0", Ar);
+
+    private const int DiasSinCargarRojo = 5;
+    private static DateTime hoyAr => DateTime.UtcNow.ToArTime().Date;
+    private static string CuandoCargo(DateTime f, int dias) => dias switch
+    {
+        <= 0 => $"hoy {f:dd/MM}",
+        1 => $"ayer {f:dd/MM}",
+        _ => $"hace {dias} días"
+    };
 
     private async Task Elegir(string p) { periodo = p; filtro = null; await Cargar(); }
     private void Filtrar(string placa) => filtro = filtro == placa ? null : placa;
