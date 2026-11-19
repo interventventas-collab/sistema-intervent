@@ -181,7 +181,9 @@ public class MeliMe1Controller : ControllerBase
             (status == "shipped" && substatus is null) ||
             (status == "shipped" && substatus == "out_for_delivery") ||
             (status == "delivered" && substatus is null) ||
-            (status == "not_delivered" && substatus == "returning_to_sender");
+            (status == "not_delivered" && substatus == "returning_to_sender") ||
+            // 2026-11-18: visitas fallidas (opcionales en MeLi): no estaba, dirección mal, no había quien reciba, zona peligrosa
+            (status == "shipped" && substatus is not null && MeliShipmentService.Me1VisitasFallidas.Contains(substatus));
 
         if (!valid)
             return BadRequest(new { error = "Combinacion status/substatus no soportada por MeLi" });
@@ -200,6 +202,35 @@ public class MeliMe1Controller : ControllerBase
         await _audit.LogAsync("MeliShipment.ME1", ship.MeliShipmentId.ToString(), "set_status", changes);
 
         return Ok(new { ok = true });
+    }
+
+    // ============================================================
+    // 2026-11-18: "¿Sale hoy?" al imprimir la etiqueta ME1
+    // ============================================================
+
+    /// <summary>De los envíos recién impresos (ids = números de envío de MeLi separados por coma),
+    /// los ME1 que todavía no salieron y no tienen día de salida elegido.</summary>
+    [HttpGet("sin-dia-salida")]
+    public async Task<IActionResult> SinDiaSalida([FromQuery] string ids, [FromServices] Me1AvisosService avisos)
+    {
+        var arr = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => long.TryParse(x, out var n) ? n : 0).Where(n => n > 0).Distinct().Take(200).ToList();
+        return Ok(await avisos.SinDiaDeSalidaAsync(arr));
+    }
+
+    public record DiaSalidaRequest(List<long> ShipmentIds, DateTime Fecha);
+
+    /// <summary>Guarda el día en que salen. Si es hoy, avisa a MeLi "En camino" en el acto.</summary>
+    [HttpPost("dia-salida")]
+    public async Task<IActionResult> DiaSalida([FromBody] DiaSalidaRequest req, [FromServices] Me1AvisosService avisos)
+    {
+        if (req.ShipmentIds is null || req.ShipmentIds.Count == 0) return BadRequest(new { error = "No hay envíos" });
+        var hoy = Me1AvisosService.HoyAr();
+        if (req.Fecha.Date < hoy) return BadRequest(new { error = "La fecha no puede ser anterior a hoy" });
+        var (avisados, programados, errores) = await avisos.ElegirDiaSalidaAsync(req.ShipmentIds, req.Fecha);
+        await _audit.LogAsync("MeliShipment.ME1", string.Join(",", req.ShipmentIds), "dia_salida",
+            $"sale {req.Fecha:dd/MM/yyyy}: {avisados} en camino, {programados} programados");
+        return Ok(new { avisados, programados, errores });
     }
 
     // ============================================================

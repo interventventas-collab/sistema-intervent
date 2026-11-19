@@ -4,6 +4,7 @@
 @inject ToastService ToastService
 @inject NavigationManager Nav
 @inject PantallaDepositoState Pantalla
+@inject Me1SaleHoySignal Me1SaleHoy
 
 @* 2026-11-09: pastillas grandes a la derecha de la pantalla de armado (maqueta aprobada por el dueño).
    Cada pastilla muestra en vivo una tarea del depósito (ME1, ventas MeLi, tareas, faltantes por marca
@@ -1131,7 +1132,7 @@
         PedirConfirmacion(ids.Count, async () =>
         {
             ToastService.Success($"Generando {ids.Count} etiqueta(s)…");
-            await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(ids, formato));
+            await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(ids, formato)); Me1SaleHoy.Preguntar(ids);
             tildadas.Clear();
             _ = RefrescarLuego();
         });
@@ -1146,7 +1147,7 @@
         {
             nuevas.Remove("me1");
             ToastService.Success($"Generando {ids.Count} etiqueta(s) ME1…");
-            await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(ids, formato));
+            await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(ids, formato)); Me1SaleHoy.Preguntar(ids);
             _ = RefrescarLuego();
         });
         return Task.CompletedTask;
@@ -1156,7 +1157,7 @@
     {
         PedirConfirmacion(1, async () =>
         {
-            await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(new[] { envio }, formato));
+            await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(new[] { envio }, formato)); Me1SaleHoy.Preguntar(new[] { envio });
             _ = RefrescarLuego();
         });
         return Task.CompletedTask;

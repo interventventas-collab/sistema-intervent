@@ -85,4 +85,16 @@ public class MeliShipment
 
     /// <summary>2026-06-17: cuando el repartidor toco "Entregue" desde /mis-pedidos.</summary>
     public DateTime? EntregadoPorRepartidorAt { get; set; }
+
+    /// <summary>2026-11-18: ME1 — día (Argentina) en que sale del depósito, elegido al imprimir la etiqueta
+    /// ("¿Sale hoy?"). Ese día a la mañana el job Me1Avisos le avisa a MeLi "En camino".</summary>
+    public DateTime? Me1SaleFecha { get; set; }
+
+    /// <summary>2026-11-18: ME1 — último día (Argentina) en que se le avisó a MeLi "Salió a distribución",
+    /// para no repetirlo en el mismo día (y volver a mandarlo si se reintenta otro día).</summary>
+    public DateTime? Me1SalioDistribucionFecha { get; set; }
+
+    /// <summary>2026-11-18: ME1 — cuándo se avisó la última visita fallida (no estaba, dirección mal,
+    /// no había quien reciba, zona peligrosa). Ese día ya no cuenta como "sin marcar".</summary>
+    public DateTime? Me1VisitaFallidaAt { get; set; }
 }

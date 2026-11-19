@@ -9055,3 +9055,15 @@ BEGIN
     CREATE INDEX IX_Shell_Cargas_Fecha ON Shell_Cargas(FechaHoraAr);
 END
 GO
+
+-- 2026-11-18: ME1 — estados para MercadoLibre: día en que sale (pregunta "¿Sale hoy?" al imprimir),
+-- último "Salió a distribución" avisado y última visita fallida.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Me1SaleFecha' AND Object_ID=Object_ID('MeliShipments'))
+    ALTER TABLE MeliShipments ADD Me1SaleFecha DATE NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Me1SalioDistribucionFecha' AND Object_ID=Object_ID('MeliShipments'))
+    ALTER TABLE MeliShipments ADD Me1SalioDistribucionFecha DATE NULL;
+GO
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Me1VisitaFallidaAt' AND Object_ID=Object_ID('MeliShipments'))
+    ALTER TABLE MeliShipments ADD Me1VisitaFallidaAt DATETIME2 NULL;
+GO

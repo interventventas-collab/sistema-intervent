@@ -4,6 +4,7 @@
 @inject ToastService ToastService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject Me1SaleHoySignal Me1SaleHoy
 @implements IDisposable
 
 <div class="card">
@@ -537,6 +538,10 @@
                         <option value="">— Elegi un estado —</option>
                         <option value="shipped|null">📦 Marcar Despachado</option>
                         <option value="shipped|out_for_delivery">🚚 Salio a entregar</option>
+                        <option value="shipped|receiver_absent">🚪 Visita fallida: no había nadie</option>
+                        <option value="shipped|bad_address">📍 Visita fallida: dirección mal</option>
+                        <option value="shipped|unauthorized_receiver">🙅 Visita fallida: no había quien reciba</option>
+                        <option value="shipped|dangerous_area">⚠️ Visita fallida: zona peligrosa</option>
                         <option value="delivered|null">✅ Marcar Entregado (final)</option>
                         <option value="not_delivered|returning_to_sender">❌ No entregado (final)</option>
                     </select>
@@ -1610,7 +1615,7 @@
     /// <summary>Abre la etiqueta de UN envio en pestana nueva, en el formato elegido.</summary>
     private async Task ImprimirEtiqueta(long shipId)
     {
-        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(new[] { shipId }, etiquetaFormato));
+        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(new[] { shipId }, etiquetaFormato)); Me1SaleHoy.Preguntar(new[] { shipId });
         _ = RefrescarEtiquetasLuego();
     }
 
@@ -1662,6 +1667,7 @@
         var url = Api.BuildEtiquetaMeliUrl(etiquetaSeleccionadas.OrderBy(x => x), etiquetaFormato);
         ToastService.Success($"Generando {etiquetaSeleccionadas.Count} etiqueta(s)...");
         await AbrirEtiqueta(url);
+        Me1SaleHoy.Preguntar(etiquetaSeleccionadas);   // 2026-11-18: "¿Sale hoy?" para los ME1
         _ = RefrescarEtiquetasLuego();
     }
     private bool isLoading = true;

@@ -2083,6 +2083,33 @@ public class CafeRepartidorPublicController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    public record NoEntregadoMe1Request(string? Motivo);
+
+    /// <summary>2026-11-18: "No pude entregar" desde el celu del repartidor → visita fallida en MeLi
+    /// (no estaba / dirección mal / no había quien reciba / zona peligrosa). NO es final: el envío
+    /// le sigue apareciendo para volver a intentar.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/me1/{shipmentId:int}/no-entregado")]
+    public async Task<IActionResult> NoEntregadoMe1(string tokenRepartidor, int shipmentId, [FromBody] NoEntregadoMe1Request req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
+
+        var motivo = (req.Motivo ?? "").Trim().ToLowerInvariant();
+        if (!MeliShipmentService.Me1VisitasFallidas.Contains(motivo))
+            return BadRequest(new { error = "Elegí por qué no lo pudiste entregar" });
+
+        var ship = await _db.MeliShipments.FirstOrDefaultAsync(s => s.Id == shipmentId);
+        if (ship is null) return NotFound(new { error = "Envio no encontrado" });
+        if (ship.RepartidorAsignadoId != r.Id) return Forbid();
+        if (ship.Status is "delivered" or "not_delivered" or "cancelled")
+            return BadRequest(new { error = "Este envio ya esta cerrado en MeLi" });
+
+        var (ok, error) = await _me1Service.SetMe1StatusAsync(shipmentId, "shipped", motivo, null, null,
+            $"Visita fallida ({motivo}) - {r.Nombre} via app");
+        if (!ok) return BadRequest(new { error = error ?? "No se pudo avisar a MeLi" });
+        return Ok(new { ok = true });
+    }
+
     // ─────────────────────────── RECHAZAR ENVÍO (2026-08-12) ───────────────────────────
 
     /// <summary>Cuerpo del rechazo: qué envío y por qué. El motivo es OBLIGATORIO.</summary>

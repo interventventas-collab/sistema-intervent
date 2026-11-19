@@ -191,6 +191,10 @@
                                 {
                                     <option value="shipped|out_for_delivery">🚚 Salio a entregar</option>
                                 }
+                                <option value="shipped|receiver_absent">🚪 Visita fallida: no había nadie</option>
+                                <option value="shipped|bad_address">📍 Visita fallida: dirección mal</option>
+                                <option value="shipped|unauthorized_receiver">🙅 Visita fallida: no había quien reciba</option>
+                                <option value="shipped|dangerous_area">⚠️ Visita fallida: zona peligrosa</option>
                                 <option value="delivered|null">✅ Marcar Entregado (final)</option>
                                 <option value="not_delivered|returning_to_sender">❌ No entregado (final)</option>
                             </select>
@@ -426,6 +430,10 @@
         "not_delivered" => ("#fcebeb", "#a32d2d", "❌ No entregado"),
         "cancelled" => ("#f1efe8", "#5f5e5a", "🚫 Cancelado"),
         "shipped" when s.Substatus == "out_for_delivery" => ("#faeeda", "#854f0b", "🚚 Salió a entregar"),
+        "shipped" when s.Substatus == "receiver_absent" => ("#fcebeb", "#a32d2d", "🚪 Visita fallida: no había nadie"),
+        "shipped" when s.Substatus == "bad_address" => ("#fcebeb", "#a32d2d", "📍 Visita fallida: dirección mal"),
+        "shipped" when s.Substatus == "unauthorized_receiver" => ("#fcebeb", "#a32d2d", "🙅 Visita fallida: no había quien reciba"),
+        "shipped" when s.Substatus == "dangerous_area" => ("#fcebeb", "#a32d2d", "⚠️ Visita fallida: zona peligrosa"),
         "shipped" => ("#faeeda", "#854f0b", "📦 En camino"),
         "ready_to_ship" => ("#e6f1fb", "#185fa5", "📋 Listo p/ despachar"),
         "pending" => ("#e6f1fb", "#185fa5", "⏳ Pendiente"),
@@ -545,6 +553,10 @@
     {
         ("shipped", null) or ("shipped", "null") => "📦 Despachado",
         ("shipped", "out_for_delivery") => "🚚 Salio a entregar",
+        ("shipped", "receiver_absent") => "🚪 Visita fallida: no había nadie",
+        ("shipped", "bad_address") => "📍 Visita fallida: dirección mal",
+        ("shipped", "unauthorized_receiver") => "🙅 Visita fallida: no había quien reciba",
+        ("shipped", "dangerous_area") => "⚠️ Visita fallida: zona peligrosa",
         ("delivered", _) => "✅ Entregado",
         ("not_delivered", _) => "❌ No entregado",
         ("cancelled", _) => "🚫 Cancelado",
