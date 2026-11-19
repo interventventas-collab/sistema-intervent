@@ -11032,4 +11032,7 @@ public record CombustibleCargaDto(int Id, string Placa, string Nombre, string? V
 public record CombustibleVehiculoDto(string Placa, string Nombre, string? Vehiculo, int Cargas, decimal Litros, decimal Importe,
     decimal? Rinde, int? UltimoKm, string? Alarma);
 public record CombustibleDto(DateTime Desde, DateTime Hasta, int Cargas, decimal Litros, decimal Importe,
-    List<CombustibleVehiculoDto> Vehiculos, List<CombustibleCargaDto> Lista, string? Saldo, DateTime? SaldoAt);
+    List<CombustibleVehiculoDto> Vehiculos, List<CombustibleCargaDto> Lista, string? Saldo, DateTime? SaldoAt,
+    List<CombustibleFlotaDto>? Flota = null);
+// 19/11/2026: km de la última carga de cada vehículo (siempre, sin período)
+public record CombustibleFlotaDto(string Placa, string Nombre, int? Km, DateTime UltimaCarga);

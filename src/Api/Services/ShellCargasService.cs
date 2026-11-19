@@ -76,7 +76,11 @@ public class ShellCargasService
         decimal? Rinde, int? UltimoKm, string? Alarma);
 
     public record CombustibleDto(DateTime Desde, DateTime Hasta, int Cargas, decimal Litros, decimal Importe,
-        List<VehiculoResumen> Vehiculos, List<CargaVista> Lista, string? Saldo, DateTime? SaldoAt);
+        List<VehiculoResumen> Vehiculos, List<CargaVista> Lista, string? Saldo, DateTime? SaldoAt,
+        List<FlotaKm>? Flota = null);
+
+    /// <summary>19/11/2026: km de la última carga de cada vehículo, sin importar el período elegido.</summary>
+    public record FlotaKm(string Placa, string Nombre, int? Km, DateTime UltimaCarga);
 
     /// <summary>"KANGOO" → "Kangoo"; si el modelo arranca con una letra suelta ("Z TRUCK DUO") va la marca.</summary>
     public static string NombreCorto(string? vehiculo, string placa)
@@ -174,7 +178,21 @@ public class ShellCargasService
 
         var acc = await _db.ShellAccounts.AsNoTracking().OrderByDescending(a => a.Id).FirstOrDefaultAsync();
         return new CombustibleDto(desde, hasta, analizadas.Count, analizadas.Sum(c => c.Litros), analizadas.Sum(c => c.Importe),
-            vehiculos, analizadas, acc?.LastSaldo, acc?.LastSaldoAt);
+            vehiculos, analizadas, acc?.LastSaldo, acc?.LastSaldoAt, await FlotaAsync());
+    }
+
+    /// <summary>Cada vehículo con los km de su última carga (Shell no tiene GPS: el km se sabe solo al cargar).</summary>
+    public async Task<List<FlotaKm>> FlotaAsync()
+    {
+        var todas = await _db.ShellCargas.AsNoTracking()
+            .Select(c => new { c.Placa, c.Vehiculo, c.FechaHoraAr, c.Odometro })
+            .ToListAsync();
+        return todas.Where(c => c.Placa != "").GroupBy(c => c.Placa).Select(g =>
+        {
+            var ult = g.OrderByDescending(c => c.FechaHoraAr).First();
+            var km = g.Where(c => c.Odometro.HasValue).OrderByDescending(c => c.FechaHoraAr).FirstOrDefault()?.Odometro;
+            return new FlotaKm(g.Key, NombreCorto(ult.Vehiculo, g.Key), km, ult.FechaHoraAr);
+        }).OrderByDescending(f => f.UltimaCarga).ToList();
     }
 
     /// <summary>Para la campanita: cargas nuevas de los últimos 3 días (no las de la primera importación).</summary>
