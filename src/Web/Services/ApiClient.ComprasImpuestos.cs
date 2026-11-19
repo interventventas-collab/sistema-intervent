@@ -57,6 +57,37 @@ public partial class ApiClient
     public Task<bool> RechazarSugerenciaFacturaAsync(string id, string origen, long movId)
         => FrEnviar(HttpMethod.Post, $"{FrBase}/{Uri.EscapeDataString(id)}/rechazar", new { Origen = origen, MovId = movId });
 
+    // ── 19/11/2026: proveedores para todos, ⭐ frecuentes, 💸 Pagar y Registrar pago desde el banco ──
+    public record ProveedorUsoDto(int Id, bool Favorito, bool Frecuente, bool SinMovimiento, int Facturas90, int Pagos90,
+        DateTime? Ultima, string? Categoria, string? Tipo);
+    public async Task<List<ProveedorUsoDto>> GetProveedoresUsoAsync()
+    {
+        try { return await GetAsync<List<ProveedorUsoDto>>("/api/cafe/proveedores/uso") ?? new(); } catch { return new(); }
+    }
+    public Task<bool> PonerProveedorFavoritoAsync(int id, bool favorito)
+        => FrEnviar(HttpMethod.Put, $"/api/cafe/proveedores/{id}/favorito", new { Favorito = favorito });
+    private record CreadosDto(int Creados);
+    public async Task<int> CrearProveedoresFaltantesAsync()
+    {
+        try { return (await PostAsync<CreadosDto>(FrBase + "/proveedores-faltantes", new { }))?.Creados ?? 0; } catch { return 0; }
+    }
+    private record ProvIdDto(int ProveedorId);
+    /// <summary>Proveedor de la factura (lo crea si falta). 0 si no se pudo.</summary>
+    public async Task<int> ProveedorDeFacturaAsync(string id)
+    {
+        try { return (await PostAsync<ProvIdDto>($"{FrBase}/{Uri.EscapeDataString(id)}/proveedor", new { }))?.ProveedorId ?? 0; } catch { return 0; }
+    }
+    /// <summary>Registra en Tesorería el pago de esas facturas con la transferencia/débito del banco (caja del banco).</summary>
+    public async Task<Web.Models.PagoBancoResultDto?> RegistrarPagoBancoFacturasAsync(int movId, List<string> idsAfip, string? cuit)
+    {
+        try
+        {
+            return await PostAsync<Web.Models.PagoBancoResultDto>("/api/contadora/compras/pagar-desde-banco",
+                new { extractoMovId = movId, idComprobantes = idsAfip.Select(i => "AFIP:" + i).ToList(), cuit });
+        }
+        catch (Exception ex) { return new Web.Models.PagoBancoResultDto { Ok = false, Error = ex.Message }; }
+    }
+
     public async Task<bool> TraerFacturasRecibidasAhoraAsync()
         => await PostAsync<object>("/api/compras/facturas-recibidas/traer-ahora", new { }) is not null;
 

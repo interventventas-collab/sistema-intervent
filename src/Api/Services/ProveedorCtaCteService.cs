@@ -616,8 +616,8 @@ public class ProveedorCtaCteService
         if (conClave.Count == 0) return null;
         var cta = await GetCuentaAsync(proveedorId);
         if (cta is null) return "Proveedor no encontrado";
-        if (!cta.CuentaCorriente) return $"{cta.Nombre} no lleva cuenta corriente: el pago solo puede ir a cuenta.";
-        var pend = cta.Pendientes.ToDictionary(d => d.Clave);
+        // 19/11/2026: sin cuenta corriente también se pueden pagar sus facturas de ARCA (las "sueltas").
+        var pend = (cta.CuentaCorriente ? cta.Pendientes : await FacturasSueltasAsync(proveedorId)).ToDictionary(d => d.Clave);
         foreach (var g in conClave.GroupBy(i => i.clave!))
         {
             if (!pend.TryGetValue(g.Key, out var d))
@@ -627,6 +627,111 @@ public class ProveedorCtaCteService
                 return $"{d.Etiqueta}: le quedan {Plata(d.Saldo)} y se quieren pagar {Plata(imp)}.";
         }
         return null;
+    }
+
+    // ───────── 19/11/2026: proveedores SIN cuenta corriente (el 95 %): sus facturas de ARCA ─────────
+
+    /// <summary>Días hacia atrás que se ofrecen para pagar a un proveedor sin cuenta corriente.</summary>
+    public const int DiasSueltas = 180;
+    private static readonly string[] CuitsDescontadosMp = { "30703088534", "30715686054" };   // Mercadolibre SRL, Meli Log
+
+    /// <summary>Lo que se le puede pagar a cualquier proveedor: con cuenta corriente, lo pendiente de la cuenta;
+    /// sin ella, sus facturas de ARCA de los últimos <see cref="DiasSueltas"/> días que no están pagadas.</summary>
+    public async Task<List<Doc>> PendientesAsync(int proveedorId)
+    {
+        var cta = await GetCuentaAsync(proveedorId);
+        if (cta is null) return new();
+        return cta.CuentaCorriente ? cta.Pendientes : await FacturasSueltasAsync(proveedorId);
+    }
+
+    /// <summary>Facturas de ARCA de un proveedor sin cuenta corriente que todavía no se pagaron: ni con un pago
+    /// de Tesorería, ni marcadas en Facturas recibidas (a mano o por la regla del proveedor). Las de Mercado
+    /// Libre / Meli Log no (se descuentan solas de Mercado Pago). Más nueva primero.</summary>
+    public async Task<List<Doc>> FacturasSueltasAsync(int proveedorId)
+    {
+        var cuit = NormCuit(await _db.CafeProveedores.AsNoTracking().Where(p => p.Id == proveedorId).Select(p => p.Cuit).FirstOrDefaultAsync());
+        if (cuit.Length == 0 || CuitsDescontadosMp.Contains(cuit)) return new();
+        if (await _db.ComprasProveedorConfigs.AsNoTracking().AnyAsync(c => c.Cuit == cuit && c.ReglaPago != null)) return new();
+        var desde = HoyAr().AddDays(-DiasSueltas);
+        var fs = await _db.ContadoraComprobantes.AsNoTracking()
+            .Where(c => c.Naturaleza == "COMPRA" && c.ReceptorDoc == cuit && !c.EsNotaCredito && c.FechaEmision != null && c.FechaEmision >= desde)
+            .Select(c => new { c.IdComprobante, c.TipoComprobante, c.PuntoVenta, c.NumeroComprobante, c.FechaEmision, c.Total, c.PdfPath })
+            .ToListAsync();
+        if (fs.Count == 0) return new();
+        var ids = fs.Select(f => f.IdComprobante).ToList();
+        var pagado = (await _db.CafePagosProveedorComprobantes.AsNoTracking()
+                .Where(c => c.AfipIdComprobante != null && ids.Contains(c.AfipIdComprobante) && c.Pago!.Estado == "VIGENTE")
+                .Select(c => new { c.AfipIdComprobante, c.Importe }).ToListAsync())
+            .Concat((await _db.ContadoraComprobantePagos.AsNoTracking().Where(p => !p.Anulado && ids.Contains(p.IdComprobante))
+                .Select(p => new { AfipIdComprobante = (string?)p.IdComprobante, p.Importe }).ToListAsync()))
+            .GroupBy(x => x.AfipIdComprobante!).ToDictionary(g => g.Key, g => g.Sum(x => x.Importe));
+        var marcadas = (await _db.ComprasFacturaExtras.AsNoTracking()
+            .Where(e => ids.Contains(e.IdComprobante) && e.PagoMedio != null).Select(e => e.IdComprobante).ToListAsync()).ToHashSet();
+        return fs.Where(f => !marcadas.Contains(f.IdComprobante))
+            .Select(f => new Doc
+            {
+                Clave = ClaveAfip(f.IdComprobante), AfipIdComprobante = f.IdComprobante,
+                Tipo = string.IsNullOrWhiteSpace(f.TipoComprobante) ? "Factura" : f.TipoComprobante!,
+                Numero = NumeroAfip(f.PuntoVenta, f.NumeroComprobante), Oficial = true,
+                Fecha = f.FechaEmision!.Value.Date, Total = f.Total, Pagado = pagado.GetValueOrDefault(f.IdComprobante),
+                TieneArchivo = f.PdfPath != null
+            })
+            .Where(d => d.Saldo > 0.005m)
+            .OrderByDescending(d => d.Fecha).ThenByDescending(d => d.Numero).ToList();
+    }
+
+    /// <summary>El proveedor de ese CUIT (prefiere el de cuenta corriente y activo). Si no existe, lo crea con el
+    /// nombre de ARCA. Devuelve null si el CUIT no sirve.</summary>
+    public async Task<CafeProveedor?> AsegurarProveedorAsync(string? cuitTxt, string? nombreArca)
+    {
+        var cuit = NormCuit(cuitTxt);
+        if (cuit.Length != 11) return null;
+        var p = (await _db.CafeProveedores.Where(x => x.Cuit == cuit).ToListAsync())
+            .OrderByDescending(x => x.CuentaCorriente).ThenByDescending(x => x.IsActive).FirstOrDefault();
+        if (p is not null) return p;
+        p = new CafeProveedor
+        {
+            Nombre = Controllers.FacturasRecibidasController.Lindo(nombreArca) is var n && n != "?" ? n[..Math.Min(200, n.Length)] : "CUIT " + cuit,
+            Cuit = cuit, IsActive = true, CreatedAt = DateTime.UtcNow,
+            Notas = "Creado solo desde ARCA (Facturas recibidas)"
+        };
+        _db.CafeProveedores.Add(p);
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync("CafeProveedor", p.Id.ToString(), "CREATE", $"Proveedor {p.Nombre} ({cuit}) creado desde ARCA");
+        return p;
+    }
+
+    /// <summary>Todos los que nos facturaron en el último año pasan a ser proveedores (los que faltan se crean
+    /// con nombre y CUIT de ARCA). Devuelve cuántos creó.</summary>
+    public async Task<int> CrearFaltantesDesdeArcaAsync()
+    {
+        var desde = DateTime.UtcNow.AddDays(-365);
+        var emisores = (await _db.ContadoraComprobantes.AsNoTracking()
+                .Where(c => c.Naturaleza == "COMPRA" && c.ReceptorDoc != null && c.FechaEmision >= desde)
+                .Select(c => new { c.ReceptorDoc, c.ReceptorNombre }).Distinct().ToListAsync())
+            .GroupBy(e => NormCuit(e.ReceptorDoc)).Where(g => g.Key.Length == 11)
+            .ToDictionary(g => g.Key, g => g.First().ReceptorNombre);
+        if (emisores.Count == 0) return 0;
+        var existentes = (await _db.CafeProveedores.AsNoTracking().Where(p => p.Cuit != null).Select(p => p.Cuit!).ToListAsync())
+            .Select(NormCuit).ToHashSet();
+        var n = 0;
+        foreach (var (cuit, nombre) in emisores.Where(e => !existentes.Contains(e.Key)))
+        {
+            var nom = Controllers.FacturasRecibidasController.Lindo(nombre);
+            _db.CafeProveedores.Add(new CafeProveedor
+            {
+                Nombre = nom != "?" ? nom[..Math.Min(200, nom.Length)] : "CUIT " + cuit,
+                Cuit = cuit, IsActive = true, CreatedAt = DateTime.UtcNow,
+                Notas = "Creado solo desde ARCA (Facturas recibidas)"
+            });
+            n++;
+        }
+        if (n > 0)
+        {
+            await _db.SaveChangesAsync();
+            await _audit.LogAsync("CafeProveedor", "-", "CREATE", $"{n} proveedores creados desde ARCA (facturas recibidas)");
+        }
+        return n;
     }
 
     // ───────────────────────── Alta / saldo inicial / cotizaciones ─────────────────────────

@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 @implements IDisposable
 
 @* 18/11/2026 — Facturas recibidas: lo que nos facturan los proveedores. Las trae de ARCA un robot
@@ -88,6 +89,9 @@
     .fr-via { color:#6b7280; font-size:0.74rem; }
     .fr-lnk { border:0; background:none; padding:0; color:#374151; text-decoration:underline; cursor:pointer; font-size:0.8rem; }
     .fr-auto { font-size:0.62rem; color:#047857; background:#ecfdf5; border-radius:4px; padding:0 0.25rem; margin-left:0.2rem; vertical-align:1px; }
+    .fr-pagar { border:0; background:#111827; color:#fff; border-radius:6px; padding:0.1rem 0.5rem; font-size:0.72rem; font-weight:700; cursor:pointer; margin-left:0.35rem; white-space:nowrap; }
+    .fr-reg { border:1px solid #059669; background:#fff; color:#047857; border-radius:6px; padding:0 0.45rem; font-size:0.7rem; font-weight:700; cursor:pointer; margin-left:0.35rem; white-space:nowrap; }
+    .fr-pagar:disabled, .fr-reg:disabled { opacity:0.5; cursor:wait; }
     .fr-x { border:0; background:none; padding:0 0.2rem; color:#9ca3af; cursor:pointer; font-size:0.78rem; }
     .fr-sug { background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; padding:0.15rem 0.4rem; font-size:0.76rem; color:#92400e; margin-top:0.2rem; display:flex; width:fit-content; max-width:420px; gap:0.3rem; align-items:center; flex-wrap:wrap; }
     .fr-sug button { border:1px solid #d97706; background:#fff; color:#92400e; border-radius:5px; font-size:0.72rem; padding:0 0.4rem; cursor:pointer; }
@@ -232,7 +236,7 @@
                     <button type="button" class="fr-chip" disabled="@(pagina == paginas)" @onclick="() => IrA(pagina + 1)">Siguiente ›</button>
                 </div>
             }
-            <div class="fr-sub" style="margin-top:0.6rem;">"¿Pagada?" sale de la cuenta corriente (proveedores que la llevan), de lo que marcaste a mano, o de la regla del proveedor ("se paga por débito / tarjeta / MP"). En amarillo: un pago de Mercado Pago o del Galicia por casi el mismo importe — confirmalo con Sí o No.</div>
+            <div class="fr-sub" style="margin-top:0.6rem;">"¿Pagada?" sale de la cuenta corriente (proveedores que la llevan), de lo que marcaste a mano, o de la regla del proveedor ("se paga por débito / tarjeta / MP"). En amarillo: un pago de Mercado Pago o del Galicia por casi el mismo importe — confirmalo con Sí o No (si es del Galicia, con Sí queda cargado el pago en Tesorería). 💸 Pagar abre el Nuevo pago ya completo; 🏦 Registrar el pago carga como pago la transferencia que el sistema encontró.</div>
         }
     </div>
 </div>
@@ -260,6 +264,13 @@
     protected override async Task OnInitializedAsync()
     {
         await Cargar();
+        // 19/11/2026: todos los que nos facturan pasan a ser proveedores (se crean solos los que faltan).
+        try
+        {
+            var n = await Api.CrearProveedoresFaltantesAsync();
+            if (n > 0) { ToastService.Success($"Se agregaron {n} proveedores nuevos desde ARCA"); await Cargar(); }
+        }
+        catch { }
         // Al abrirla, lo que hay deja de ser "nuevo" (los puntos azules se ven esta vez).
         try { await Api.MarcarFacturasRecibidasVistasAsync(); } catch { }
     }
@@ -620,6 +631,13 @@
     private async Task Confirmar(ApiClient.FacturaRecibidaDto f, ApiClient.FacturaSugerenciaDto s)
     {
         var medio = s.Origen == "MP" ? "Mercado Pago" : "Galicia";
+        // 19/11/2026: si es del banco, queda como pago de Tesorería de verdad (como las cobranzas). Si no se
+        // puede (p. ej. el movimiento ya pagó otra cosa), se marca pagada como antes.
+        if (s.Origen == "BCO" && s.MovId <= int.MaxValue)
+        {
+            var r = await Api.RegistrarPagoBancoFacturasAsync((int)s.MovId, new() { f.Id }, f.Cuit);
+            if (r is { Ok: true }) { ToastService.Success("Pago registrado en Tesorería"); await Cargar(); return; }
+        }
         if (!await Api.MarcarFacturaPagadaAsync(f.Id, medio, s.Origen, s.MovId)) { ToastService.Error("No se pudo marcar"); return; }
         Reemplazar(f.Id, x => x with { Pago = "pagada", PagoVia = $"{medio} · {s.Fecha:dd/MM}", PagoManual = true, Sugerencia = null });
     }
@@ -660,16 +678,22 @@
                 <button type="button" class="fr-x" title="@(f.PagoAuto is not null ? "No es este pago: sacarlo" : f.PagoManual ? "Deshacer: volver a «no sé»" : "Quitar la regla de este proveedor")" @onclick="() => Deshacer(f)">✕</button>
             }
             if (f.PagoAuto is not null) { <span class="fr-auto" title="Lo encontró el sistema solo">auto</span> }
+            if (f.PagoAuto?.StartsWith("BCO:") == true)
+            {
+                <button type="button" class="fr-reg" disabled="@(ocupado == f.PagoAuto)" title="Lo carga como pago en Tesorería: sale del banco y la factura queda pagada con su N° de pago" @onclick="() => RegistrarBanco(f)">🏦 Registrar el pago</button>
+            }
             if (!string.IsNullOrWhiteSpace(f.PagoVia)) { <div class="fr-via">@f.PagoVia</div> }
             return;
         }
         if (f.Pago is not null && !f.Pago.StartsWith("anterior"))
         {
             <span class="@(EsSinPagar(f) ? "debe" : "gris")">@f.Pago</span>
+            @BotonPagar(f)
             if (!string.IsNullOrWhiteSpace(f.PagoVia)) { <div class="fr-via">@f.PagoVia</div> }
             return;
         }
         <span class="gris">@(f.Pago ?? "no sé")</span>
+        @BotonPagar(f)
         if (!f.CuentaCorriente)
         {
             <span class="gris"> · </span><button type="button" class="fr-lnk" @onclick='() => { menuPago = menuPago == f.Id ? null : f.Id; reglaSiempre = false; }'>marcar pagada ▾</button>
@@ -697,6 +721,40 @@
             </div>
         }
     };
+
+    // ═══════ 19/11/2026: 💸 Pagar y 🏦 Registrar el pago ═══════
+    private string? ocupado;
+
+    private RenderFragment BotonPagar(ApiClient.FacturaRecibidaDto f) => __builder =>
+    {
+        if (f.EsNotaCredito || f.Total <= 0 || f.Cuit is null) return;
+        <button type="button" class="fr-pagar" disabled="@(ocupado == f.Id)" title="Abre el Nuevo pago ya completo: proveedor, esta factura tildada y el importe" @onclick="() => Pagar(f)">💸 Pagar</button>
+    };
+
+    /// <summary>Abre Tesorería → Nuevo pago con el proveedor (si no estaba cargado se crea) y la factura tildada.</summary>
+    private async Task Pagar(ApiClient.FacturaRecibidaDto f)
+    {
+        ocupado = f.Id;
+        var pid = f.ProveedorId ?? 0;
+        if (pid <= 0) pid = await Api.ProveedorDeFacturaAsync(f.Id);
+        ocupado = null;
+        if (pid <= 0) { ToastService.Error("No pude encontrar ni crear el proveedor de esta factura"); return; }
+        Nav.NavigateTo($"/cafe/tesoreria/pagos?proveedor={pid}&factura={Uri.EscapeDataString(f.Id)}");
+    }
+
+    /// <summary>La transferencia (o débito) del Galicia que el sistema encontró pasa a ser un pago de Tesorería.
+    /// Si la misma transferencia pagó varias facturas del proveedor, las registra todas juntas.</summary>
+    private async Task RegistrarBanco(ApiClient.FacturaRecibidaDto f)
+    {
+        if (f.PagoAuto is not { } clave || !int.TryParse(clave[4..], out var movId)) return;
+        var juntas = (lista ?? new()).Where(x => x.PagoAuto == clave).Select(x => x.Id).ToList();
+        ocupado = clave;
+        var r = await Api.RegistrarPagoBancoFacturasAsync(movId, juntas, f.Cuit);
+        ocupado = null;
+        if (r is null || !r.Ok) { ToastService.Error(r?.Error ?? "No se pudo registrar el pago"); return; }
+        ToastService.Success(juntas.Count > 1 ? $"Pago registrado: {juntas.Count} facturas con la misma transferencia" : "Pago registrado en Tesorería");
+        await Cargar();
+    }
 
     public void Dispose() { timer?.Dispose(); pausa?.Cancel(); }
 }

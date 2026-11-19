@@ -9067,3 +9067,9 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Me1VisitaFallidaAt' AND Object_ID=Object_ID('MeliShipments'))
     ALTER TABLE MeliShipments ADD Me1VisitaFallidaAt DATETIME2 NULL;
 GO
+
+-- 2026-11-19: Proveedores ⭐ — el dueño marca a mano los que quiere ver siempre arriba (Frecuentes).
+-- ⚠ PROD: correr a mano ANTES de publicar la API (init.sql no se re-ejecuta en prod).
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Favorito' AND Object_ID=Object_ID('Cafe_Proveedores'))
+    ALTER TABLE Cafe_Proveedores ADD Favorito BIT NOT NULL CONSTRAINT DF_CafeProveedores_Favorito DEFAULT 0;
+GO

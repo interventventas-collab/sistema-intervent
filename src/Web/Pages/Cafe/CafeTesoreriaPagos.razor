@@ -128,24 +128,38 @@
                     }
                     else
                     {
-                        <input class="form-input" @bind="provSearch" @bind:event="oninput" @onfocus="() => provSearchOpen = true"
+                        <input class="form-input" @bind="provSearch" @bind:event="oninput" @onfocus="() => provSearchOpen = true" @onblur="CerrarBusquedaLuego"
                                placeholder="🔍 Buscar proveedor por nombre o CUIT..." />
-                        @if (provSearchOpen && !string.IsNullOrWhiteSpace(provSearch))
+                        @if (provSearchOpen && (!string.IsNullOrWhiteSpace(provSearch) || uso.Count > 0))
                         {
-                            var matches = ProveedoresMatching(provSearch).Take(20).ToList();
-                            <div style="position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #d1d5db; border-radius:6px; max-height:280px; overflow-y:auto; z-index:100; box-shadow:0 4px 14px rgba(0,0,0,0.12); margin-top:0.2rem;">
+                            // 19/11/2026: sin escribir nada se ven los ⭐ frecuentes; al escribir, frecuentes primero.
+                            var matches = string.IsNullOrWhiteSpace(provSearch)
+                                ? (proveedores ?? new()).Where(p => p.IsActive && EsFrecuente(p)).OrderBy(p => p.Nombre).Take(40).ToList()
+                                : ProveedoresMatching(provSearch).Take(25).ToList();
+                            var hayFrec = matches.Any(EsFrecuente);
+                            <div style="background:white; border:1px solid #d1d5db; border-radius:6px; max-height:280px; overflow-y:auto; z-index:100; box-shadow:0 4px 14px rgba(0,0,0,0.12); margin-top:0.2rem;">
                                 @if (matches.Count == 0)
                                 {
                                     <div style="padding:0.6rem; color:#6b7280; font-size:0.85rem;">Sin resultados.</div>
                                 }
                                 else
                                 {
+                                    var titulo = "";
                                     @foreach (var p in matches)
                                     {
                                         var pId = p.Id;
-                                        <div @onclick="() => SelectProveedor(pId)" style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.85rem;">
-                                            <strong>@p.Nombre</strong>
-                                            @if (!string.IsNullOrEmpty(p.Cuit)) { <span style="color:#6b7280; font-size:0.78rem;"> · @p.Cuit</span> }
+                                        var t = !hayFrec ? "" : EsFrecuente(p) ? "⭐ Frecuentes" : "Todos";
+                                        if (t != titulo)
+                                        {
+                                            titulo = t;
+                                            <div style="padding:0.3rem 0.6rem 0.15rem; font-size:0.68rem; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; background:#f9fafb;">@t</div>
+                                        }
+                                        <div @onclick="() => SelectProveedor(pId)" style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6; font-size:0.85rem; display:flex; justify-content:space-between; gap:0.5rem;">
+                                            <span>
+                                                <strong>@p.Nombre</strong>
+                                                @if (!string.IsNullOrEmpty(p.Cuit)) { <span style="color:#6b7280; font-size:0.78rem;"> · @p.Cuit</span> }
+                                            </span>
+                                            <span style="color:#9ca3af; font-size:0.72rem; white-space:nowrap;">@UsoTexto(p)</span>
                                         </div>
                                     }
                                 }
@@ -178,10 +192,10 @@
                         {
                             <p class="text-muted">Cargando...</p>
                         }
-                        else if (ctaProveedor is not null && !ctaProveedor.CuentaCorriente)
+                        else if (ctaProveedor is not null && !ctaProveedor.CuentaCorriente && pendientes.Count == 0)
                         {
                             <p class="text-muted" style="margin:0 0 0.5rem;">
-                                Este proveedor no lleva cuenta corriente: el pago queda "A cuenta".
+                                No tiene facturas de ARCA sin pagar en los últimos 6 meses: el pago queda "A cuenta".
                                 <a href="/cafe/proveedores/@selProveedorId/estado-cuenta">Prenderle la cuenta corriente</a>
                             </p>
                         }
@@ -191,6 +205,10 @@
                         }
                         else
                         {
+                            @if (ctaProveedor is not null && !ctaProveedor.CuentaCorriente)
+                            {
+                                <p class="text-muted" style="margin:0 0 0.4rem; font-size:0.8rem;">Sus facturas de ARCA de los últimos 6 meses que no figuran pagadas (no lleva cuenta corriente).</p>
+                            }
                             <table class="table table-compact" style="margin-bottom:0.5rem;">
                                 <thead><tr><th></th><th>Comprobante</th><th></th><th>Fecha</th><th style="text-align:right;">Debe</th><th style="text-align:right;">A pagar</th></tr></thead>
                                 <tbody>
@@ -401,6 +419,11 @@
     private List<MedioForm> formMedios = new();
 
     [Parameter, SupplyParameterFromQuery(Name = "proveedor")] public int? PreProveedorId { get; set; }
+    /// <summary>19/11/2026: "💸 Pagar" de Facturas recibidas: la factura de ARCA (IdComprobante) queda tildada,
+    /// con su saldo y una forma de pago por ese importe para elegir de dónde sale.</summary>
+    [Parameter, SupplyParameterFromQuery(Name = "factura")] public string? PreFactura { get; set; }
+    /// <summary>19/11/2026: ⭐ frecuentes primero al buscar proveedor.</summary>
+    private Dictionary<int, ApiClient.ProveedorUsoDto> uso = new();
     /// <summary>17/11/2026: "Pagar" de un pago PROGRAMADO (¿A quién le debo?): abre el pago ya completo y, al
     /// guardarlo, el programado queda pagado.</summary>
     [Parameter, SupplyParameterFromQuery(Name = "programado")] public int? PreProgramadoId { get; set; }
@@ -459,6 +482,7 @@
         }
         catch { puedeEmpleados = false; }
         proveedores = await Api.GetCafeProveedoresAsync() ?? new();
+        try { uso = (await Api.GetProveedoresUsoAsync()).ToDictionary(u => u.Id); } catch { }
         cajas = await Api.GetCafeCajasAsync() ?? new();
         chequesEnCartera = (await Api.GetCafeChequesAsync("EN_CARTERA")) ?? new();
         await Load();
@@ -475,7 +499,21 @@
         {
             ShowNuevo();
             await SelectProveedor(PreProveedorId.Value);
+            if (!string.IsNullOrWhiteSpace(PreFactura)) TildarFactura(PreFactura);
         }
+    }
+
+    private void TildarFactura(string idAfip)
+    {
+        if (!imputaciones.TryGetValue("AFIP:" + idAfip, out var imp))
+        {
+            ToastService.Error("Esa factura ya figura pagada (o no es de este proveedor)");
+            return;
+        }
+        imp.Seleccionado = true;
+        // De dónde sale la plata: se elige (Galicia, efectivo, MP, cheque…). El importe ya va puesto.
+        if (formMedios.Count == 0) formMedios.Add(new MedioForm { CajaId = 0, Importe = imp.Importe });
+        RecalcularTotal();
     }
 
     private int? gastoAtendido;
@@ -587,7 +625,24 @@
         var t = q.Trim();
         if (string.IsNullOrEmpty(t)) return proveedores;
         bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
-        return proveedores.Where(p => p.IsActive && (h(p.Nombre) || h(p.Cuit) || h(p.Contacto) || h(p.Telefono) || h(p.Email)));
+        return proveedores.Where(p => p.IsActive && (h(p.Nombre) || h(p.Cuit) || h(p.Contacto) || h(p.Telefono) || h(p.Email)))
+            .OrderByDescending(EsFrecuente).ThenBy(p => p.Nombre);
+    }
+    /// <summary>Al salir del buscador se cierra la lista (con una pausa para que el clic en un renglón llegue).</summary>
+    private async Task CerrarBusquedaLuego()
+    {
+        await Task.Delay(200);
+        if (selProveedorId == 0 && string.IsNullOrWhiteSpace(provSearch)) { provSearchOpen = false; StateHasChanged(); }
+    }
+    private bool EsFrecuente(CafeProveedorDto p) => uso.TryGetValue(p.Id, out var u) && u.Frecuente;
+    private string UsoTexto(CafeProveedorDto p)
+    {
+        if (!uso.TryGetValue(p.Id, out var u)) return "";
+        var partes = new List<string>();
+        if (u.Facturas90 > 0) partes.Add(u.Facturas90 == 1 ? "1 factura en 3 meses" : $"{u.Facturas90} facturas en 3 meses");
+        if (u.Ultima is DateTime d) partes.Add("último " + d.ToString("dd/MM/yy"));
+        else if (u.SinMovimiento) partes.Add("sin movimiento en el año");
+        return string.Join(" · ", partes);
     }
 
     private async Task SelectProveedor(int id)
