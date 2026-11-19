@@ -495,6 +495,25 @@ public class MisAlertasController : ControllerBase
                     g.CreatedAt, campVistaG.HasValue && campVistaG.Value >= g.CreatedAt));
             }
         }
+        if (bucket == "admin")
+        {
+            // 18/11/2026: cargas de combustible de Shell (últimos 3 días). Id -5000000-Id → /combustible.
+            try
+            {
+                var campVistaS = ComprasAfipRobot.ParseUtc(await ComprasAfipRobot.LeerAsync(_db, KeyCampanaVista));
+                var arS = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+                var cargasS = await HttpContext.RequestServices.GetRequiredService<ShellCargasService>().ParaCampanitaAsync();
+                foreach (var c in cargasS)
+                {
+                    var donde = $"{c.Estacion} · {c.FechaHoraAr:dd/MM HH:mm}" + (c.Odometro is int km ? $" · km {km.ToString("#,0", arS)}" : "");
+                    lista.Add(new AlertaDisparadaDto(-5000000 - c.Id, c.Alarmas.Count > 0 ? "SHELL_CARGA_RARA" : "SHELL_CARGA",
+                        $"{c.Nombre} cargó {c.Litros.ToString("0.#", arS)} L · {c.Importe.ToString("$#,0", arS)}",
+                        c.Alarmas.Count > 0 ? "⚠ " + string.Join(" · ", c.Alarmas) + " · " + donde : donde,
+                        c.DetectadaAt, campVistaS.HasValue && campVistaS.Value >= c.DetectadaAt));
+                }
+            }
+            catch (Exception ex) { Console.WriteLine("[campanita] cargas Shell: " + ex.Message); }
+        }
         lista = lista.OrderByDescending(x => x.DisparadaAt ?? DateTime.MinValue).ToList();
         return Ok(new AlertasBellDto(lista.Count(a => !a.Vista), lista));
     }

@@ -3408,9 +3408,78 @@ async function runShellSaldo({ usuario, password, gmailUser, gmailPass }) {
     await sleep(12000); return;
   }
 
-  shellState.step = '¡Saldo leído!';
-  shellState.result = { ok: true, loggedIn: true, saldo: saldoText };
+  shellState.step = '¡Saldo leído! Leyendo las cargas...';
+  let cargas = null;
+  try { cargas = await leerCargasShell(page); }
+  catch (e) { console.log('[shell][CARGAS] error:', e?.message || e); }
+  shellState.step = '¡Listo!';
+  shellState.result = { ok: true, loggedIn: true, saldo: saldoText, cargas };
+  await sleep(2000);
+}
+
+// 18/11/2026: cargas de combustible del "Reporte transaccional" (últimos 30 días, período por
+// defecto de Shell). La grilla viene agrupada por patente y PLEGADA: hay que desplegar cada grupo.
+// Devuelve null si no se pudo leer (para no confundir con "no hubo cargas" = []).
+async function leerCargasShell(page) {
+  await page.goto('https://shellflota.mundonectar.com/App/TransReport.aspx?c=1', { waitUntil: 'domcontentloaded', timeout: 40000 });
   await sleep(4000);
+  // El reporte NO se llena solo: hay que tocar FILTRAR (#btnRefresh, período por defecto = últimos 30 días).
+  try { await page.evaluate(() => { const b = document.getElementById('btnRefresh'); if (b) b.click(); }); } catch {}
+  // Tarda ~45-60 s: esperamos los renglones "PATENTE : N TRANSACCIONES" o "No hay datos" bajo "DETALLE DE CONSUMO".
+  let estado = null;
+  for (let i = 0; i < 60 && !estado; i++) {
+    await sleep(1500);
+    const t = (await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')) || '';
+    if (/:\s*\d+\s+TRANSACCIONES/i.test(t)) estado = 'datos';
+    else if (/DETALLE DE CONSUMO/i.test(t) && /No hay datos para mostrar/i.test(t)) estado = 'vacio';
+  }
+  if (!estado) { console.log('[shell][CARGAS] el reporte no terminó de cargar'); return null; }
+  if (estado === 'vacio') return [];
+
+  const leerFilas = () => page.evaluate(() =>
+    [...document.querySelectorAll('tr')]
+      .map(r => [...r.querySelectorAll('td')].map(c => (c.innerText || '').trim()))
+      .filter(c => c.length >= 25));
+  const gruposDePatente = async () => {
+    const t = (await page.locator('body').innerText({ timeout: 3000 }).catch(() => '')) || '';
+    // Renglones "AG224QN : 10 TRANSACCIONES" (el de la empresa lleva paréntesis y se descarta).
+    return [...t.matchAll(/^\s*([A-Z0-9]{5,10})\s*:\s*(\d+)\s+TRANSACCIONES/gim)].map(m => ({ placa: m[1].toUpperCase(), n: +m[2] }));
+  };
+
+  const grupos = await gruposDePatente();
+  for (const g of grupos) {
+    const filas = await leerFilas();
+    if (filas.some(c => c.includes(g.placa))) continue; // ya desplegado
+    // Encabezado del grupo: <tr class="group-header row-level-2"> … <strong>AG224QN</strong> : 10 Transacciones.
+    // El clic que despliega es sobre el <strong> (sobre el <td> no hace nada).
+    const ok = await page.evaluate((placa) => {
+      const tr = [...document.querySelectorAll('tr.group-header')].find(e => new RegExp('^\\s*' + placa + '\\s*:', 'i').test(e.innerText || ''));
+      const el = tr && (tr.querySelector('strong') || tr.querySelector('td'));
+      if (el) { el.click(); return true; }
+      return false;
+    }, g.placa).catch(() => false);
+    if (!ok) { console.log('[shell][CARGAS] no encontré el grupo', g.placa); continue; }
+    for (let i = 0; i < 10; i++) { await sleep(700); if ((await leerFilas()).some(c => c.includes(g.placa))) break; }
+  }
+
+  const num = (s) => { const v = parseFloat(String(s || '').replace(/,/g, '')); return isNaN(v) ? null : v; };
+  const out = [];
+  for (const c of await leerFilas()) {
+    // Columnas fijas del reporte (30). Si la grilla agrega celdas de sangría adelante, se corre el inicio.
+    const o = c.length - 30;
+    if (o < 0) continue;
+    const x = (i) => c[o + i] || '';
+    const fecha = x(11), hora = x(12);
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(fecha) || !/^\d{1,2}:\d{2}/.test(hora)) continue;
+    out.push({
+      placa: x(1), tarjeta: x(2), marca: x(3), modelo: x(4), estacion: x(7), transaccion: x(8), producto: x(10),
+      fecha, hora, precio: num(x(13)), referencia: x(14), odometro: num(x(17)), conductor: x(20),
+      litros: num(x(21)), importe: num(x(22)), saldoDespues: num(x(28)),
+    });
+  }
+  const esperadas = grupos.reduce((a, g) => a + g.n, 0);
+  console.log(`[shell][CARGAS] leídas ${out.length} de ${esperadas} (${grupos.map(g => g.placa + ':' + g.n).join(' ')})`);
+  return out;
 }
 
 // --- Start ---

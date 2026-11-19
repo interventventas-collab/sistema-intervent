@@ -56,8 +56,15 @@ public record PanoramaDto(
 // 2026-11-19: detalle de las tarjetas Intereventos y Logística.
 public record PanoramaParDto(string Nombre, int Cantidad);
 
-public record PanoramaLogisticaDto(int Propias, List<PanoramaParDto> PorTipo, List<PanoramaParDto> PorRepartidor,
-    int SinRepartidor, List<PanoramaParDto> NoNuestras);
+public record PanoramaLogisticaDto(int Propias, List<PanoramaParDto> PorTipo, List<PanoramaRepartidorDto> PorRepartidor,
+    int SinRepartidor, List<PanoramaParDto> NoNuestras, PanoramaCombustibleDto? Combustible = null);
+
+public record PanoramaRepartidorDto(string Clave, string Nombre, bool Activo, int Total, List<PanoramaParDto> PorTipo);
+
+public record PanoramaCombustibleDto(decimal? Saldo, DateTime? SaldoAt, decimal Gasto, decimal Litros, int Cargas,
+    decimal? CostoPorEntrega);
+
+public record PanoramaEntregaDto(DateTime FechaAr, string Tipo, string Texto, string Fuente);
 
 public record PanoramaAlquilerDto(decimal Facturado, int EventosFacturados,
     decimal Reservado, int EventosReservados, decimal Cobrado, decimal FaltaCobrar);

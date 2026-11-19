@@ -200,6 +200,8 @@
         "VEP_VENCE" => "🏛",
         "VEP_VENCIDO" => "🔴",
         "GASTO_WA" => "💸",
+        "SHELL_CARGA" => "⛽",
+        "SHELL_CARGA_RARA" => "⛽",
         _ => "🔔"
     };
 
@@ -210,6 +212,7 @@
          : a.Tipo == "FACTURAS_NUEVAS" ? "/compras/facturas-recibidas"
          : a.Tipo.StartsWith("VEP_") ? "/impuestos"
          : a.Tipo == "GASTO_WA" ? $"/cafe/tesoreria/pagos?gasto={-4000000 - a.Id}"
+         : a.Tipo.StartsWith("SHELL_CARGA") ? "/combustible"
          : RutaPorTipo(a.Tipo);
 
     private static string RutaPorTipo(string tipo) => tipo switch

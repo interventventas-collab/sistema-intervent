@@ -233,6 +233,7 @@ builder.Services.AddScoped<GaliciaSyncService>();
 builder.Services.AddScoped<ShellAccountService>();
 builder.Services.AddSingleton<ShellScrapingService>();
 builder.Services.AddScoped<ShellSyncService>();
+builder.Services.AddScoped<ShellCargasService>();
 // 2026-10-29: ventanita de bienvenida. Para sumar un bloque nuevo: otra clase en BienvenidaService.cs + una línea acá.
 builder.Services.AddScoped<BienvenidaService>();
 builder.Services.AddScoped<IBienvenidaBloque, BienvenidaBloqueTraerBancos>();

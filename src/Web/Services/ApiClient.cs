@@ -7252,11 +7252,15 @@ public partial class ApiClient
     /// <summary>Lee el saldo ahora. Usa el cliente de timeout largo (el mail tarda). La cookie de auth viaja sola.</summary>
     public async Task<Web.Models.ShellSincronizarResultDto?> SincronizarShellAsync()
     {
-        var resp = await _httpLong.PostAsJsonAsync("/api/shell/sincronizar", new { });
+        var resp = await _httpGalicia.PostAsJsonAsync("/api/shell/sincronizar", new { }); // 18/11: + lectura de cargas, puede pasar los 4 min
         if (resp.StatusCode == HttpStatusCode.Unauthorized) { await HandleUnauthorizedAsync(); return null; }
         await ThrowIfErrorAsync(resp);
         return await resp.Content.ReadFromJsonAsync<Web.Models.ShellSincronizarResultDto>();
     }
+
+    /// <summary>18/11/2026: cargas de combustible de Shell (pantalla /combustible).</summary>
+    public async Task<CombustibleDto?> GetCombustibleAsync(DateTime desde, DateTime hasta)
+        => await GetAsync<CombustibleDto>($"/api/shell/cargas?desde={desde:yyyy-MM-dd}&hasta={hasta:yyyy-MM-dd}");
 
     // --- Mercado Pago (API oficial — saldo) ---
     public async Task<Web.Models.MpAccountDto?> GetMpAccountAsync()
@@ -10920,6 +10924,14 @@ public partial class ApiClient
     public async Task<AlqResumenMesesDto?> GetAlqResumenMesesAsync()
         => await GetAsync<AlqResumenMesesDto>("/api/alquileres/reservas/resumen-meses");
 
+    // 2026-11-19: entregas de un repartidor (al tocar su barra en Logística del Panorama).
+    public async Task<List<PanoramaEntregaDto>?> GetPanoramaEntregasAsync(string repartidor, string periodo, string? mes)
+    {
+        var url = $"/api/panorama/entregas?repartidor={Uri.EscapeDataString(repartidor)}&periodo={Uri.EscapeDataString(periodo)}";
+        if (!string.IsNullOrWhiteSpace(mes)) url += $"&mes={Uri.EscapeDataString(mes)}";
+        return await GetAsync<List<PanoramaEntregaDto>>(url);
+    }
+
     public async Task<VisitasPaginasDto?> GetVisitasPaginasAsync()
         => await GetAsync<VisitasPaginasDto>("/api/panorama/visitas");
 
@@ -10994,3 +11006,12 @@ public record MapeoPendienteDto(string Tipo, int Id, string Numero, string Clien
     string? Direccion, bool SinDireccion, string? Detalle, string Estado, DateTime Fecha,
     DateTime? FechaEntrega, int? DiasAtraso, bool ParaHoy,
     int? StopId, DateTime? EnMapaDia, string? Repartidor, string? RepartidorColor);
+
+// 18/11/2026: combustible Shell
+public record CombustibleCargaDto(int Id, string Placa, string Nombre, string? Vehiculo, string? Estacion, string? Producto,
+    DateTime FechaHoraAr, decimal Litros, decimal Importe, decimal? PrecioLitro, int? Odometro,
+    int? Anduvo, decimal? Rinde, List<string> Alarmas, DateTime DetectadaAt, bool Inicial);
+public record CombustibleVehiculoDto(string Placa, string Nombre, string? Vehiculo, int Cargas, decimal Litros, decimal Importe,
+    decimal? Rinde, int? UltimoKm, string? Alarma);
+public record CombustibleDto(DateTime Desde, DateTime Hasta, int Cargas, decimal Litros, decimal Importe,
+    List<CombustibleVehiculoDto> Vehiculos, List<CombustibleCargaDto> Lista, string? Saldo, DateTime? SaldoAt);

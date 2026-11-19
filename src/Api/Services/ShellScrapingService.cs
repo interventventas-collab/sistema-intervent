@@ -61,4 +61,25 @@ public class ShellTestResultDto
     public string? Error { get; set; }
     public bool? LoggedIn { get; set; }
     public string? Saldo { get; set; }
+    /// <summary>18/11/2026: cargas del reporte transaccional (null = no se pudieron leer).</summary>
+    public List<ShellCargaLeidaDto>? Cargas { get; set; }
+}
+
+public class ShellCargaLeidaDto
+{
+    public string? Placa { get; set; }
+    public string? Tarjeta { get; set; }
+    public string? Marca { get; set; }
+    public string? Modelo { get; set; }
+    public string? Estacion { get; set; }
+    public string? Transaccion { get; set; }
+    public string? Producto { get; set; }
+    public string? Fecha { get; set; }
+    public string? Hora { get; set; }
+    public decimal? Precio { get; set; }
+    public string? Referencia { get; set; }
+    public decimal? Odometro { get; set; }
+    public string? Conductor { get; set; }
+    public decimal? Litros { get; set; }
+    public decimal? Importe { get; set; }
 }
