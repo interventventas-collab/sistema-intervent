@@ -6,6 +6,7 @@ using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Api.Controllers;
 
@@ -351,7 +352,9 @@ public class MisAlertasController : ControllerBase
     /// <summary>18/11/2026: la campanita ya mostró los avisos de facturas nuevas / VEP (deja de titilar).</summary>
     private const string KeyCampanaVista = "campana.compras_impuestos.vista";
     public record AlertaDisparadaDto(int Id, string Tipo, string Mensaje, string? Detalle, DateTime? DisparadaAt, bool Vista);
-    public record AlertasBellDto(int NoVistas, List<AlertaDisparadaDto> Disparadas);
+    /// <summary>19/11/2026: Numeritos = cuántos avisos hay por pantalla (clave = ruta del botón), para el numerito rojo
+    /// de cada botón de las tarjetas. El mismo aviso está en la campanita.</summary>
+    public record AlertasBellDto(int NoVistas, List<AlertaDisparadaDto> Disparadas, Dictionary<string, int>? Numeritos = null);
 
     // ── 2026-11-18: interruptor general "📱 Avisos automáticos por WhatsApp" ──
     // Apagado = ningún robot manda WhatsApp por su cuenta; campanita, Telegram y mail siguen igual.
@@ -384,6 +387,7 @@ public class MisAlertasController : ControllerBase
         // (antes salía uno solo agrupado "N correos nuevos") y todo se ordena por hora, lo más
         // nuevo arriba.
         var lista = new List<AlertaDisparadaDto>();
+        var numeritos = new Dictionary<string, int>();
         foreach (var a in rows)
         {
             if (a.Tipo == "EMAIL_REMITENTE")
@@ -446,6 +450,7 @@ public class MisAlertasController : ControllerBase
                     .Select(c => new { c.ReceptorNombre, c.Total, c.PrimeraVezEn }).ToListAsync();
                 if (nuevas.Count > 0)
                 {
+                    numeritos["/compras/facturas-recibidas"] = nuevas.Count;
                     var ult = nuevas.Max(n => n.PrimeraVezEn);
                     var nombres = nuevas.Select(n => FacturasRecibidasController.Lindo(n.ReceptorNombre)).Distinct().ToList();
                     lista.Add(new AlertaDisparadaDto(-1000000, "FACTURAS_NUEVAS",
@@ -514,8 +519,45 @@ public class MisAlertasController : ControllerBase
             }
             catch (Exception ex) { Console.WriteLine("[campanita] cargas Shell: " + ex.Message); }
         }
+        if (bucket == "admin")
+        {
+            // 19/11/2026: pagos del Galicia a proveedores sin registrar (botón 🏦 Registrar el pago). Id -6000000.
+            try
+            {
+                var arT = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+                var campVistaT = ComprasAfipRobot.ParseUtc(await ComprasAfipRobot.LeerAsync(_db, KeyCampanaVista));
+                var fr = ActivatorUtilities.CreateInstance<FacturasRecibidasController>(HttpContext.RequestServices);
+                fr.ControllerContext = ControllerContext;
+                var av = await fr.PagosBancoSinRegistrarAsync();
+                if (av.Movimientos > 0)
+                {
+                    numeritos["/compras/facturas-recibidas"] = numeritos.GetValueOrDefault("/compras/facturas-recibidas") + av.Movimientos;
+                    lista.Add(new AlertaDisparadaDto(-6000000, "TRANSF_SIN_REG",
+                        $"{av.Movimientos} pago{(av.Movimientos == 1 ? "" : "s")} del Galicia a proveedores sin registrar " + av.Total.ToString("$#,0", arT),
+                        string.Join(" · ", av.Proveedores.Take(3)) + (av.Proveedores.Count > 3 ? $" y {av.Proveedores.Count - 3} más" : ""),
+                        av.Ultimo, campVistaT.HasValue && av.Ultimo.HasValue && campVistaT.Value >= av.Ultimo.Value));
+                }
+            }
+            catch (Exception ex) { Console.WriteLine("[campanita] pagos banco sin registrar: " + ex.Message); }
+            // Extracto del banco: transferencias con el botón verde "💸 Registrar pago".
+            try
+            {
+                var mc = HttpContext.RequestServices.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
+                if (!mc.TryGetValue(FacturasRecibidasController.KeyAvisoCruce, out int nCruce))
+                {
+                    nCruce = (await HttpContext.RequestServices.GetRequiredService<ContadoraService>().PreviewCruceBancoAsync()).Count;
+                    mc.Set(FacturasRecibidasController.KeyAvisoCruce, nCruce, TimeSpan.FromMinutes(3));
+                }
+                if (nCruce > 0) numeritos["/cafe/tesoreria/extracto-banco"] = nCruce;
+            }
+            catch (Exception ex) { Console.WriteLine("[campanita] cruce banco: " + ex.Message); }
+            var progN = lista.Count(a => a.Tipo.StartsWith("PAGO_PROG"));
+            if (progN > 0) numeritos["/cafe/proveedores-ctacte"] = progN;
+            var vepN = lista.Count(a => a.Tipo.StartsWith("VEP_"));
+            if (vepN > 0) numeritos["/impuestos"] = vepN;
+        }
         lista = lista.OrderByDescending(x => x.DisparadaAt ?? DateTime.MinValue).ToList();
-        return Ok(new AlertasBellDto(lista.Count(a => !a.Vista), lista));
+        return Ok(new AlertasBellDto(lista.Count(a => !a.Vista), lista, numeritos));
     }
 
     /// <summary>Marca como vistas las alertas disparadas que el rol del usuario ve.</summary>

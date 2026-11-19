@@ -3,6 +3,7 @@ using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Api.Controllers;
 
@@ -244,7 +245,10 @@ public class ContadoraController : ControllerBase
     public async Task<ActionResult<PagoBancoResultDto>> PagarDesdeBanco([FromBody] PagarComprasDesdeBancoRequest req)
     {
         var operador = User.Identity?.IsAuthenticated == true ? User.Identity?.Name : null;
-        return Ok(await _svc.RegistrarPagoDesdeBancoAsync(req, operador));
+        var resReg = await _svc.RegistrarPagoDesdeBancoAsync(req, operador);
+        HttpContext.RequestServices.GetRequiredService<IMemoryCache>().Remove(FacturasRecibidasController.KeyAvisoBanco);
+        HttpContext.RequestServices.GetRequiredService<IMemoryCache>().Remove(FacturasRecibidasController.KeyAvisoCruce);   // baja el numerito ya
+        return Ok(resReg);
     }
 
     /// <summary>Qué facturas quedaron pagadas por cada movimiento del banco (para el listado del extracto).</summary>
@@ -271,7 +275,10 @@ public class ContadoraController : ControllerBase
     public async Task<ActionResult<PagoBancoResultDto>> CruceBancoAplicar([FromBody] List<CruceAplicarItem> items)
     {
         var operador = User.Identity?.IsAuthenticated == true ? User.Identity?.Name : null;
-        return Ok(await _svc.AplicarCruceBancoAsync(items, operador));
+        var resCruce = await _svc.AplicarCruceBancoAsync(items, operador);
+        HttpContext.RequestServices.GetRequiredService<IMemoryCache>().Remove(FacturasRecibidasController.KeyAvisoBanco);
+        HttpContext.RequestServices.GetRequiredService<IMemoryCache>().Remove(FacturasRecibidasController.KeyAvisoCruce);
+        return Ok(resCruce);
     }
 
     /// <summary>Balanza de IVA: por mes, IVA de ventas - IVA de compras = saldo.</summary>

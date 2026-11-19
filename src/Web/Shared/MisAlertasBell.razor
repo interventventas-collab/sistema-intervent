@@ -1,6 +1,7 @@
 @inject ApiClient Api
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject MenuNuevoService Svc
 @implements IDisposable
 
 @* 2026-07-10 — Campanita del motor de alertas configurables ("Mis Alertas").
@@ -43,6 +44,10 @@
                                 @if (!string.IsNullOrWhiteSpace(a.Detalle))
                                 {
                                     <div class="mab-dd-sub">@a.Detalle</div>
+                                }
+                                @if (Lugar(a.Tipo) is string lugar)
+                                {
+                                    <div class="mab-dd-lugar">→ @lugar</div>
                                 }
                             </div>
                         </div>
@@ -104,6 +109,7 @@
     .mab-dd-mid { flex: 1; min-width: 0; }
     .mab-dd-msg { font-size: 0.85rem; font-weight: 600; color: #111827; }
     .mab-dd-sub { font-size: 0.72rem; color: #6b7280; }
+    .mab-dd-lugar { font-size: 0.68rem; color: #9ca3af; }
     .mab-dd-footer {
         padding: 8px 14px;
         border-top: 1px solid #f3f4f6;
@@ -134,6 +140,7 @@
             var r = await Api.GetAlertasDisparadasAsync();
             disparadas = r?.Disparadas ?? new();
             noVistas = r?.NoVistas ?? 0;
+            PonerNumeritos(r?.Numeritos);
 
             // 18/11/2026: #gasto por WhatsApp nuevo → ruidito de caja registradora (se apaga en
             // Compras → Gastos por WhatsApp; queda guardado en esta compu/celu).
@@ -163,6 +170,25 @@
             StateHasChanged();
         }
         catch { /* no critico */ }
+    }
+
+    // 19/11/2026: el mismo aviso también va como numerito rojo en el botón de la tarjeta donde se resuelve
+    // (Facturas recibidas, Extracto banco, ¿A quién le debo?, Impuestos y VEP). Solo estas claves: las demás
+    // (Ventas, Preparación, Gastos por WhatsApp…) las llenan otros.
+    private static readonly string[] RutasNumeritos =
+        { "/compras/facturas-recibidas", "/cafe/tesoreria/extracto-banco", "/cafe/proveedores-ctacte", "/impuestos" };
+    private void PonerNumeritos(Dictionary<string, int>? n)
+    {
+        if (n is null) return;
+        var cambio = false;
+        foreach (var k in RutasNumeritos)
+        {
+            var v = n.TryGetValue(k, out var x) ? x : 0;
+            if ((Svc.Numeros.TryGetValue(k, out var antes) ? antes : 0) == v) continue;
+            if (v > 0) Svc.Numeros[k] = v; else Svc.Numeros.Remove(k);
+            cambio = true;
+        }
+        if (cambio) Svc.AvisarNumeros();
     }
 
     private async Task OnHover()
@@ -200,6 +226,7 @@
         "VEP_VENCE" => "🏛",
         "VEP_VENCIDO" => "🔴",
         "GASTO_WA" => "💸",
+        "TRANSF_SIN_REG" => "🏦",
         "SHELL_CARGA" => "⛽",
         "SHELL_CARGA_RARA" => "⛽",
         _ => "🔔"
@@ -209,11 +236,20 @@
     // 17/11/2026: pago a proveedor programado (Id = -IdProgramado) → abre la ventana "Transferir a ...".
     private static string Ruta(ApiClient.AlertaDisparadaDto a)
         => a.Tipo.StartsWith("PAGO_PROG") ? $"/cafe/proveedores-ctacte?transferir={-a.Id}"
-         : a.Tipo == "FACTURAS_NUEVAS" ? "/compras/facturas-recibidas"
+         : a.Tipo is "FACTURAS_NUEVAS" or "TRANSF_SIN_REG" ? "/compras/facturas-recibidas"
          : a.Tipo.StartsWith("VEP_") ? "/impuestos"
          : a.Tipo == "GASTO_WA" ? $"/cafe/tesoreria/pagos?gasto={-4000000 - a.Id}"
          : a.Tipo.StartsWith("SHELL_CARGA") ? "/combustible"
          : RutaPorTipo(a.Tipo);
+
+    // 19/11/2026: en qué botón de las tarjetas está ese aviso (ahí también sale el numerito rojo).
+    private static string? Lugar(string tipo)
+        => tipo.StartsWith("PAGO_PROG") ? "Compras › ¿A quién le debo?"
+         : tipo is "FACTURAS_NUEVAS" or "TRANSF_SIN_REG" ? "Compras › Facturas recibidas"
+         : tipo.StartsWith("VEP_") ? "Impuestos › Impuestos y VEP"
+         : tipo == "GASTO_WA" ? "Compras › Gastos por WhatsApp"
+         : tipo.StartsWith("SHELL_CARGA") ? "Logística › Combustible"
+         : null;
 
     private static string RutaPorTipo(string tipo) => tipo switch
     {

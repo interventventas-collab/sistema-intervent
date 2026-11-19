@@ -2143,7 +2143,7 @@ public partial class ApiClient
     public record ConfigCorreoAlertasDto(string? Host, int Port, string? Usuario, bool TieneClave, bool Configurada);
     public record ConfigCorreoAlertasRequest(string? Host, int? Port, string? Usuario, string? Password);
     public record AlertaDisparadaDto(int Id, string Tipo, string Mensaje, string? Detalle, DateTime? DisparadaAt, bool Vista);
-    public record AlertasBellDto(int NoVistas, List<AlertaDisparadaDto> Disparadas);
+    public record AlertasBellDto(int NoVistas, List<AlertaDisparadaDto> Disparadas, Dictionary<string, int>? Numeritos = null);
 
     public async Task<List<AlertaDto>?> GetMisAlertasAsync()
         => await GetAsync<List<AlertaDto>>("/api/mis-alertas");

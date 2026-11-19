@@ -3,6 +3,7 @@ using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Api.Controllers;
 
@@ -185,6 +186,26 @@ public class FacturasRecibidasController : ControllerBase
                                 : sug.TryGetValue(r.Id, out var sg) ? r with { Sugerencia = sg } : r).ToList();
         }
         return Ok(res);
+    }
+
+    /// <summary>19/11/2026: pagos del Galicia a proveedores que el sistema reconoció en "Facturas recibidas" pero
+    /// todavía no están cargados como pago (los del botón 🏦 Registrar el pago). Para la campanita y el numerito
+    /// del botón. Mismo cálculo que la lista (últimos 60 días); queda 3 min en memoria.</summary>
+    public const string KeyAvisoBanco = "fr-aviso-banco", KeyAvisoCruce = "fr-aviso-cruce";
+    public record AvisoBancoDto(int Movimientos, decimal Total, List<string> Proveedores, DateTime? Ultimo);
+    public async Task<AvisoBancoDto> PagosBancoSinRegistrarAsync()
+    {
+        var cache = HttpContext.RequestServices.GetRequiredService<IMemoryCache>();
+        if (cache.TryGetValue(KeyAvisoBanco, out AvisoBancoDto? c) && c is not null) return c;
+        var r = await Listar(null, null, null, null);
+        var filas = (r as OkObjectResult)?.Value as List<FacturaDto> ?? new();
+        var grupos = filas.Where(f => !f.EsNotaCredito && f.PagoAuto != null && f.PagoAuto.StartsWith("BCO:"))
+            .GroupBy(f => f.PagoAuto!).ToList();
+        var res = new AvisoBancoDto(grupos.Count, grupos.Sum(g => g.Sum(f => f.Total)),
+            grupos.Select(g => g.First().Proveedor).Distinct().ToList(),
+            grupos.Count == 0 ? null : grupos.Max(g => g.Max(f => f.Fecha ?? f.Llego)));
+        cache.Set(KeyAvisoBanco, res, TimeSpan.FromMinutes(3));
+        return res;
     }
 
     /// <summary>Abrió la lista: lo que hay deja de ser "nuevo".</summary>
