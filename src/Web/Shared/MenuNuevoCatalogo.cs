@@ -92,6 +92,9 @@ public static class MenuNuevoCatalogo
             new("Clientes mapeados", "/cafe/clientes-mapeados"),
             new("Repartidores", "/cafe/repartidores"),
             new("Viajes Nacho", "/viajes"),
+            // 18/11/2026: cargas de Shell Flota por vehículo (las trae el robot del saldo). Solo admin.
+            // 19/11: pasa de Plata a Logística (pedido del dueño: el combustible es del reparto).
+            new("Combustible", "/combustible"),
             new("Arqueo repartidor", "/cafe/arqueo-repartidor"),
             new("Entregas me1", "/meli/me1/entregas", "me1"),
             new("Códigos postales me1", "/meli/me1/codigos-postales", "me1"),
@@ -138,8 +141,6 @@ public static class MenuNuevoCatalogo
             new("Extracto banco", "/cafe/tesoreria/extracto-banco", "cafe-tesoreria"),
             new("Resumen tesorería", "/cafe/tesoreria/resumen", "cafe-tesoreria"),
             new("Nitro", "/vault"),
-            // 18/11/2026: cargas de Shell Flota por vehículo (las trae el robot del saldo). Solo admin.
-            new("Combustible", "/combustible"),
         }),
         // 18/11/2026: tarjeta propia de Impuestos (antes "Impuestos y VEP" estaba en Plata). Solo admin.
         new("Impuestos", "", false, new Item[]
