@@ -1623,7 +1623,27 @@ public class HorasExtrasController : ControllerBase
         public int? GpsAccuracy { get; set; }
     }
 
-    public record FichadorMarcarResult(bool Ok, string? Mensaje, string? Tipo, string? Hora, string? NombreEmpleado);
+    public record FichadorMarcarResult(bool Ok, string? Mensaje, string? Tipo, string? Hora, string? NombreEmpleado,
+        string? RepartidorToken = null, List<Api.Services.Me1AvisosService.Me1PendienteDto>? Me1Pendientes = null);
+
+    /// <summary>2026-11-18: al fichar la SALIDA, si el empleado es repartidor (mismo NomEmpleadoId) y tiene
+    /// envíos ME1 sin marcar, se los devolvemos para que el kiosco le muestre "Antes de irte…". Va el token
+    /// de su /mis-pedidos para que pueda marcarlos ahí mismo (ya se identificó con PIN o huella).</summary>
+    private async Task<FichadorMarcarResult> ConMe1PendientesAsync(FichadorMarcarResult res, HorasExtrasEmpleado emp, string tipo)
+    {
+        if (tipo != "SALIDA" || emp.NomEmpleadoId is null) return res;
+        try
+        {
+            var rep = await _db.CafeRepartidores.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.IsActive && r.NomEmpleadoId == emp.NomEmpleadoId && r.PublicToken != null);
+            if (rep is null) return res;
+            var avisos = HttpContext.RequestServices.GetRequiredService<Api.Services.Me1AvisosService>();
+            var pend = await avisos.PendientesDeRepartidorAsync(rep.Id);
+            if (pend.Count == 0) return res;
+            return res with { RepartidorToken = rep.PublicToken, Me1Pendientes = pend };
+        }
+        catch { return res; }   // nunca frenar la fichada por esto
+    }
 
     /// <summary>Marca entrada o salida desde el kiosco. Detecta automaticamente cual segun
     /// si ya hay entrada cargada hoy. Valida PIN (3 ultimos del DNI). Respeta config de WiFi
@@ -1725,7 +1745,7 @@ public class HorasExtrasController : ControllerBase
         var horaTxt = $"{horaActual.Hours:D2}:{horaActual.Minutes:D2}";
         await AvisarFichadaTelegramAsync(emp, tipo, horaTxt);
         var saludo = tipo == "ENTRADA" ? $"¡Buen día {emp.Nombre}!" : $"¡Hasta luego {emp.Nombre}!";
-        return Ok(new FichadorMarcarResult(true, saludo, tipo, horaTxt, emp.Nombre));
+        return Ok(await ConMe1PendientesAsync(new FichadorMarcarResult(true, saludo, tipo, horaTxt, emp.Nombre), emp, tipo));
     }
 
     // ============================================================
@@ -1985,7 +2005,7 @@ public class HorasExtrasController : ControllerBase
         var horaTxt = $"{horaActual.Hours:D2}:{horaActual.Minutes:D2}";
         await AvisarFichadaTelegramAsync(emp, tipo, horaTxt);
         var saludo = tipo == "ENTRADA" ? $"¡Buen día {emp.Nombre}!" : $"¡Hasta luego {emp.Nombre}!";
-        return Ok(new FichadorMarcarResult(true, saludo, tipo, horaTxt, emp.Nombre));
+        return Ok(await ConMe1PendientesAsync(new FichadorMarcarResult(true, saludo, tipo, horaTxt, emp.Nombre), emp, tipo));
     }
 
     // Endpoint auxiliar: lista las huellas registradas (admin)

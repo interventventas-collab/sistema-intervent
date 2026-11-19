@@ -212,6 +212,45 @@
     </div>
 }
 
+@* 2026-11-18: "Antes de irte" — envíos ME1 sin marcar al fichar la salida. *@
+@if (me1Pend.Count > 0)
+{
+    <div class="kio-modal-overlay">
+        <div class="kio-modal" style="color:#222; max-height:90vh; overflow:auto;">
+            <div style="background:#fff4f2; color:#7a1f14; border-radius:8px; padding:0.7rem 0.8rem; font-size:1rem;">
+                <b style="color:#b42318;">Antes de irte@(string.IsNullOrEmpty(me1NombreRep) ? "" : $", {me1NombreRep}"):</b>
+                te @(me1Pend.Count == 1 ? "queda 1 envío" : $"quedan {me1Pend.Count} envíos") de MeLi sin marcar. ¿Qué pasó?
+            </div>
+            @foreach (var e in me1Pend)
+            {
+                <div style="border-bottom:1px solid #eee; padding:0.7rem 0.1rem;">
+                    <div style="font-weight:700;">@(e.Nombre ?? $"Envío {e.ShipmentId}")</div>
+                    <div style="color:#666; font-size:0.85rem;">@e.Direccion@(string.IsNullOrWhiteSpace(e.Localidad) ? "" : $", {e.Localidad}")</div>
+                    <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+                        <button type="button" disabled="@(me1Enviando is not null)" @onclick="() => Me1Entregado(e)"
+                                style="flex:1; border-radius:8px; padding:0.6rem 0.3rem; font-weight:700; border:1px solid #16a34a; background:#16a34a; color:#fff;">
+                            @(me1Enviando == e.Id && me1EligiendoMotivo != e.Id ? "Avisando…" : me1Confirmando == e.Id ? "¿Seguro? Sí, entregado" : "✅ Entregado")
+                        </button>
+                        <button type="button" disabled="@(me1Enviando is not null)" @onclick="() => { me1EligiendoMotivo = me1EligiendoMotivo == e.Id ? null : e.Id; me1Confirmando = null; }"
+                                style="flex:1; border-radius:8px; padding:0.6rem 0.3rem; font-weight:700; border:1px solid #e3a6a0; background:#fff; color:#b42318;">❌ No pude</button>
+                    </div>
+                    @if (me1EligiendoMotivo == e.Id)
+                    {
+                        @foreach (var (cod, txt) in Me1Motivos)
+                        {
+                            <button type="button" disabled="@(me1Enviando is not null)" @onclick="() => Me1NoPude(e, cod)"
+                                    style="display:block; width:100%; text-align:left; background:#fff; border:1px solid #d6d9de; border-radius:8px; padding:0.6rem 0.7rem; margin-top:0.4rem; color:#111;">@txt</button>
+                        }
+                    }
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(me1Error)) { <div class="kio-modal-err">⚠ @me1Error</div> }
+            <div style="font-size:0.8rem; color:#666; margin-top:0.6rem;">La salida ya quedó fichada.</div>
+            <button class="kio-modal-btn kio-modal-btn-cancel" @onclick="CerrarMe1">Listo, los marco después</button>
+        </div>
+    </div>
+}
+
 @if (toastVisible)
 {
     <div class="kio-toast @(toastError ? "error" : "")">
@@ -229,7 +268,64 @@
 
 @code {
     public record FichadorEmpleadoDto(int Id, string Nombre, string Slug, string Estado, bool TieneHuella);
-    public record FichadorMarcarResult(bool Ok, string? Mensaje, string? Tipo, string? Hora, string? NombreEmpleado);
+    public record FichadorMarcarResult(bool Ok, string? Mensaje, string? Tipo, string? Hora, string? NombreEmpleado,
+        string? RepartidorToken = null, List<Me1PendienteDto>? Me1Pendientes = null);
+    public record Me1PendienteDto(int Id, long ShipmentId, string? Nombre, string? Direccion, string? Localidad);
+
+    // 2026-11-18: al fichar la SALIDA, los envíos ME1 que el repartidor todavía no marcó.
+    private List<Me1PendienteDto> me1Pend = new();
+    private string? me1RepToken;
+    private string? me1NombreRep;
+    private int? me1Confirmando;      // envío con "¿Seguro?" de Entregado abierto
+    private int? me1EligiendoMotivo;  // envío con los motivos de "No pude" abiertos
+    private int? me1Enviando;
+    private string? me1Error;
+    private static readonly (string cod, string txt)[] Me1Motivos =
+    {
+        ("receiver_absent", "🚪 No había nadie"),
+        ("bad_address", "📍 Dirección mal / no la encontré"),
+        ("unauthorized_receiver", "🙅 No había quien pueda recibir"),
+        ("dangerous_area", "⚠️ Zona peligrosa"),
+    };
+
+    private void MostrarMe1Pendientes(FichadorMarcarResult r)
+    {
+        if (r.Tipo != "SALIDA" || r.Me1Pendientes is not { Count: > 0 } || string.IsNullOrEmpty(r.RepartidorToken)) return;
+        me1Pend = r.Me1Pendientes;
+        me1RepToken = r.RepartidorToken;
+        me1NombreRep = r.NombreEmpleado;
+        me1Confirmando = null; me1EligiendoMotivo = null; me1Error = null;
+        toastVisible = false;
+    }
+
+    private void CerrarMe1() { me1Pend = new(); me1RepToken = null; }
+
+    private async Task Me1Entregado(Me1PendienteDto e)
+    {
+        if (me1Confirmando != e.Id) { me1Confirmando = e.Id; me1EligiendoMotivo = null; return; }
+        await Me1Enviar(e, $"api/cafe/repartidor-public/mis-pedidos/{me1RepToken}/me1/{e.Id}/entregar", null);
+    }
+
+    private async Task Me1NoPude(Me1PendienteDto e, string motivo)
+        => await Me1Enviar(e, $"api/cafe/repartidor-public/mis-pedidos/{me1RepToken}/me1/{e.Id}/no-entregado", new { motivo });
+
+    private async Task Me1Enviar(Me1PendienteDto e, string url, object? body)
+    {
+        me1Enviando = e.Id; me1Error = null;
+        try
+        {
+            var resp = body is null ? await Http.PostAsync(url, null) : await Http.PostAsJsonAsync(url, body);
+            if (resp.IsSuccessStatusCode)
+            {
+                me1Pend = me1Pend.Where(x => x.Id != e.Id).ToList();
+                me1Confirmando = null; me1EligiendoMotivo = null;
+                if (me1Pend.Count == 0) CerrarMe1();
+            }
+            else me1Error = "No se pudo avisar a MercadoLibre. " + await resp.Content.ReadAsStringAsync();
+        }
+        catch (Exception ex) { me1Error = "Error: " + ex.Message; }
+        finally { me1Enviando = null; }
+    }
 
     private List<FichadorEmpleadoDto> empleados = new();
     private bool cargando = true;
@@ -386,6 +482,7 @@
             toastHora = r.Hora;
             toastError = false;
             toastVisible = true;
+            MostrarMe1Pendientes(r);   // 2026-11-18: "Antes de irte…" (envíos ME1 sin marcar)
             StateHasChanged();
             await Task.Delay(3000);
             toastVisible = false;
@@ -501,6 +598,7 @@
             toastHora = r.Hora;
             toastError = false;
             toastVisible = true;
+            MostrarMe1Pendientes(r);   // 2026-11-18: "Antes de irte…" (envíos ME1 sin marcar)
             StateHasChanged();
             await Task.Delay(3000);
             toastVisible = false;
@@ -556,6 +654,7 @@
             toastHora = r.Hora;
             toastError = false;
             toastVisible = true;
+            MostrarMe1Pendientes(r);   // 2026-11-18: "Antes de irte…" (envíos ME1 sin marcar)
             StateHasChanged();
             await Task.Delay(3000);
             toastVisible = false;

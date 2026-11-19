@@ -657,11 +657,64 @@ public class MeliShipmentService
     ///   not_delivered/returning_to_sender → No entregado (FINAL, no reversible)
     /// Retorna (ok, errorMessage). En caso de exito, refresca el shipment local.
     /// </summary>
+    /// <summary>Substatus de "visita fallida" que MeLi acepta para ME1 (van con status = shipped).</summary>
+    public static readonly string[] Me1VisitasFallidas = { "receiver_absent", "bad_address", "unauthorized_receiver", "dangerous_area" };
+
+    /// <summary>Estados de MeLi en los que el envío todavía no salió (se le puede avisar "En camino").</summary>
+    public static bool Me1SinDespachar(string? status) => status is "ready_to_ship" or "handling";
+
+    /// <summary>
+    /// Cambia el estado de un envío ME1 en MeLi.
+    /// 2026-11-18 RED DE SEGURIDAD: MeLi mide si el comprador recibió los avisos de "Despacho" y "Entrega"
+    /// (Experiencia de envío). Si se marca Entregado / No entregado / visita fallida y todavía no se avisó
+    /// "En camino", primero se manda "En camino"; y antes de Entregado, si nunca se avisó "Salió a
+    /// distribución", también se manda. Si alguno de esos avisos previos falla, se sigue igual con el pedido.
+    /// </summary>
     public async Task<(bool ok, string? error)> SetMe1StatusAsync(int shipmentId, string status, string? substatus, string? trackingNumber, string? trackingUrl, string? comment)
+    {
+        var ship = await _db.MeliShipments.AsNoTracking().FirstOrDefaultAsync(s => s.Id == shipmentId);
+        if (ship is null) return (false, "Envio no encontrado");
+        if (ship.Mode != "me1") return (false, "Este envio no es ME1, no se puede operar desde aca");
+
+        bool esFinalOFallida = status is "delivered" or "not_delivered"
+            || (status == "shipped" && substatus is not null && Me1VisitasFallidas.Contains(substatus));
+        if (esFinalOFallida && Me1SinDespachar(ship.Status))
+        {
+            await PostMe1StatusAsync(shipmentId, "shipped", null, null, null, "Despachado");
+            await Task.Delay(1500);
+        }
+        if (status == "delivered" && ship.Me1SalioDistribucionFecha is null && ship.Substatus != "out_for_delivery")
+        {
+            await PostMe1StatusAsync(shipmentId, "shipped", "out_for_delivery", null, null, "Salio a distribucion");
+            await Task.Delay(1500);
+        }
+        return await PostMe1StatusAsync(shipmentId, status, substatus, trackingNumber, trackingUrl, comment);
+    }
+
+    /// <summary>AppSettings["meli.me1_avisos.enabled"] = "false" → NO se manda nada a MeLi: el cambio queda
+    /// solo en nuestra base (para probar en DEV, que tiene una cuenta MeLi real vinculada). Default: prendido.</summary>
+    private async Task<bool> Me1AvisosHabilitadosAsync()
+    {
+        var s = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == "meli.me1_avisos.enabled");
+        if (s is null) return true;
+        var v = s.Value?.Trim().ToLowerInvariant();
+        return v is null || (v != "false" && v != "0" && v != "off");
+    }
+
+    /// <summary>Un solo aviso a MeLi (POST seller_notifications) + actualiza el envío local.</summary>
+    private async Task<(bool ok, string? error)> PostMe1StatusAsync(int shipmentId, string status, string? substatus, string? trackingNumber, string? trackingUrl, string? comment)
     {
         var ship = await _db.MeliShipments.FirstOrDefaultAsync(s => s.Id == shipmentId);
         if (ship is null) return (false, "Envio no encontrado");
         if (ship.Mode != "me1") return (false, "Este envio no es ME1, no se puede operar desde aca");
+
+        if (!await Me1AvisosHabilitadosAsync())
+        {
+            // Modo prueba: no sale nada a MeLi, solo se refleja en la base local.
+            AplicarEstadoLocalMe1(ship, status, substatus, trackingNumber);
+            await _db.SaveChangesAsync();
+            return (true, null);
+        }
 
         var account = await _db.MeliAccounts.FirstOrDefaultAsync(a => a.Id == ship.MeliAccountId);
         if (account is null) return (false, "Cuenta MeLi del envio no encontrada");
@@ -717,12 +770,7 @@ public class MeliShipmentService
         // para que el listado de /meli/me1/entregas lo refleje al instante. Antes intentabamos refrescar
         // leyendo MeLi de nuevo, pero por la eventual consistency de su API el GET podia devolver el estado
         // VIEJO (1-2 segundos despues del POST) y se sobrescribia el cambio. Ahora el seteo es autoritativo.
-        ship.Status = status;
-        ship.Substatus = substatus;
-        ship.LastSyncedAt = DateTime.UtcNow;
-        if (status == "delivered") ship.DateDelivered ??= DateTime.UtcNow;
-        if (status == "shipped" && substatus is null) ship.DateShipped ??= DateTime.UtcNow;
-        if (!string.IsNullOrWhiteSpace(trackingNumber)) ship.TrackingNumber = trackingNumber;
+        AplicarEstadoLocalMe1(ship, status, substatus, trackingNumber);
         await _db.SaveChangesAsync();
 
         // Best-effort: refrescar desde MeLi para traer fechas/data adicional. Si MeLi ya tiene el nuevo
@@ -746,6 +794,18 @@ public class MeliShipmentService
         catch { /* el cambio en MeLi ya quedo y el local ya esta actualizado, no fallar por error de refresh */ }
 
         return (true, null);
+    }
+
+    private static void AplicarEstadoLocalMe1(MeliShipment ship, string status, string? substatus, string? trackingNumber)
+    {
+        ship.Status = status;
+        ship.Substatus = substatus;
+        ship.LastSyncedAt = DateTime.UtcNow;
+        if (status == "delivered") ship.DateDelivered ??= DateTime.UtcNow;
+        if (status == "shipped") ship.DateShipped ??= DateTime.UtcNow;
+        if (status == "shipped" && substatus == "out_for_delivery") ship.Me1SalioDistribucionFecha = DateTime.UtcNow.AddHours(-3).Date;
+        if (status == "shipped" && substatus is not null && Me1VisitasFallidas.Contains(substatus)) ship.Me1VisitaFallidaAt = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(trackingNumber)) ship.TrackingNumber = trackingNumber;
     }
 
     private static string? StrProp(JsonElement el, string name, int maxLen)

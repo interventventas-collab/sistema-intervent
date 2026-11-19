@@ -8996,6 +8996,24 @@ public partial class ApiClient
         catch (Exception ex) { return (false, $"Error de conexión: {ex.Message}"); }
     }
 
+    // ===== 2026-11-18: "¿Sale hoy?" al imprimir etiquetas ME1 =====
+    public record Me1SinSalidaDto(long ShipmentId, string? Nombre, string? Localidad, string? Productos);
+    public record Me1DiaSalidaResult(int Avisados, int Programados, List<string>? Errores);
+
+    /// <summary>De los envíos impresos, los ME1 que todavía no salieron y no tienen día de salida.</summary>
+    public async Task<List<Me1SinSalidaDto>> GetMe1SinDiaSalidaAsync(IEnumerable<long> shipmentIds)
+    {
+        try { return await GetAsync<List<Me1SinSalidaDto>>($"/api/meli/me1/sin-dia-salida?ids={string.Join(",", shipmentIds)}") ?? new(); }
+        catch { return new(); }
+    }
+
+    /// <summary>Guarda el día en que salen; si es hoy, el backend avisa "En camino" a MeLi.</summary>
+    public async Task<(Me1DiaSalidaResult? res, string? error)> SetMe1DiaSalidaAsync(List<long> shipmentIds, DateTime fecha)
+    {
+        try { return (await PostAsync<Me1DiaSalidaResult>("/api/meli/me1/dia-salida", new { shipmentIds, fecha = fecha.ToString("yyyy-MM-dd") }), null); }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
     public async Task<(bool ok, string? error)> SetMeliMe1ShipmentStatusAsync(int id, string status, string? substatus, string? trackingNumber = null, string? trackingUrl = null, string? comment = null)
     {
         try

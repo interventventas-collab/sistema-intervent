@@ -1059,7 +1059,15 @@
                     }
                     @if (!string.IsNullOrWhiteSpace(m.ItemsSummary)) { <div style="margin-top:0.45rem; font-size:0.82rem; color:#374151;"><span style="font-weight:600;">Productos:</span> @m.ItemsSummary</div> }
                     @if (m.OrderTotal.HasValue) { <div style="margin-top:0.35rem; text-align:right; color:#111827; font-weight:700;">$@m.OrderTotal.Value.ToString("N0")</div> }
-                    <button type="button" class="mp-card-btn mp-card-btn-entregar" style="margin-top:0.7rem; width:100%; padding:0.7rem; font-size:0.95rem;" @onclick="() => AbrirEntregarMe1(m)">✅ Entregué este pedido</button>
+                    @if (MotivoFallido(m.Substatus) is string yaAvisado)
+                    {
+                        <div style="margin-top:0.5rem; font-size:0.8rem; color:#b42318;">❌ Avisado a MeLi: @yaAvisado. Si lo volvés a intentar, marcalo de nuevo.</div>
+                    }
+                    @* 2026-11-18: "No pude entregar" → visita fallida en MeLi (no es final, lo podés volver a intentar). *@
+                    <div style="display:flex; gap:0.5rem; margin-top:0.7rem;">
+                        <button type="button" class="mp-card-btn mp-card-btn-entregar" style="flex:1; padding:0.7rem 0.3rem; font-size:0.95rem;" @onclick="() => AbrirEntregarMe1(m)">✅ Entregado</button>
+                        <button type="button" class="mp-card-btn" style="flex:1; padding:0.7rem 0.3rem; font-size:0.95rem; background:#fff; color:#b42318; border:1px solid #e3a6a0; font-weight:700; border-radius:8px;" @onclick="() => AbrirNoPudeMe1(m)">❌ No pude entregar</button>
+                    </div>
                     <button type="button" class="mp-card-btn-rechazar" @onclick="@(() => AbrirRechazo("me1", m.Id, $"MeLi {(m.MeliOrderId?.ToString() ?? "")} · {m.ReceiverName ?? m.BuyerNickname} · {m.AddressLine}"))">🚫 Rechazar este envío</button>
                 </div>;
 
@@ -2050,6 +2058,28 @@
 }
 
 @* 2026-06-17: modal de DOBLE CONFIRMACION para entregar ME1 — la accion impacta en MeLi al instante y NO es reversible. *@
+@* 2026-11-18: "¿Por qué no lo pudiste entregar?" — los 4 motivos de visita fallida que acepta MeLi. *@
+@if (me1NoPude is not null)
+{
+    <div class="mp-modal-overlay" @onclick="CerrarNoPudeMe1">
+        <div class="mp-modal" @onclick:stopPropagation="true">
+            <div class="mp-modal-titulo">¿Por qué no lo pudiste entregar?</div>
+            <div class="mp-modal-sub">@(me1NoPude.ReceiverName ?? me1NoPude.BuyerNickname) · @me1NoPude.AddressLine</div>
+            @foreach (var (cod, txt) in MotivosNoPude)
+            {
+                <button type="button" disabled="@me1NoPudeEnviando" @onclick="() => ConfirmarNoPudeMe1(cod)"
+                        style="display:block; width:100%; text-align:left; background:#fff; border:1px solid #d6d9de; border-radius:8px; padding:0.75rem 0.8rem; margin-top:0.45rem; font-size:0.95rem; color:#111827;">@txt</button>
+            }
+            @if (!string.IsNullOrEmpty(me1NoPudeError))
+            {
+                <div style="background:#fee2e2; color:#991b1b; padding:0.5rem 0.7rem; border-radius:6px; font-size:0.85rem; margin-top:0.6rem;">⚠ @me1NoPudeError</div>
+            }
+            <div style="font-size:0.78rem; color:#6b7280; margin-top:0.6rem;">Le avisamos a MercadoLibre. El envío te sigue apareciendo para volver a intentarlo.</div>
+            <button type="button" class="btn btn-secondary" style="width:100%; margin-top:0.6rem;" disabled="@me1NoPudeEnviando" @onclick="CerrarNoPudeMe1">@(me1NoPudeEnviando ? "Avisando…" : "Cancelar")</button>
+        </div>
+    </div>
+}
+
 @if (me1ConfirmEntrega is not null)
 {
     var m = me1ConfirmEntrega;
@@ -4374,6 +4404,53 @@
         }
         catch (Exception ex) { me1EntregaError = $"Error: {ex.Message}"; }
         finally { me1Entregando = false; StateHasChanged(); }
+    }
+
+    // 2026-11-18: ME1 — "No pude entregar" (visita fallida en MeLi).
+    private Me1PedidoDto? me1NoPude;
+    private bool me1NoPudeEnviando;
+    private string? me1NoPudeError;
+    private static readonly (string cod, string txt)[] MotivosNoPude =
+    {
+        ("receiver_absent", "🚪 No había nadie"),
+        ("bad_address", "📍 La dirección está mal o no la encontré"),
+        ("unauthorized_receiver", "🙅 No había quien pueda recibir"),
+        ("dangerous_area", "⚠️ Zona peligrosa"),
+    };
+    private static string? MotivoFallido(string? sub) => sub switch
+    {
+        "receiver_absent" => "no había nadie",
+        "bad_address" => "dirección mal",
+        "unauthorized_receiver" => "no había quien reciba",
+        "dangerous_area" => "zona peligrosa",
+        _ => null
+    };
+
+    private void AbrirNoPudeMe1(Me1PedidoDto m) { me1NoPude = m; me1NoPudeError = null; }
+    private void CerrarNoPudeMe1() { if (me1NoPudeEnviando) return; me1NoPude = null; me1NoPudeError = null; }
+
+    private async Task ConfirmarNoPudeMe1(string motivo)
+    {
+        if (me1NoPude is null) return;
+        me1NoPudeEnviando = true; me1NoPudeError = null; StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsJsonAsync(
+                $"api/cafe/repartidor-public/mis-pedidos/{Token}/me1/{me1NoPude.Id}/no-entregado", new { motivo });
+            if (resp.IsSuccessStatusCode)
+            {
+                MostrarToast("Avisado a MeLi: no se pudo entregar", false);
+                me1NoPude = null;
+                await Recargar();
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                me1NoPudeError = $"No se pudo avisar. {body}";
+            }
+        }
+        catch (Exception ex) { me1NoPudeError = $"Error: {ex.Message}"; }
+        finally { me1NoPudeEnviando = false; StateHasChanged(); }
     }
 
     // 2026-08-12: RECHAZAR un envío con motivo obligatorio.

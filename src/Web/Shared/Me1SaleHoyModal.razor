@@ -1,0 +1,119 @@
+@implements IDisposable
+@inject Me1SaleHoySignal Signal
+@inject ApiClient Api
+@inject ToastService Toast
+
+@* 2026-11-18: después de imprimir etiquetas ME1 pregunta "¿Sale hoy?".
+   Sí → MeLi le avisa al comprador "En camino" en el acto.
+   Otro día → se guarda el día y esa mañana el sistema lo avisa solo (o antes, si lo ponen en el mapeo de hoy).
+   Vive en MainLayout: lo disparan todas las pantallas que imprimen etiquetas. *@
+
+@if (envios.Count > 0)
+{
+    <div style="position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:3000; display:flex; align-items:center; justify-content:center; padding:1rem;">
+        <div style="background:#fff; border-radius:10px; padding:1.1rem 1.2rem; width:100%; max-width:460px; box-shadow:0 6px 20px rgba(0,0,0,.2); color:#222;">
+            <div style="font-size:1.15rem; font-weight:700; margin-bottom:.25rem;">¿@(envios.Count == 1 ? "Sale" : "Salen") hoy?</div>
+            <div style="color:#666; font-size:.88rem; max-height:7.5rem; overflow:auto;">
+                @foreach (var e in envios)
+                {
+                    <div>@(e.Nombre ?? $"Envío {e.ShipmentId}")@(string.IsNullOrWhiteSpace(e.Localidad) ? "" : $" · {e.Localidad}")</div>
+                }
+            </div>
+
+            <div style="display:flex; gap:.5rem; margin-top:.9rem;">
+                <button type="button" class="btn btn-primary" style="flex:1; font-weight:600;" disabled="@guardando" @onclick="() => Guardar(Hoy)">
+                    @(guardando && fechaGuardando == Hoy ? "Avisando…" : "Sí, sale hoy")
+                </button>
+                <button type="button" class="btn" style="flex:1; font-weight:600; background:#fff; color:#222; border:1px solid #c9ccd3; border-radius:8px;" disabled="@guardando" @onclick="() => verOtroDia = !verOtroDia">Sale otro día</button>
+            </div>
+
+            @if (verOtroDia)
+            {
+                <div style="margin-top:.8rem; display:flex; gap:.4rem; flex-wrap:wrap; align-items:center;">
+                    @foreach (var d in ProximosDias())
+                    {
+                        <button type="button" style="border:1px solid #c9ccd3; background:#fff; color:#1d4ed8; border-radius:16px; padding:.35rem .75rem; font-size:.85rem; font-weight:600; cursor:pointer;" disabled="@guardando" @onclick="() => Guardar(d)">@NombreDia(d)</button>
+                    }
+                    <input type="date" style="border:1px solid #c9ccd3; border-radius:16px; padding:.3rem .6rem; font-size:.85rem;" min="@Hoy.AddDays(1).ToString("yyyy-MM-dd")"
+                           @onchange="OnOtraFecha" disabled="@guardando" />
+                </div>
+            }
+
+            <div style="font-size:.8rem; color:#666; margin-top:.8rem; line-height:1.35;">
+                "Sí, sale hoy" → MercadoLibre le avisa al comprador que su compra está <b>En camino</b>.<br />
+                Otro día → se avisa solo ese día a la mañana (o antes, si lo ponen en el mapeo de hoy).
+            </div>
+            <div style="text-align:right; margin-top:.6rem;">
+                <button type="button" style="background:none; border:none; color:#666; font-size:.85rem; cursor:pointer;" disabled="@guardando" @onclick="Cerrar">Después</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ApiClient.Me1SinSalidaDto> envios = new();
+    private bool verOtroDia;
+    private bool guardando;
+    private DateTime fechaGuardando;
+
+    private static DateTime Hoy => DateTime.UtcNow.AddHours(-3).Date;
+
+    protected override void OnInitialized() => Signal.OnPreguntar += OnPreguntar;
+    public void Dispose() => Signal.OnPreguntar -= OnPreguntar;
+
+    private async void OnPreguntar(List<long> ids)
+    {
+        try
+        {
+            // Darle un momento al backend a que termine de armar la etiqueta (la pestaña nueva la pide).
+            await Task.Delay(800);
+            var lista = await Api.GetMe1SinDiaSalidaAsync(ids);
+            if (lista.Count == 0) return;
+            envios = lista;
+            verOtroDia = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { }
+    }
+
+    private static IEnumerable<DateTime> ProximosDias()
+    {
+        var d = Hoy;
+        int n = 0;
+        while (n < 3)
+        {
+            d = d.AddDays(1);
+            if (d.DayOfWeek == DayOfWeek.Sunday) continue;
+            n++;
+            yield return d;
+        }
+    }
+
+    private static string NombreDia(DateTime d)
+    {
+        var nombre = d.ToString("ddd d", new System.Globalization.CultureInfo("es-AR")).Replace(".", "");
+        return d == Hoy.AddDays(1) ? $"Mañana {nombre}" : char.ToUpper(nombre[0]) + nombre[1..];
+    }
+
+    private async Task OnOtraFecha(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var f) && f.Date > Hoy) await Guardar(f.Date);
+    }
+
+    private async Task Guardar(DateTime fecha)
+    {
+        guardando = true; fechaGuardando = fecha;
+        try
+        {
+            var (res, err) = await Api.SetMe1DiaSalidaAsync(envios.Select(x => x.ShipmentId).ToList(), fecha);
+            if (res is null) { Toast.Error(err ?? "No se pudo guardar"); return; }
+            if (res.Errores is { Count: > 0 }) Toast.Error("MercadoLibre no aceptó: " + string.Join(" · ", res.Errores));
+            if (fecha == Hoy) { if (res.Avisados > 0) Toast.Success(res.Avisados == 1 ? "Avisado a MeLi: En camino" : $"{res.Avisados} avisados a MeLi: En camino"); }
+            else Toast.Success($"Sale el {NombreDia(fecha).ToLower()}: ese día se avisa solo");
+            envios = new();
+        }
+        finally { guardando = false; }
+    }
+
+    private void Cerrar() => envios = new();
+}

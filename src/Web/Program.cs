@@ -30,6 +30,7 @@ builder.Services.AddScoped<OperatorService>();
 // 2026-10-29: botón "Traer movimientos" de Shell + Galicia en la bienvenida (sigue aunque se cierre la ventanita)
 builder.Services.AddScoped<Web.Services.TraerBancosService>();
 builder.Services.AddScoped<NuevaVentaSignal>();
+builder.Services.AddScoped<Me1SaleHoySignal>();   // 2026-11-18: "¿Sale hoy?" al imprimir etiquetas ME1
 builder.Services.AddScoped<CurrentCompanyService>();
 builder.Services.AddSingleton<UploadProgressService>();
 builder.Services.AddScoped<CpService>();

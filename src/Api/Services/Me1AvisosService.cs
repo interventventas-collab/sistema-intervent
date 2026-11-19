@@ -1,0 +1,186 @@
+using Api.Data;
+using Api.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace Api.Services;
+
+/// <summary>
+/// 2026-11-18: avisos de estado de los envíos ME1 a MercadoLibre (Métricas → Envíos → Envíos ME1).
+/// MeLi pide como obligatorios "En camino" y "Salió a distribución" además de "Entregado"; nosotros solo
+/// mandábamos "Entregado" y la Experiencia de envío daba 0%.
+///
+///   - Al imprimir la etiqueta se pregunta "¿Sale hoy?": Sí → "En camino" en el acto; otro día → se guarda
+///     Me1SaleFecha y ese día a la mañana (desde las 7 AR) el job lo avisa.
+///   - Envío en el mapeo de HOY → "En camino"; si además tiene chofer → "Salió a distribución".
+///   - Repartidor con ME1 sin marcar → se los mostramos al fichar la salida (Pendientes).
+/// </summary>
+public class Me1AvisosService
+{
+    private readonly AppDbContext _db;
+    private readonly MeliShipmentService _ship;
+    private readonly ILogger<Me1AvisosService> _log;
+
+    public Me1AvisosService(AppDbContext db, MeliShipmentService ship, ILogger<Me1AvisosService> log)
+    {
+        _db = db; _ship = ship; _log = log;
+    }
+
+    public static DateTime HoyAr() => DateTime.UtcNow.AddHours(-3).Date;
+
+    private static readonly string[] Finales = { "delivered", "not_delivered", "cancelled" };
+
+    public record Me1SinSalidaDto(long ShipmentId, string? Nombre, string? Localidad, string? Productos);
+
+    /// <summary>De los envíos recién impresos, los ME1 que todavía no salieron y no tienen día de salida
+    /// elegido: a esos se les pregunta "¿Sale hoy?".</summary>
+    public async Task<List<Me1SinSalidaDto>> SinDiaDeSalidaAsync(IEnumerable<long> meliShipmentIds)
+    {
+        var ids = meliShipmentIds.Distinct().ToList();
+        if (ids.Count == 0) return new();
+        var lista = await _db.MeliShipments.AsNoTracking()
+            .Where(s => ids.Contains(s.MeliShipmentId) && s.Mode == "me1"
+                        && (s.Status == "ready_to_ship" || s.Status == "handling")
+                        && s.Me1SaleFecha == null)
+            .Select(s => new { s.MeliShipmentId, s.ReceiverName, s.BuyerNickname, s.City, s.ItemsSummary })
+            .ToListAsync();
+        return lista.Select(s => new Me1SinSalidaDto(s.MeliShipmentId, s.ReceiverName ?? s.BuyerNickname, s.City, s.ItemsSummary)).ToList();
+    }
+
+    /// <summary>Guarda el día en que salen. Si es hoy (o antes), avisa "En camino" ya mismo.
+    /// Devuelve cuántos se avisaron y los errores de MeLi, si hubo.</summary>
+    public async Task<(int avisados, int programados, List<string> errores)> ElegirDiaSalidaAsync(IEnumerable<long> meliShipmentIds, DateTime fecha)
+    {
+        var hoy = HoyAr();
+        fecha = fecha.Date;
+        var ids = meliShipmentIds.Distinct().ToList();
+        var envios = await _db.MeliShipments
+            .Where(s => ids.Contains(s.MeliShipmentId) && s.Mode == "me1")
+            .ToListAsync();
+        int avisados = 0, programados = 0;
+        var errores = new List<string>();
+        foreach (var s in envios)
+        {
+            s.Me1SaleFecha = fecha;
+            await _db.SaveChangesAsync();
+            if (fecha > hoy) { programados++; continue; }
+            if (!MeliShipmentService.Me1SinDespachar(s.Status)) continue;
+            var (ok, err) = await _ship.SetMe1StatusAsync(s.Id, "shipped", null, null, null, "Despachado");
+            if (ok) avisados++;
+            else errores.Add($"{s.ReceiverName ?? s.MeliShipmentId.ToString()}: {err}");
+        }
+        return (avisados, programados, errores);
+    }
+
+    /// <summary>Lo que corre el job cada 10 minutos.</summary>
+    public async Task<int> ProcesarAutomaticoAsync(CancellationToken ct = default)
+    {
+        var hoy = HoyAr();
+        var horaAr = DateTime.UtcNow.AddHours(-3).Hour;
+        int n = 0;
+
+        // 1) Día de salida elegido al imprimir que ya llegó → "En camino" (desde las 7 de la mañana).
+        if (horaAr >= 7)
+        {
+            var programados = await _db.MeliShipments.AsNoTracking()
+                .Where(s => s.Mode == "me1" && s.Me1SaleFecha != null && s.Me1SaleFecha <= hoy
+                            && (s.Status == "ready_to_ship" || s.Status == "handling"))
+                .Select(s => s.Id).ToListAsync(ct);
+            foreach (var id in programados)
+            {
+                var (ok, err) = await _ship.SetMe1StatusAsync(id, "shipped", null, null, null, "Despachado");
+                if (ok) n++; else _log.LogWarning("[ME1 avisos] En camino (día elegido) envío {Id}: {Err}", id, err);
+            }
+        }
+
+        // 2) En el mapeo de HOY → "En camino"; con chofer → "Salió a distribución".
+        var paradas = await _db.MapeoStops.AsNoTracking()
+            .Where(p => p.Origin == "me1" && p.FechaReparto == hoy && p.OriginRefId != null)
+            .Select(p => new { p.OriginRefId, p.AssignedDriverId })
+            .ToListAsync(ct);
+        var conChofer = new Dictionary<long, bool>();
+        foreach (var p in paradas)
+            if (long.TryParse(p.OriginRefId, out var sid))
+                conChofer[sid] = (conChofer.TryGetValue(sid, out var ya) && ya) || p.AssignedDriverId != null;
+
+        if (conChofer.Count > 0)
+        {
+            var ids = conChofer.Keys.ToList();
+            var envios = await _db.MeliShipments.AsNoTracking()
+                .Where(s => ids.Contains(s.MeliShipmentId) && s.Mode == "me1"
+                            && s.Status != null && !Finales.Contains(s.Status) && s.Status != "pending")
+                .Select(s => new { s.Id, s.MeliShipmentId, s.Status, s.Substatus, s.Me1SalioDistribucionFecha, s.Me1VisitaFallidaAt })
+                .ToListAsync(ct);
+            foreach (var s in envios)
+            {
+                if (MeliShipmentService.Me1SinDespachar(s.Status))
+                {
+                    var (ok, err) = await _ship.SetMe1StatusAsync(s.Id, "shipped", null, null, null, "Despachado");
+                    if (ok) n++; else { _log.LogWarning("[ME1 avisos] En camino (mapeo) envío {Id}: {Err}", s.Id, err); continue; }
+                    await Task.Delay(1500, ct);
+                }
+                bool fallidaHoy = s.Me1VisitaFallidaAt.HasValue && s.Me1VisitaFallidaAt.Value.AddHours(-3).Date == hoy;
+                if (conChofer[s.MeliShipmentId] && s.Me1SalioDistribucionFecha != hoy && !fallidaHoy)
+                {
+                    var (ok, err) = await _ship.SetMe1StatusAsync(s.Id, "shipped", "out_for_delivery", null, null, "Salio a distribucion");
+                    if (ok) n++; else _log.LogWarning("[ME1 avisos] Salió a distribución envío {Id}: {Err}", s.Id, err);
+                }
+            }
+        }
+        return n;
+    }
+
+    public record Me1PendienteDto(int Id, long ShipmentId, string? Nombre, string? Direccion, string? Localidad);
+
+    /// <summary>ME1 que el repartidor tiene cargados y todavía no marcó (ni entregado ni visita fallida hoy).
+    /// No cuenta los que tienen día de salida a futuro.</summary>
+    public async Task<List<Me1PendienteDto>> PendientesDeRepartidorAsync(int repartidorId)
+    {
+        var hoy = HoyAr();
+        var desdeUtc = hoy.AddHours(3);   // 00:00 AR en UTC
+        var lista = await _db.MeliShipments.AsNoTracking()
+            .Where(s => s.RepartidorAsignadoId == repartidorId && s.Mode == "me1"
+                        && s.Status != null && !Finales.Contains(s.Status) && s.Status != "pending"
+                        && (s.Me1SaleFecha == null || s.Me1SaleFecha <= hoy)
+                        && (s.Me1VisitaFallidaAt == null || s.Me1VisitaFallidaAt < desdeUtc))
+            .OrderBy(s => s.ReceiverName)
+            .Select(s => new { s.Id, s.MeliShipmentId, s.ReceiverName, s.BuyerNickname, s.AddressLine, s.StreetName, s.StreetNumber, s.City })
+            .ToListAsync();
+        return lista.Select(s => new Me1PendienteDto(s.Id, s.MeliShipmentId, s.ReceiverName ?? s.BuyerNickname,
+            s.AddressLine ?? $"{s.StreetName} {s.StreetNumber}".Trim(), s.City)).ToList();
+    }
+}
+
+/// <summary>2026-11-18: cada 10 minutos manda los avisos automáticos de ME1 (ver Me1AvisosService).</summary>
+public class Me1AvisosBackgroundService : BackgroundService
+{
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<Me1AvisosBackgroundService> _logger;
+    private static readonly TimeSpan Period = TimeSpan.FromMinutes(10);
+
+    public Me1AvisosBackgroundService(IServiceScopeFactory scopeFactory, ILogger<Me1AvisosBackgroundService> logger)
+    {
+        _scopeFactory = scopeFactory; _logger = logger;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try { await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken); }
+        catch (OperationCanceledException) { return; }
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var svc = scope.ServiceProvider.GetRequiredService<Me1AvisosService>();
+                var n = await svc.ProcesarAutomaticoAsync(stoppingToken);
+                if (n > 0) _logger.LogInformation("[ME1 avisos] {N} avisos mandados a MeLi", n);
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex) { _logger.LogError(ex, "[ME1 avisos] Error en el job"); }
+
+            try { await Task.Delay(Period, stoppingToken); }
+            catch (OperationCanceledException) { break; }
+        }
+    }
+}

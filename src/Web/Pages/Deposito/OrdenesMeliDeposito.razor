@@ -5,6 +5,7 @@
 @inject ToastService ToastService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject Me1SaleHoySignal Me1SaleHoy
 
 @* 2026-09-21: página aparte para el depósito (antes el escaneo vivía adentro del armado de pedidos).
    SIN PLATA a propósito.
@@ -320,7 +321,7 @@ else
 
     private async Task Imprimir(long envio)
     {
-        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(new[] { envio }, etiquetaFormato));
+        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(new[] { envio }, etiquetaFormato)); Me1SaleHoy.Preguntar(new[] { envio });
         _ = RefrescarLuego();
     }
 
@@ -356,7 +357,7 @@ else
     {
         if (tildadas.Count == 0) return;
         ToastService.Success($"Generando {tildadas.Count} etiqueta(s)…");
-        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(tildadas.OrderBy(x => x), etiquetaFormato));
+        await AbrirEtiqueta(Api.BuildEtiquetaMeliUrl(tildadas.OrderBy(x => x), etiquetaFormato)); Me1SaleHoy.Preguntar(tildadas.OrderBy(x => x));
         tildadas.Clear();
         _ = RefrescarLuego();
     }
