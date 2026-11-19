@@ -1,0 +1,98 @@
+@inject ApiClient Api
+@inject NavigationManager Nav
+@implements IDisposable
+
+@* 19/11/2026 — 💬 WhatsApp Fijo Transradio vuelve al Dashboard, pero como PASTILLA de la columna derecha
+   (pedido del dueño: "numeritos como en MeLi, que no se agrande para abajo"). Número = chats de esa línea
+   cuyo último mensaje es del cliente (nadie contestó). Los "#gasto" no cuentan: no se contestan.
+   Pasando el mouse se ven los últimos 3; tocar uno abre ese chat; tocar la pastilla abre el primero sin
+   responder (o la pantalla de WhatsApp). Usa las clases de las pastillas (.op-big, .op-t, ...) de
+   OficinaPastillas; "order" y color se acomodan con ✏ Acomodar pastillas (clave o-wa).
+   Maqueta aprobada: scratchpad/Gastos_numerito_y_WhatsApp_PROPUESTA.html *@
+
+<style>
+    .op-big.wa { background:linear-gradient(135deg,#bbf7d0,#f0fdf4); }
+    .wa-row { cursor:pointer; }
+    .wa-row:hover b { text-decoration:underline; }
+</style>
+
+<div class="op-big wa" @onclick="Tocar" title="WhatsApp Fijo Transradio">
+    <div class="op-t">💬 WhatsApp Fijo <span class="op-n @(sinResp.Count == 0 ? "cero" : "")">@sinResp.Count</span></div>
+    <div class="op-l @(sinResp.Count == 0 ? "gris" : "")">
+        @if (cargando) { <text>Cargando…</text> }
+        else if (sinResp.Count == 0) { <text>@(ultimas.Count == 0 ? "Sin chats" : "Todo respondido · último " + Hora(ultimas[0].UltimoAt))</text> }
+        else { <text>@sinResp.Count chat@(sinResp.Count == 1 ? "" : "s") sin responder · último @Hora(sinResp[0].UltimoAt)</text> }
+    </div>
+    <div class="op-prev" @onclick:stopPropagation="true">
+        <div class="op-prev-t">Últimos chats del Fijo</div>
+        @if (ultimas.Count == 0) { <div class="op-prev-f">No hay chats en esta línea</div> }
+        @foreach (var c in ultimas.Take(3))
+        {
+            var cc = c;
+            <div class="op-prev-f wa-row" @onclick="() => Abrir(cc)">
+                <b>@Nombre(c)</b>@(EsSinResp(c) ? " · sin responder" : "") · @Hora(c.UltimoAt)
+                <small>@Corto(c.UltimoMensaje ?? (string.IsNullOrEmpty(c.UltimoMediaUrl) ? "" : "📷 Foto"), 80)</small>
+            </div>
+        }
+        <div class="op-prev-mas wa-row" @onclick='() => Nav.NavigateTo("/whatsapp")'>Abrir WhatsApp ›</div>
+    </div>
+</div>
+
+@code {
+    private const string LineaFijo = "1195191513683780"; // FIJO TRANSRADIO 11 2081-2933
+    private List<ApiClient.TwConvDto> ultimas = new(), sinResp = new();
+    private bool cargando = true;
+    private System.Threading.Timer? timer;
+
+    protected override void OnInitialized()
+    {
+        timer = new System.Threading.Timer(async _ => await InvokeAsync(Cargar), null, 0, 30_000);
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            var convs = await Api.GetTwConversacionesAsync();
+            ultimas = convs.Where(c => c.Linea == LineaFijo && !c.Archivado)
+                .OrderByDescending(c => c.UltimoAt).ToList();
+            sinResp = ultimas.Where(EsSinResp).ToList();
+        }
+        catch { }
+        cargando = false;
+        StateHasChanged();
+    }
+
+    private static bool EsSinResp(ApiClient.TwConvDto c)
+        => string.Equals(c.UltimoDireccion, "INCOMING", StringComparison.OrdinalIgnoreCase)
+           && !(c.UltimoMensaje ?? "").TrimStart().StartsWith("#gasto", StringComparison.OrdinalIgnoreCase);
+
+    private void Tocar()
+    {
+        if (sinResp.Count > 0) Abrir(sinResp[0]);
+        else Nav.NavigateTo("/whatsapp");
+    }
+
+    private void Abrir(ApiClient.TwConvDto c)
+        => Nav.NavigateTo($"/whatsapp?numero={Uri.EscapeDataString(c.Numero)}&linea={LineaFijo}");
+
+    private static string Nombre(ApiClient.TwConvDto c)
+        => !string.IsNullOrWhiteSpace(c.ClienteNombre) ? c.ClienteNombre!
+         : !string.IsNullOrWhiteSpace(c.NombrePerfil) ? c.NombrePerfil!
+         : (c.Numero ?? "").Replace("whatsapp:", "");
+
+    private static string Hora(DateTime utc)
+    {
+        var d = utc.ToArTime();
+        var hoy = FechaPalabras.HoyAr;
+        return d.Date == hoy ? d.ToString("HH:mm") : d.Date == hoy.AddDays(-1) ? "ayer " + d.ToString("HH:mm") : d.ToString("dd/MM");
+    }
+
+    private static string Corto(string s, int max)
+    {
+        s = s.Replace("\n", " ").Trim();
+        return s.Length <= max ? s : s[..max] + "…";
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

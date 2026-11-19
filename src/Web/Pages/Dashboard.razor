@@ -1962,6 +1962,8 @@ else
         @((MarkupString)CssPastillas())
         <button class="op-acomodar" @onclick="AbrirAcomodarPastillas" title="Mover las pastillas y cambiarles el color">✏ Acomodar pastillas</button>
         @* 2026-11-10: Ventas MeLi, ME1, Faltantes y Preguntas como las ve el depósito (abren su ventana al costado). *@
+        @* 19/11/2026: 💬 WhatsApp Fijo Transradio como pastilla (arriba de todo por defecto). *@
+        <WaFijoPastilla />
         <DepoPastillas Oficina="true" />
         <OficinaPastillas ConDeposito="true" />
         @* 2026-11-10: arranca cerrado (pedido del dueño); se abre tocando la barrita. *@
@@ -2020,6 +2022,7 @@ else
     // ───────── Pastillas de la derecha: orden y color (2026-11-10) ─────────
     private static readonly (string Clave, string Sel, string Nombre)[] PastillasTodas =
     {
+        ("o-wa", ".op-big.wa", "💬 WhatsApp Fijo"),
         ("d-me1", ".dp-big.me1", "🚚 ME1"),
         ("d-ven", ".dp-big.ven", "🏷️ Ventas MeLi y preguntas"),
         ("d-fal", ".dp-big.fal", "📦 Faltantes"),
@@ -2036,7 +2039,10 @@ else
     {
         var guardado = MenuSvc.Actual.Pastillas ?? new List<string>();
         var res = guardado.Where(k => PastillasTodas.Any(p => p.Clave == k)).Distinct().ToList();
-        foreach (var p in PastillasTodas) if (!res.Contains(p.Clave)) res.Add(p.Clave);
+        // 19/11/2026: una pastilla nueva entra en su lugar por defecto (WhatsApp Fijo arriba de todo),
+        // no al final, aunque la persona ya haya acomodado las suyas.
+        for (var i = 0; i < PastillasTodas.Length; i++)
+            if (!res.Contains(PastillasTodas[i].Clave)) res.Insert(Math.Min(i, res.Count), PastillasTodas[i].Clave);
         return res;
     }
     private static string PastillaNombre(string k) => PastillasTodas.FirstOrDefault(p => p.Clave == k).Nombre ?? k;

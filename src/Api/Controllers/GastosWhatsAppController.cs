@@ -112,6 +112,18 @@ public class GastosWhatsAppController : ControllerBase
         return Ok();
     }
 
+    /// <summary>19/11/2026: "Ignorar" de un toque, sin motivo (reemplaza a Rechazar en la pantalla).</summary>
+    [HttpPost("{id:int}/ignorar")]
+    public async Task<IActionResult> Ignorar(int id)
+    {
+        var g = await _db.GastosWhatsApp.FirstOrDefaultAsync(x => x.Id == id);
+        if (g is null) return NotFound();
+        if (g.Estado == "APLICADO") return BadRequest(new { message = "Ya está aplicado a un pago: anulá el pago primero" });
+        g.Estado = "IGNORADO"; g.ResueltoPor = Quien(); g.ResueltoAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok();
+    }
+
     /// <summary>Vuelve a pendiente (deshacer un rechazo, o un aplicado si el pago se anuló).</summary>
     [HttpPost("{id:int}/reabrir")]
     public async Task<IActionResult> Reabrir(int id)

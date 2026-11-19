@@ -7,7 +7,8 @@
 
 @* 18/11/2026 — Gastos por WhatsApp. Se escribe "#gasto lo que sea" al fijo Transradio (con o sin foto del
    ticket). El sistema NO contesta nada (Meta cobra las respuestas). Acá se ven todos: pendientes, aplicados
-   (con tilde, atados al pago) y rechazados; se les deja comentarios. "Cargar" abre Nuevo pago con el mensaje.
+   (con tilde, atados al pago) e ignorados (19/11: "Ignorar" de un toque reemplaza a "Rechazar"; los
+   RECHAZADO viejos se muestran como ignorados); se les deja comentarios. "Cargar" abre Nuevo pago con el mensaje.
    Maqueta aprobada: scratchpad/Gasto_whatsapp_PROPUESTA.html *@
 
 <style>
@@ -67,13 +68,13 @@
             @foreach (var g in Filtrados)
             {
                 <div class="gw-row">
-                    <div class="gw-est" title="@TituloEstado(g)">@(g.Estado == "APLICADO" ? "✅" : g.Estado == "RECHAZADO" ? "✖" : "🕓")</div>
+                    <div class="gw-est" title="@TituloEstado(g)">@(g.Estado == "APLICADO" ? "✅" : EsIgnorado(g) ? "🙈" : "🕓")</div>
                     <div>
-                        <div class="gw-txt" style="@(g.Estado == "RECHAZADO" ? "color:#9ca3af; text-decoration:line-through;" : "")">@g.Texto</div>
+                        <div class="gw-txt" style="@(EsIgnorado(g) ? "color:#9ca3af;" : "")">@g.Texto</div>
                         <div class="gw-meta">
                             @(g.Quien ?? g.Numero) · @Cuando(g.CreatedAt)@(g.Medio is null ? "" : " · " + MedioLindo(g.Medio))
                             @if (g.Estado == "APLICADO") { <span> · pago <b>@g.PagoNumero</b> · @g.ResueltoPor @(g.ResueltoAt is DateTime ra ? Cuando(ra) : "")</span> }
-                            @if (g.Estado == "RECHAZADO") { <span> · rechazado por @g.ResueltoPor@(string.IsNullOrEmpty(g.MotivoRechazo) ? "" : ": " + g.MotivoRechazo)</span> }
+                            @if (EsIgnorado(g)) { <span> · ignorado por @g.ResueltoPor@(string.IsNullOrEmpty(g.MotivoRechazo) ? "" : ": " + g.MotivoRechazo)</span> }
                         </div>
                         @if (!string.IsNullOrEmpty(g.MediaUrl))
                         {
@@ -98,25 +99,17 @@
                                 <button class="gw-btn" @onclick="() => comentando = null">✕</button>
                             </div>
                         }
-                        @if (rechazando == g.Id)
-                        {
-                            <div class="gw-comin">
-                                <input class="form-input" placeholder="¿Por qué? (opcional)" @bind="motivo" />
-                                <button class="gw-btn" @onclick="() => Rechazar(g)">Rechazar</button>
-                                <button class="gw-btn" @onclick="() => rechazando = null">✕</button>
-                            </div>
-                        }
                     </div>
                     <div class="gw-der">
                         <div class="gw-imp">@(g.Importe is decimal i ? P0(i) : "")</div>
                         <div class="gw-acc">
-                            <button class="gw-btn" @onclick="() => { comentando = g.Id; comTexto = string.Empty; rechazando = null; }" title="Dejar un comentario">💬</button>
+                            <button class="gw-btn" @onclick="() => { comentando = g.Id; comTexto = string.Empty; }" title="Dejar un comentario">💬</button>
                             @if (g.Estado == "PENDIENTE")
                             {
-                                <button class="gw-btn" @onclick="() => { rechazando = g.Id; motivo = string.Empty; comentando = null; }">Rechazar</button>
+                                <button class="gw-btn" @onclick="() => Ignorar(g)" title="Sacarlo de la lista sin cargarlo (se puede deshacer)">Ignorar</button>
                                 <button class="gw-btn p" @onclick="() => Nav.NavigateTo(UrlCargar(g))">Cargar pago</button>
                             }
-                            else if (g.Estado == "RECHAZADO")
+                            else if (EsIgnorado(g))
                             {
                                 <button class="gw-btn" @onclick="() => Reabrir(g)" title="Volver a pendiente">↩ Deshacer</button>
                             }
@@ -137,7 +130,7 @@
                     }
                     else
                     {
-                        <span>Valen solo estos números. Los mensajes con #gasto de otros números se ignoran (quedan en el chat igual).</span>
+                        <span>Valen solo estos números. Los mensajes con #gasto de otros números no entran (quedan en el chat igual).</span>
                     }
                 </div>
                 <div class="gw-comin" style="max-width:560px;">
@@ -159,14 +152,15 @@
     private ApiClient.GastoWaNumerosDto? numeros;
     private string numerosTexto = "";
     private string filtro = "PENDIENTE";
-    private int? comentando, rechazando;
-    private string comTexto = "", motivo = "";
+    private int? comentando;
+    private string comTexto = "";
     private string? zoom;
     private bool sonido = true;
 
-    private static readonly (string, string)[] Tabs = { ("PENDIENTE", "🕓 Para cargar"), ("APLICADO", "✅ Aplicados"), ("RECHAZADO", "✖ Rechazados"), ("", "Todos") };
-    private IEnumerable<ApiClient.GastoWaDto> Filtrados => (gastos ?? new()).Where(g => filtro == "" || g.Estado == filtro);
-    private int? Cuenta(string k) => k == "" ? null : gastos?.Count(g => g.Estado == k);
+    private static readonly (string, string)[] Tabs = { ("PENDIENTE", "🕓 Para cargar"), ("APLICADO", "✅ Aplicados"), ("IGNORADO", "🙈 Ignorados"), ("", "Todos") };
+    private IEnumerable<ApiClient.GastoWaDto> Filtrados => (gastos ?? new()).Where(g => filtro == "" || (filtro == "IGNORADO" ? EsIgnorado(g) : g.Estado == filtro));
+    private int? Cuenta(string k) => k == "" ? null : gastos?.Count(g => k == "IGNORADO" ? EsIgnorado(g) : g.Estado == k);
+    private static bool EsIgnorado(ApiClient.GastoWaDto g) => g.Estado is "IGNORADO" or "RECHAZADO";
 
     protected override async Task OnInitializedAsync()
     {
@@ -206,11 +200,10 @@
         await Cargar();
     }
 
-    private async Task Rechazar(ApiClient.GastoWaDto g)
+    private async Task Ignorar(ApiClient.GastoWaDto g)
     {
-        if (!await Api.RechazarGastoWaAsync(g.Id, motivo)) { ToastService.Error("No se pudo rechazar"); return; }
-        rechazando = null;
-        ToastService.Success("Gasto rechazado (a quien lo mandó no le llega nada)");
+        if (!await Api.IgnorarGastoWaAsync(g.Id)) { ToastService.Error("No se pudo"); return; }
+        ToastService.Success("Gasto ignorado (está en la pestaña Ignorados; a quien lo mandó no le llega nada)");
         await Cargar();
     }
 
@@ -235,7 +228,7 @@
         return !n.EndsWith(".pdf") && (n.EndsWith(".jpg") || n.EndsWith(".jpeg") || n.EndsWith(".png") || n.EndsWith(".webp") || g.MediaFilename is null);
     }
     private static string MedioLindo(string m) => m switch { "EFECTIVO" => "efectivo", "TRANSFERENCIA" => "transferencia", "MERCADOPAGO" => "Mercado Pago", _ => m.ToLowerInvariant() };
-    private static string TituloEstado(ApiClient.GastoWaDto g) => g.Estado switch { "APLICADO" => "Aplicado a un pago", "RECHAZADO" => "Rechazado", _ => "Para cargar" };
+    private static string TituloEstado(ApiClient.GastoWaDto g) => g.Estado switch { "APLICADO" => "Aplicado a un pago", "IGNORADO" or "RECHAZADO" => "Ignorado", _ => "Para cargar" };
     private static string P0(decimal v) => "$" + v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"));
     private static string Cuando(DateTime utc)
     {
