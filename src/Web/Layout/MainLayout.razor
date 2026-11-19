@@ -3225,6 +3225,10 @@
             case "producto":
                 Navigation.NavigateTo($"/cafe/productos?nuevo={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");
                 break;
+            case "cliente":
+                // 19/11/2026: ⚡ Acciones → "Nuevo cliente" abre el alta de Clientes (aunque ya esté en esa pantalla).
+                Navigation.NavigateTo($"/cafe/clientes?nuevo={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}");
+                break;
         }
     }
 

@@ -422,9 +422,9 @@
     {
         ("venta", "🧾", "Nueva venta"), ("cobranza", "💰", "Nueva cobranza"), ("pago", "💸", "Nuevo pago"),
         ("alquiler", "🎪", "Nueva reserva (alquiler)"), ("compra", "🏭", "Nueva compra"), ("stock", "📦", "Cargar stock"),
-        ("producto", "🏷", "Nuevo producto"),
+        ("producto", "🏷", "Nuevo producto"), ("cliente", "👤", "Nuevo cliente"),
     };
-    private static readonly string[] AccionesFabrica = { "venta", "cobranza", "pago", "alquiler", "compra", "stock" };
+    private static readonly string[] AccionesFabrica = { "venta", "cobranza", "pago", "alquiler", "compra", "stock", "cliente" };
     private bool accAbierto, editAcc;
     private List<string> borradorAcc = new();
     private static (string Icono, string Texto)? Accion(string k)
