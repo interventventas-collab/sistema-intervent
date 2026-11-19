@@ -49,4 +49,18 @@ public record PanoramaDto(
     List<PanoramaAvisoDto> Avisos,
     // Primer día del primer mes con datos cargados. Antes de eso la pantalla no deja ir.
     DateTime? PrimerMesConDatos,
-    DateTime GeneradoAt);
+    DateTime GeneradoAt,
+    PanoramaAlquilerDto? Alquiler = null,
+    PanoramaLogisticaDto? Logistica = null);
+
+// 2026-11-19: detalle de las tarjetas Intereventos y Logística.
+public record PanoramaParDto(string Nombre, int Cantidad);
+
+public record PanoramaLogisticaDto(int Propias, List<PanoramaParDto> PorTipo, List<PanoramaParDto> PorRepartidor,
+    int SinRepartidor, List<PanoramaParDto> NoNuestras);
+
+public record PanoramaAlquilerDto(decimal Facturado, int EventosFacturados,
+    decimal Reservado, int EventosReservados, decimal Cobrado, decimal FaltaCobrar);
+
+public record AlqMesResumenDto(int Anio, int Mes, PanoramaAlquilerDto Detalle);
+public record AlqResumenMesesDto(AlqMesResumenDto MesActual, AlqMesResumenDto MesSiguiente);

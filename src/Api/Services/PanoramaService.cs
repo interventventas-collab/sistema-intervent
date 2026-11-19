@@ -1,3 +1,4 @@
+using System.Globalization;
 using Api.Data;
 using Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -171,7 +172,26 @@ public class PanoramaService
         // Primer día del primer mes que tiene algún dato cargado. Antes de eso no hay nada
         // en este sistema (está en Contadora), así que la pantalla no deja ir más atrás.
         DateTime? PrimerMesConDatos,
-        DateTime GeneradoAt);
+        DateTime GeneradoAt,
+        // 2026-11-19: detalle de las tarjetas de Intereventos y Logística.
+        AlquilerDetalleDto? Alquiler = null,
+        LogisticaDetalleDto? Logistica = null);
+
+    /// <summary>2026-11-19: un renglón "nombre · cantidad" (tipo de entrega, repartidor, etc.).</summary>
+    public record ParDto(string Nombre, int Cantidad);
+
+    /// <summary>2026-11-19: entregas que hizo la empresa con gente propia en el período.
+    /// Propias = las que tienen un repartidor nuestro anotado. SinRepartidor = Flex/me1 que MeLi
+    /// dio por entregados pero nadie los marcó en el mapa ni en el celu (no se sabe quién fue).
+    /// NoNuestras = de referencia: correo/colecta, Full y la logística tercerizada.</summary>
+    public record LogisticaDetalleDto(int Propias, List<ParDto> PorTipo, List<ParDto> PorRepartidor,
+        int SinRepartidor, List<ParDto> NoNuestras);
+
+    /// <summary>2026-11-19: alquileres del período. Facturado = eventos con entrega dentro del período
+    /// (hasta hoy). Reservado = lo que ya está reservado de mañana a fin de mes (solo en el mes en
+    /// curso). Cobrado y FaltaCobrar suman los dos grupos.</summary>
+    public record AlquilerDetalleDto(decimal Facturado, int EventosFacturados,
+        decimal Reservado, int EventosReservados, decimal Cobrado, decimal FaltaCobrar);
 
     // ════════════════════════════════════════════════════════════════════════
     // Punto de entrada: todo en una sola llamada
@@ -193,6 +213,8 @@ public class PanoramaService
         var rankings = await RankingsAsync(r, costoMeli, ct);
         var avisos = await AvisosAsync(r, costoMeli, ct);
         var primerMes = await PrimerMesConDatosAsync(ct);
+        var lgDetalle = await LogisticaDetalleAsync(r.Desde, r.Hasta, ct);
+        var alqDet = await AlquilerDetalleAsync(r.Desde, r.Hasta, FinDeMesSiEnCurso(r), ct);
 
         return new PanoramaDto(
             (periodo ?? "mes").ToLowerInvariant(), r.Etiqueta, r.Comparacion, r.Desde, r.Hasta,
@@ -204,7 +226,7 @@ public class PanoramaService
             totalOps, varTotal,
             Math.Round(kg, 2), kgVar,
             serie, rankings, avisos, primerMes,
-            DateTime.UtcNow);
+            DateTime.UtcNow, alqDet, lgDetalle);
     }
 
     /// <summary>El mes más viejo que tiene algo cargado en este sistema, mirando las tres
@@ -464,18 +486,202 @@ public class PanoramaService
     /// La plata queda en 0 a propósito — todavía no existe dónde guardarla.</summary>
     private async Task<CifrasPata> LogisticaCifrasAsync(DateTime d, DateTime h, CancellationToken ct)
     {
-        var ventasRepartidas = await VentasCafeBase(d, h)
-            .CountAsync(v => v.EntregaPor != null && v.EntregaPor != "", ct);
+        // 2026-11-19: antes contaba solo ventas de café con repartidor y alquileres (daba 22 en un
+        // mes con cientos de Flex). Ahora sale del mismo detalle que muestra la tarjeta.
+        var det = await LogisticaDetalleAsync(d, h, ct);
+        return new CifrasPata(0m, null, det.Propias);
+    }
 
-        var entregasAlq = await _db.AlqReservas.AsNoTracking()
-            .CountAsync(x => x.Estado != "cancelado"
-                             && x.EntregadoAt != null && x.EntregadoAt >= d && x.EntregadoAt < h, ct);
+    // ── Logística: quién entregó qué ───────────────────────────────────────
+    /// <summary>Una entrega hecha (o no) por la empresa. Clave evita contar dos veces lo mismo
+    /// cuando aparece en el mapa Y en la venta/alquiler/envío.</summary>
+    private record EventoLog(string Clave, string Tipo, string? Repartidor, DateTime AtUtc, bool Nuestra);
 
-        var retirosAlq = await _db.AlqReservas.AsNoTracking()
-            .CountAsync(x => x.Estado != "cancelado"
-                             && x.RetiradoAt != null && x.RetiradoAt >= d && x.RetiradoAt < h, ct);
+    private static readonly string[] OrdenTipos = { "Flex", "me1", "Frikaf", "Alquileres", "Visitas", "Otras paradas" };
 
-        return new CifrasPata(0m, null, ventasRepartidas + entregasAlq + retirosAlq);
+    private static string TipoDeOrigen(string origin, string? logisticType = null) => origin switch
+    {
+        "flex" => "Flex",
+        "me1" => "me1",
+        "venta_cafe" => "Frikaf",
+        "alquiler" => "Alquileres",
+        "visita" => "Visitas",
+        _ => "Otras paradas"
+    };
+
+    private static string NombreLindo(string n)
+    {
+        n = (n ?? "").Trim();
+        if (n.Length == 0) return "(sin nombre)";
+        return CultureInfo.GetCultureInfo("es-AR").TextInfo.ToTitleCase(n.ToLowerInvariant());
+    }
+
+    private static bool EsTercerizado(string? nombre) =>
+        nombre != null && nombre.Contains("TERCERIZ", StringComparison.OrdinalIgnoreCase);
+
+    private readonly Dictionary<(DateTime, DateTime), List<EventoLog>> _eventosLogCache = new();
+
+    /// <summary>Todas las entregas del rango [d, h) (fechas argentinas). Las fechas guardadas están
+    /// en UTC, por eso se corre 3 horas. Orden de las fuentes = prioridad al deduplicar: primero el
+    /// mapa de reparto (sabe el chofer), después lo marcado desde el celu en ventas, alquileres y
+    /// envíos MeLi, y al final los Flex/me1 que MeLi dio por entregados sin nadie anotado.</summary>
+    private async Task<List<EventoLog>> EventosLogisticaAsync(DateTime d, DateTime h, CancellationToken ct)
+    {
+        if (_eventosLogCache.TryGetValue((d, h), out var cache)) return cache;
+        var dU = d.AddHours(3);
+        var hU = h.AddHours(3);
+        var ev = new List<EventoLog>();
+
+        var repNombres = await _db.CafeRepartidores.AsNoTracking()
+            .Select(x => new { x.Id, x.Nombre }).ToDictionaryAsync(x => x.Id, x => x.Nombre, ct);
+        var drivers = await _db.MapeoDrivers.AsNoTracking()
+            .Select(x => new { x.Id, x.Nombre, x.CafeRepartidorId }).ToListAsync(ct);
+        var driverNombre = drivers.ToDictionary(x => x.Id, x =>
+            x.CafeRepartidorId != null && repNombres.TryGetValue(x.CafeRepartidorId.Value, out var rn) ? rn : x.Nombre);
+        string? Rep(int? id) => id != null && repNombres.TryGetValue(id.Value, out var n) ? n : null;
+
+        // 1) Paradas del mapa con chofer (el día de reparto puede ser anterior a la entrega).
+        var stops = await _db.MapeoStops.AsNoTracking()
+            .Where(s => s.AssignedDriverId != null && s.FechaReparto >= d.AddDays(-10) && s.FechaReparto < h)
+            .ToListAsync(ct);
+        if (stops.Count > 0)
+        {
+            var entregas = await new MapeoEntregasService(_db).EntregasAsync(stops);
+            foreach (var s in stops)
+            {
+                if (!entregas.TryGetValue(s.Id, out var at) || at is null || at < dU || at >= hU) continue;
+                var nombre = driverNombre.TryGetValue(s.AssignedDriverId!.Value, out var dn) ? dn : null;
+                var terc = EsTercerizado(nombre);
+                var clave = s.OriginRefId != null ? s.Origin + ":" + s.OriginRefId : "stop:" + s.Id;
+                ev.Add(new EventoLog(clave, terc ? "Logística tercerizada" : TipoDeOrigen(s.Origin),
+                    terc ? null : nombre, at.Value, !terc));
+            }
+        }
+
+        // 2) Envíos MeLi marcados "Entregué" desde el celu.
+        var shipsRep = await _db.MeliShipments.AsNoTracking()
+            .Where(m => m.EntregadoPorRepartidorId != null && m.EntregadoPorRepartidorAt >= dU && m.EntregadoPorRepartidorAt < hU)
+            .Select(m => new { m.MeliShipmentId, m.LogisticType, m.EntregadoPorRepartidorId, At = m.EntregadoPorRepartidorAt!.Value })
+            .ToListAsync(ct);
+        foreach (var m in shipsRep)
+        {
+            var origin = m.LogisticType == "self_service" ? "flex" : "me1";
+            ev.Add(new EventoLog(origin + ":" + m.MeliShipmentId, TipoDeOrigen(origin),
+                Rep(m.EntregadoPorRepartidorId), m.At, true));
+        }
+
+        // 3) Ventas de café entregadas por un repartidor.
+        var ventas = await _db.CafeVentas.AsNoTracking()
+            .Where(v => v.Estado != "anulado" && v.EntregadoPorRepartidorId != null && v.EntregadoAt >= dU && v.EntregadoAt < hU)
+            .Select(v => new { v.Id, v.EntregadoPorRepartidorId, At = v.EntregadoAt!.Value })
+            .ToListAsync(ct);
+        foreach (var v in ventas)
+            ev.Add(new EventoLog("venta_cafe:" + v.Id, "Frikaf", Rep(v.EntregadoPorRepartidorId), v.At, true));
+
+        // 4) Alquileres: la entrega y el retiro son dos viajes.
+        var alqE = await _db.AlqReservas.AsNoTracking()
+            .Where(x => x.Estado != "cancelado" && x.EntregadoPorRepartidorId != null && x.EntregadoAt >= dU && x.EntregadoAt < hU)
+            .Select(x => new { x.Id, x.EntregadoPorRepartidorId, At = x.EntregadoAt!.Value })
+            .ToListAsync(ct);
+        foreach (var x in alqE)
+            ev.Add(new EventoLog("alquiler:" + x.Id, "Alquileres", Rep(x.EntregadoPorRepartidorId), x.At, true));
+        var alqR = await _db.AlqReservas.AsNoTracking()
+            .Where(x => x.Estado != "cancelado" && x.RetiradoPorRepartidorId != null && x.RetiradoAt >= dU && x.RetiradoAt < hU)
+            .Select(x => new { x.Id, x.RetiradoPorRepartidorId, At = x.RetiradoAt!.Value })
+            .ToListAsync(ct);
+        foreach (var x in alqR)
+            ev.Add(new EventoLog("alquiler_retiro:" + x.Id, "Alquileres", Rep(x.RetiradoPorRepartidorId), x.At, true));
+
+        // 5) Flex y me1 que MeLi dio por entregados y nadie anotó (no se sabe quién fue).
+        var shipsMeli = await _db.MeliShipments.AsNoTracking()
+            .Where(m => m.Status == "delivered" && m.DateDelivered >= dU && m.DateDelivered < hU
+                        && (m.LogisticType == "self_service" || m.Mode == "me1" || m.LogisticType == "default" || m.LogisticType == "custom"))
+            .Select(m => new { m.MeliShipmentId, m.LogisticType, At = m.DateDelivered!.Value })
+            .ToListAsync(ct);
+        foreach (var m in shipsMeli)
+        {
+            var origin = m.LogisticType == "self_service" ? "flex" : "me1";
+            ev.Add(new EventoLog(origin + ":" + m.MeliShipmentId, TipoDeOrigen(origin), null, m.At, true));
+        }
+
+        // 6) De referencia, lo que NO llevamos nosotros: correo/colecta y Full (por fecha de venta).
+        var otras = await _db.MeliOrders.AsNoTracking()
+            .Where(o => EstadosVentaMeli.Contains(o.Status) && o.DateCreated >= d && o.DateCreated < h
+                        && (o.LogisticType == "fulfillment" || o.LogisticType == "cross_docking"
+                            || o.LogisticType == "drop_off" || o.LogisticType == "xd_drop_off"))
+            .Select(o => new { o.MeliOrderId, o.PackId, o.LogisticType, o.DateCreated })
+            .ToListAsync(ct);
+        foreach (var o in otras)
+        {
+            var tipo = o.LogisticType == "fulfillment" ? "Full" : "Correo / colecta";
+            // DateCreated de MeliOrders ya está en hora argentina (igual que el resto del Panorama).
+            ev.Add(new EventoLog("venta_meli:" + (o.PackId?.ToString() ?? o.MeliOrderId.ToString()),
+                tipo, null, o.DateCreated.AddHours(3), false));
+        }
+
+        _eventosLogCache[(d, h)] = ev;
+        return ev;
+    }
+
+    private static LogisticaDetalleDto ResumirLogistica(IEnumerable<EventoLog> eventos, DateTime d, DateTime h)
+    {
+        var dU = d.AddHours(3);
+        var hU = h.AddHours(3);
+        var vistos = new HashSet<string>();
+        var propias = new List<EventoLog>();
+        var sinRep = 0;
+        var noNuestras = new Dictionary<string, int>();
+        foreach (var e in eventos)
+        {
+            if (e.AtUtc < dU || e.AtUtc >= hU) continue;
+            if (!vistos.Add(e.Clave)) continue;
+            if (!e.Nuestra) { noNuestras[e.Tipo] = noNuestras.GetValueOrDefault(e.Tipo) + 1; continue; }
+            if (e.Repartidor is null) { sinRep++; continue; }
+            propias.Add(e);
+        }
+
+        var porTipo = propias.GroupBy(e => e.Tipo)
+            .Select(g => new ParDto(g.Key, g.Count()))
+            .OrderBy(p => Array.IndexOf(OrdenTipos, p.Nombre) is var i && i >= 0 ? i : 99)
+            .ToList();
+        var porRep = propias.GroupBy(e => NombreLindo(e.Repartidor!))
+            .Select(g => new ParDto(g.Key, g.Count()))
+            .OrderByDescending(p => p.Cantidad).ToList();
+        var nn = noNuestras.Select(kv => new ParDto(kv.Key, kv.Value))
+            .OrderByDescending(p => p.Cantidad).ToList();
+        return new LogisticaDetalleDto(propias.Count, porTipo, porRep, sinRep, nn);
+    }
+
+    private async Task<LogisticaDetalleDto> LogisticaDetalleAsync(DateTime d, DateTime h, CancellationToken ct) =>
+        ResumirLogistica(await EventosLogisticaAsync(d, h, ct), d, h);
+
+    // ── Intereventos: facturado + reservado ────────────────────────────────
+    /// <summary>Si el período termina hoy y es parte del mes en curso, devuelve el 1° del mes que
+    /// viene (hasta ahí se mira lo reservado). Si no, null: en un mes cerrado no hay "reservado".</summary>
+    private static DateTime? FinDeMesSiEnCurso(Rango r)
+    {
+        var hoy = AhoraAr().Date;
+        if (r.Hasta != hoy.AddDays(1)) return null;
+        var fin = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(1);
+        return fin > r.Hasta ? fin : null;
+    }
+
+    public async Task<AlquilerDetalleDto> AlquilerDetalleAsync(DateTime d, DateTime h, DateTime? reservadoHasta,
+        CancellationToken ct)
+    {
+        var hasta = reservadoHasta ?? h;
+        var rows = await _db.AlqReservas.AsNoTracking()
+            .Where(x => x.Estado != "cancelado" && x.FechaEntrega >= d && x.FechaEntrega < hasta)
+            .Select(x => new { x.FechaEntrega, x.MontoTotal, x.Sena, x.MontoCobrado })
+            .ToListAsync(ct);
+        var fact = rows.Where(x => x.FechaEntrega < h).ToList();
+        var res = rows.Where(x => x.FechaEntrega >= h).ToList();
+        var cobrado = rows.Sum(x => x.Sena + x.MontoCobrado);
+        var falta = rows.Sum(x => Math.Max(0m, x.MontoTotal - x.Sena - x.MontoCobrado));
+        return new AlquilerDetalleDto(
+            Math.Round(fact.Sum(x => x.MontoTotal), 2), fact.Count,
+            Math.Round(res.Sum(x => x.MontoTotal), 2), res.Count,
+            Math.Round(cobrado, 2), Math.Round(falta, 2));
     }
 
     // ── Kilos de café ──────────────────────────────────────────────────────
@@ -548,6 +754,9 @@ public class PanoramaService
             .Select(x => new { x.FechaEntrega, x.MontoTotal, x.EntregadoAt, x.RetiradoAt })
             .ToListAsync(ct);
 
+        // 2026-11-19: entregas propias de cada mes, con el mismo criterio que la tarjeta Logística.
+        var eventosLog = await EventosLogisticaAsync(iniVentana, finVentana, ct);
+
         var puntos = new List<PuntoSerieDto>(meses);
         for (int k = 0; k < meses; k++)
         {
@@ -587,7 +796,7 @@ public class PanoramaService
                 Math.Round(fIv, 2), Math.Round(delMes.Sum(x => x.MontoTotal), 2),
                 Math.Round(fFk, 2), 0m,
                 Math.Round(mIv, 2), Math.Round(mFk, 2),
-                opsIv, delMes.Count, opsFk, repartidas + movAlq,
+                opsIv, delMes.Count, opsFk, ResumirLogistica(eventosLog, ini, fin).Propias,
                 Math.Round(kg, 2)));
         }
 

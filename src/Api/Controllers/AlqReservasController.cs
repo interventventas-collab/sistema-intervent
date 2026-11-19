@@ -1847,4 +1847,22 @@ public class AlqReservasController : ControllerBase
         }
         return res;
     }
+
+    /// <summary>2026-11-19: renglón de arriba de Reservas: el mes en curso (facturado hasta hoy +
+    /// reservado hasta fin de mes) y el mes que viene (todo reservado). Mismo cálculo que la
+    /// tarjeta Intereventos del Panorama.</summary>
+    [HttpGet("resumen-meses")]
+    public async Task<IActionResult> ResumenMeses([FromServices] Api.Services.PanoramaService panorama, CancellationToken ct)
+    {
+        var hoy = Api.Services.PanoramaService.AhoraAr().Date;
+        var ini = new DateTime(hoy.Year, hoy.Month, 1);
+        var sig = ini.AddMonths(1);
+        var actual = await panorama.AlquilerDetalleAsync(ini, hoy.AddDays(1), sig, ct);
+        var proximo = await panorama.AlquilerDetalleAsync(sig, sig.AddMonths(1), null, ct);
+        return Ok(new
+        {
+            mesActual = new { anio = ini.Year, mes = ini.Month, detalle = actual },
+            mesSiguiente = new { anio = sig.Year, mes = sig.Month, detalle = proximo }
+        });
+    }
 }

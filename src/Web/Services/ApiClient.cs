@@ -10916,6 +10916,10 @@ public partial class ApiClient
         return await GetAsync<PanoramaDto>(url);
     }
 
+    // 2026-11-19: renglón de arriba de Reservas de Alquileres (mes en curso + el que viene).
+    public async Task<AlqResumenMesesDto?> GetAlqResumenMesesAsync()
+        => await GetAsync<AlqResumenMesesDto>("/api/alquileres/reservas/resumen-meses");
+
     public async Task<VisitasPaginasDto?> GetVisitasPaginasAsync()
         => await GetAsync<VisitasPaginasDto>("/api/panorama/visitas");
 

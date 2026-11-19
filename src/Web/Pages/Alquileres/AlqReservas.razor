@@ -30,6 +30,10 @@
     .alq-fecha { width:auto; max-width:150px; font-size:0.85rem; padding:4px 8px; }
     .alq-atajo { font-size:0.78rem; color:#2563eb; padding:4px 7px; border-radius:5px; cursor:pointer; white-space:nowrap; }
     .alq-atajo:hover { background:#f3f4f6; } .alq-atajo.on { background:#eff6ff; font-weight:600; }
+    .alq-plata { text-align:left; align-self:stretch; width:100%; box-sizing:border-box; padding:10px 1.25rem 8px; font-size:0.85rem; color:#4b5563; line-height:1.7; border-top:0.5px solid #f0f0f0; }
+    .alq-plata b { color:#111827; font-weight:600; }
+    .alq-plata-s { color:#9ca3af; margin:0 4px; }
+    .alq-plata-g { color:#9ca3af; font-size:0.78rem; }
     .alq-sec { padding:12px 1.25rem 6px; font-size:0.7rem; letter-spacing:.06em; color:#6b7280; font-weight:600; border-top:0.5px solid #f0f0f0; }
     .alq-vacio { padding:0 1.25rem 14px; color:#9ca3af; font-size:0.85rem; }
     .alq-strip { display:flex; padding:0 1.25rem 14px; overflow-x:auto; }
@@ -129,6 +133,32 @@
             <span style="font-size: 0.78rem; color: #9ca3af;">Escribí parte del nombre, de la dirección o del teléfono. Podés poner varias palabras.</span>
         }
     </div>
+    @* 2026-11-19: cómo vamos en plata — el mes en curso (facturado + reservado) y el que viene. *@
+    @if (resumenMeses is not null)
+    {
+        var ma = resumenMeses.MesActual; var a = ma.Detalle;
+        var ms = resumenMeses.MesSiguiente; var b = ms.Detalle;
+        <div class="alq-plata" style="text-align:left;">
+            <div><b>@NombreMesAlq(ma.Mes)</b>
+                <span class="alq-plata-s">·</span> facturado <b>$@FormatMoney(a.Facturado)</b>
+                <span class="alq-plata-s">·</span> reservado lo que queda <b>$@FormatMoney(a.Reservado)</b>
+                <span class="alq-plata-s">·</span> total del mes <b>$@FormatMoney(a.Facturado + a.Reservado)</b>
+                <span class="alq-plata-g">(@(a.EventosFacturados + a.EventosReservados) eventos)</span>
+                @if (a.FaltaCobrar > 0)
+                {
+                    <span class="alq-plata-s">·</span> <span class="alq-rojo">falta cobrar $@FormatMoney(a.FaltaCobrar)</span>
+                }
+            </div>
+            <div><b>@NombreMesAlq(ms.Mes)</b>
+                <span class="alq-plata-s">·</span> reservado <b>$@FormatMoney(b.Reservado + b.Facturado)</b>
+                <span class="alq-plata-g">(@(b.EventosFacturados + b.EventosReservados) eventos)</span>
+                @if (b.Cobrado > 0)
+                {
+                    <span class="alq-plata-s">·</span> <span>ya cobrado $@FormatMoney(b.Cobrado)</span>
+                }
+            </div>
+        </div>
+    }
     @* Resumen de cantidades: qué hay que armar cada día / qué tiene que volver. *@
     @if (!isLoading && !BuscandoAlgo && reservas is not null)
     {
@@ -2558,6 +2588,16 @@
         try { reservas = await Api.GetAlqReservasAsync(null) ?? new(); } // traemos todas; el filtro por estado se aplica en ReservasMostradas()
         catch { ToastService.Error("Error al cargar reservas"); reservas = new(); }
         isLoading = false;
+        // 2026-11-19: el renglón de plata va aparte: si falla, la pantalla sigue andando sin él.
+        try { resumenMeses = await Api.GetAlqResumenMesesAsync(); } catch { resumenMeses = null; }
+    }
+
+    private AlqResumenMesesDto? resumenMeses;
+
+    private static string NombreMesAlq(int m)
+    {
+        var n = System.Globalization.CultureInfo.GetCultureInfo("es-AR").DateTimeFormat.GetMonthName(m);
+        return char.ToUpper(n[0]) + n[1..];
     }
 
     private async Task LoadCatalogos()
