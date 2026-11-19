@@ -131,9 +131,26 @@
                         {
                             <div class="pan-line">@((MarkupString)ListaPares(lg.PorTipo))</div>
                         }
-                        @if (lg.PorRepartidor.Count > 0)
+                        @if (lg.Combustible is { } cb)
                         {
-                            <div class="pan-line">@((MarkupString)ListaPares(lg.PorRepartidor))</div>
+                            @* 2026-11-19: Shell Flota — lo gastado en el período y cuánto sale cada entrega. *@
+                            <div class="pan-line pan-shell">
+                                <span>combustible <b>@Plata(cb.Gasto)</b></span>
+                                @if (cb.Cargas > 0)
+                                {
+                                    <span class="pan-sep">·</span><span>@cb.Litros.ToString("N0", Ar) l · @cb.Cargas cargas</span>
+                                }
+                            </div>
+                            @if (cb.CostoPorEntrega is not null)
+                            {
+                                <div class="pan-line" title="Lo cargado en Shell en el período dividido por las entregas hechas por nosotros.">
+                                    <b>@Plata(cb.CostoPorEntrega.Value)</b> de nafta por entrega
+                                </div>
+                            }
+                            @if (cb.Saldo is not null)
+                            {
+                                <div class="pan-line pan-muted">saldo Shell @Plata(cb.Saldo.Value)@(cb.SaldoAt is { } sa ? $" · leído {sa.AddHours(-3):dd/MM HH:mm}" : "")</div>
+                            }
                         }
                         @if (lg.SinRepartidor > 0)
                         {
@@ -249,6 +266,70 @@
                 }
             </span>
         </div>
+
+        @* ─────────── 2026-11-19: quién hizo las entregas (Logística) ─────────── *@
+        @if (data.Logistica is { } lgp && lgp.PorRepartidor.Count > 0)
+        {
+            var maxRep = lgp.PorRepartidor.Max(x => x.Total);
+            <div class="pan-panel">
+                <div class="pan-panel-h">
+                    <h3>Quién hizo las entregas <span class="pan-muted" style="font-weight:400">· @data.Etiqueta</span></h3>
+                    <div class="pan-lg-ley">
+                        @foreach (var t in lgp.PorTipo)
+                        {
+                            <span><i style="background:@ColorTipo(t.Nombre)"></i>@t.Nombre @Miles(t.Cantidad)</span>
+                        }
+                    </div>
+                </div>
+                @foreach (var rp in lgp.PorRepartidor)
+                {
+                    var abierto = repAbierto == rp.Clave;
+                    <div class="pan-lg-fila @(abierto ? "on" : "")" role="button" tabindex="0"
+                         title="Tocá para ver cada entrega" @onclick="() => AbrirRepartidor(rp.Clave)">
+                        <span class="pan-lg-nom">@(abierto ? "▾" : "▸") @rp.Nombre
+                            @if (!rp.Activo) { <span class="pan-muted"> (ya no está)</span> }
+                        </span>
+                        <span class="pan-lg-barra">
+                            @foreach (var t in rp.PorTipo)
+                            {
+                                <i style="width:@Inv((double)t.Cantidad / maxRep * 100)%;background:@ColorTipo(t.Nombre)"
+                                   title="@t.Nombre: @t.Cantidad"></i>
+                            }
+                        </span>
+                        <b class="pan-lg-tot">@Miles(rp.Total)</b>
+                    </div>
+                    @if (abierto)
+                    {
+                        <div class="pan-lg-lista">
+                            @if (entregasRep is null)
+                            {
+                                <div class="pan-muted">Buscando sus entregas…</div>
+                            }
+                            else if (entregasRep.Count == 0)
+                            {
+                                <div class="pan-muted">No se encontraron.</div>
+                            }
+                            else
+                            {
+                                @foreach (var e in entregasRep)
+                                {
+                                    <div class="pan-lg-ent">
+                                        <span class="pan-lg-f">@e.FechaAr.ToString("dd/MM HH:mm")</span>
+                                        <span class="pan-lg-t"><i style="background:@ColorTipo(e.Tipo)"></i>@e.Tipo</span>
+                                        <span class="pan-lg-x">@e.Texto</span>
+                                        <span class="pan-muted pan-lg-src">@e.Fuente</span>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    }
+                }
+                @if (lgp.SinRepartidor > 0)
+                {
+                    <div class="pan-muted pan-lg-pie">+ @Miles(lgp.SinRepartidor) Flex/me1 que MercadoLibre dio por entregados sin que nadie los marque: no se sabe quién los llevó.</div>
+                }
+            </div>
+        }
 
         @* ─────────── Gráfico de barras: los últimos 12 meses ─────────── *@
         <div class="pan-panel">
@@ -590,6 +671,24 @@
                   color:#2563eb; text-decoration:underline; cursor:pointer; }
     .pan-big-u { font-size:0.8rem; font-weight:500; letter-spacing:0; color:var(--text-secondary); }
     .pan-line b { color:var(--text-primary); font-weight:600; }
+    .pan-lg-ley { display:flex; flex-wrap:wrap; gap:0.3rem 0.9rem; font-size:0.75rem; color:var(--text-secondary); }
+    .pan-lg-ley i, .pan-lg-t i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+    .pan-lg-fila { display:grid; grid-template-columns:190px minmax(0,1fr) 60px; align-items:center; gap:0.8rem;
+                   padding:5px 6px; border-radius:6px; cursor:pointer; font-size:0.85rem; }
+    .pan-lg-fila:hover, .pan-lg-fila.on { background:var(--hover-bg, rgba(0,0,0,0.04)); }
+    .pan-lg-nom { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-primary); }
+    .pan-lg-barra { display:flex; height:14px; }
+    .pan-lg-barra i { display:block; height:100%; }
+    .pan-lg-barra i:first-child { border-radius:3px 0 0 3px; }
+    .pan-lg-barra i:last-child { border-radius:0 3px 3px 0; }
+    .pan-lg-tot { text-align:right; font-variant-numeric:tabular-nums; color:var(--text-primary); }
+    .pan-lg-lista { margin:2px 0 8px 22px; padding:4px 0 4px 12px; border-left:2px solid var(--border);
+                    max-height:320px; overflow-y:auto; font-size:0.78rem; }
+    .pan-lg-ent { display:grid; grid-template-columns:82px 92px minmax(0,1fr) auto; gap:0.6rem; padding:2px 0; color:var(--text-secondary); }
+    .pan-lg-f { font-variant-numeric:tabular-nums; }
+    .pan-lg-x { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-primary); }
+    .pan-lg-src { font-size:0.72rem; white-space:nowrap; }
+    .pan-lg-pie { font-size:0.75rem; margin-top:0.5rem; }
 
     .pan-nav { display:flex; align-items:center; gap:0.85rem; flex-wrap:wrap; }
     .pan-flechas { display:inline-flex; align-items:center; gap:0.2rem; }
@@ -807,6 +906,30 @@
         StateHasChanged();
     }
 
+    // 2026-11-19: Logística — lista de entregas del repartidor tocado.
+    private string? repAbierto;
+    private List<PanoramaEntregaDto>? entregasRep;
+
+    private async Task AbrirRepartidor(string clave)
+    {
+        if (repAbierto == clave) { repAbierto = null; entregasRep = null; return; }
+        repAbierto = clave;
+        entregasRep = null;
+        StateHasChanged();
+        try { entregasRep = await Api.GetPanoramaEntregasAsync(clave, periodo, mesAnclado) ?? new(); }
+        catch { entregasRep = new(); }
+    }
+
+    private static string ColorTipo(string tipo) => tipo switch
+    {
+        "Flex" => "#1d4ed8",
+        "me1" => "#60a5fa",
+        "Frikaf" => "#0d9488",
+        "Alquileres" => "#a21caf",
+        "Visitas" => "#d97706",
+        _ => "#9ca3af"
+    };
+
     // 2026-11-19
     private static DateTime AhoraAr() => DateTime.UtcNow.AddHours(-3);
 
@@ -916,6 +1039,7 @@
             else
             {
                 data = r;
+                repAbierto = null; entregasRep = null;
                 if (!r.Rankings.Any(x => x.Clave == tab) && r.Rankings.Count > 0)
                     tab = r.Rankings[0].Clave;
             }

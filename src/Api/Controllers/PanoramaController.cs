@@ -33,6 +33,15 @@ public class PanoramaController : ControllerBase
         return Ok(data);
     }
 
+    /// <summary>2026-11-19: las entregas de UN repartidor en el período (se abre al tocar su barra en
+    /// Logística). repartidor = la Clave que vino en PorRepartidor.</summary>
+    [HttpGet("entregas")]
+    public async Task<IActionResult> GetEntregas([FromQuery] string repartidor,
+                                                 [FromQuery] string? periodo = "mes",
+                                                 [FromQuery] string? mes = null,
+                                                 CancellationToken ct = default)
+        => Ok(await _svc.EntregasDeRepartidorAsync(periodo, mes, repartidor ?? "", ct));
+
     /// <summary>Visitas de las páginas web. Va aparte para que Panorama no dependa de Google.</summary>
     [HttpGet("visitas")]
     public async Task<IActionResult> GetVisitas([FromServices] VisitasPaginasService visitas,

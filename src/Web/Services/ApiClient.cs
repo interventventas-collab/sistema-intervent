@@ -10924,6 +10924,14 @@ public partial class ApiClient
     public async Task<AlqResumenMesesDto?> GetAlqResumenMesesAsync()
         => await GetAsync<AlqResumenMesesDto>("/api/alquileres/reservas/resumen-meses");
 
+    // 2026-11-19: entregas de un repartidor (al tocar su barra en Logística del Panorama).
+    public async Task<List<PanoramaEntregaDto>?> GetPanoramaEntregasAsync(string repartidor, string periodo, string? mes)
+    {
+        var url = $"/api/panorama/entregas?repartidor={Uri.EscapeDataString(repartidor)}&periodo={Uri.EscapeDataString(periodo)}";
+        if (!string.IsNullOrWhiteSpace(mes)) url += $"&mes={Uri.EscapeDataString(mes)}";
+        return await GetAsync<List<PanoramaEntregaDto>>(url);
+    }
+
     public async Task<VisitasPaginasDto?> GetVisitasPaginasAsync()
         => await GetAsync<VisitasPaginasDto>("/api/panorama/visitas");
 
