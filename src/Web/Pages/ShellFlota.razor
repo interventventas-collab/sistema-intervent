@@ -3,6 +3,8 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @implements IDisposable
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
 
 <div class="view-header">
     <h2>⛽ Shell Flota — saldo disponible</h2>
@@ -161,7 +163,14 @@
     private string screenshotUrl = "";
     private CancellationTokenSource? pollCts;
 
-    protected override async Task OnInitializedAsync() => await CargarCuenta();
+    protected override async Task OnInitializedAsync()
+    {
+        // 19/11/2026: todo lo de Shell se juntó en /combustible (solo admin). El admin va directo ahí;
+        // el resto sigue viendo esta pantalla como antes (Combustible no la pueden abrir).
+        var st = await AuthState.GetAuthenticationStateAsync();
+        if (st.User.IsInRole("admin")) { Nav.NavigateTo("/combustible", replace: true); return; }
+        await CargarCuenta();
+    }
 
     private async Task CargarCuenta()
     {
