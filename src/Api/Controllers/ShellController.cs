@@ -42,6 +42,18 @@ public class ShellController : ControllerBase
         var r = await _syncService.SincronizarAsync();
         return Ok(new SincronizarShellResultDto(r.Ok, r.Saldo, r.Error));
     }
+
+    /// <summary>18/11/2026: cargas de combustible del período (pantalla /combustible). Solo admin.</summary>
+    [HttpGet("cargas")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> Cargas([FromServices] ShellCargasService cargas, [FromQuery] DateTime? desde, [FromQuery] DateTime? hasta)
+    {
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        var h = (hasta ?? hoy).Date;
+        var d = (desde ?? h.AddDays(-29)).Date;
+        if (d > h) (d, h) = (h, d);
+        return Ok(await cargas.ConsultarAsync(d, h));
+    }
 }
 
 [ApiController]

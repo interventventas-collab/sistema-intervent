@@ -12,11 +12,13 @@ public class ShellSyncService
     private readonly ShellAccountService _accounts;
     private readonly ShellScrapingService _scraping;
     private readonly IntegrationService _integrations;
+    private readonly ShellCargasService _cargas;
     private readonly ILogger<ShellSyncService> _logger;
 
     public ShellSyncService(ShellAccountService accounts, ShellScrapingService scraping,
-        IntegrationService integrations, ILogger<ShellSyncService> logger)
+        IntegrationService integrations, ShellCargasService cargas, ILogger<ShellSyncService> logger)
     {
+        _cargas = cargas;
         _accounts = accounts;
         _scraping = scraping;
         _integrations = integrations;
@@ -64,13 +66,17 @@ public class ShellSyncService
         if (!ok) return await Fallar(dto.LastSaldo, error);
 
         ShellTestResultDto? result = null;
-        for (int i = 0; i < 90; i++) // ~135s: el mail puede tardar
+        for (int i = 0; i < 240; i++) // ~6 min: el mail puede tardar + 18/11 lee también las cargas
         {
             await Task.Delay(1500);
             var st = await _scraping.GetStatusAsync();
             if (!st.Running) { result = st.Result; break; }
         }
         if (result is null) return await Fallar(dto.LastSaldo, "El robot tardó demasiado. Probá de nuevo.");
+
+        // 18/11/2026: cargas de combustible (pantalla /combustible + campanita). Que falle no corta el saldo.
+        try { await _cargas.GuardarAsync(result.Cargas); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Shell: no pude guardar las cargas"); }
         if (!result.Ok || string.IsNullOrEmpty(result.Saldo))
             return await Fallar(dto.LastSaldo, result.Error ?? "No se pudo leer el saldo.");
 

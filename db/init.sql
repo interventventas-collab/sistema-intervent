@@ -9027,3 +9027,29 @@ GO
 IF COL_LENGTH('Cafe_ChequesBanco','GaliciaAccountId') IS NULL
     ALTER TABLE Cafe_ChequesBanco ADD GaliciaAccountId INT NULL;
 GO
+
+-- 18/11/2026: cargas de combustible de Shell Flota (las trae el robot del saldo). Pantalla /combustible.
+IF OBJECT_ID('Shell_Cargas','U') IS NULL
+BEGIN
+    CREATE TABLE Shell_Cargas (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Clave NVARCHAR(120) NOT NULL,
+        Placa NVARCHAR(20) NOT NULL DEFAULT '',
+        Vehiculo NVARCHAR(120) NULL,
+        Tarjeta NVARCHAR(30) NULL,
+        Estacion NVARCHAR(150) NULL,
+        Producto NVARCHAR(60) NULL,
+        Transaccion NVARCHAR(30) NULL,
+        Conductor NVARCHAR(100) NULL,
+        FechaHoraAr DATETIME2 NOT NULL,
+        Litros DECIMAL(18,2) NOT NULL DEFAULT 0,
+        Importe DECIMAL(18,2) NOT NULL DEFAULT 0,
+        PrecioLitro DECIMAL(18,2) NULL,
+        Odometro INT NULL,
+        DetectadaAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        Inicial BIT NOT NULL DEFAULT 0
+    );
+    CREATE UNIQUE INDEX IX_Shell_Cargas_Clave ON Shell_Cargas(Clave);
+    CREATE INDEX IX_Shell_Cargas_Fecha ON Shell_Cargas(FechaHoraAr);
+END
+GO

@@ -138,6 +138,8 @@ public static class MenuNuevoCatalogo
             new("Extracto banco", "/cafe/tesoreria/extracto-banco", "cafe-tesoreria"),
             new("Resumen tesorería", "/cafe/tesoreria/resumen", "cafe-tesoreria"),
             new("Nitro", "/vault"),
+            // 18/11/2026: cargas de Shell Flota por vehículo (las trae el robot del saldo). Solo admin.
+            new("Combustible", "/combustible"),
         }),
         // 18/11/2026: tarjeta propia de Impuestos (antes "Impuestos y VEP" estaba en Plata). Solo admin.
         new("Impuestos", "", false, new Item[]

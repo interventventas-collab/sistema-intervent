@@ -1,0 +1,163 @@
+@page "/combustible"
+@attribute [Authorize(Roles = "admin")]
+@inject ApiClient Api
+
+@* 18/11/2026 — Combustible (Shell Flota). Cada vez que el robot entra a Shell a ver el saldo se trae
+   también las cargas del "Reporte transaccional" (últimos 30 días). Acá: total del período, cada
+   vehículo con su rinde, y las cargas una abajo de la otra con ⚠ en rojo si algo no cierra
+   (km que no avanzan, dos cargas el mismo día, fuera de horario, rinde mucho peor que lo normal).
+   Solo admin. Maqueta aprobada: scratchpad/Combustible_Shell_PROPUESTA.png *@
+
+<style>
+    .cb-top { display:flex; justify-content:space-between; align-items:flex-end; gap:0.8rem; flex-wrap:wrap; }
+    .cb-sub { color:#6b7280; font-size:0.88rem; margin-top:0.15rem; }
+    .cb-per { display:flex; gap:0.35rem; flex-wrap:wrap; }
+    .cb-btn { border:1px solid #d1d5db; background:#fff; border-radius:7px; padding:0.3rem 0.7rem; font-size:0.85rem; cursor:pointer; color:#374151; }
+    .cb-btn.on { background:#111827; color:#fff; border-color:#111827; }
+    .cb-card { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:0.7rem 0.9rem; }
+    .cb-tot { font-size:0.98rem; margin-top:0.7rem; }
+    .cb-mut { color:#6b7280; }
+    .cb-red { color:#b91c1c; font-weight:600; }
+    .cb-sec { font-size:0.72rem; font-weight:700; color:#6b7280; letter-spacing:0.05em; text-transform:uppercase; margin:1.2rem 0 0.4rem; }
+    .cb-tab { width:100%; border-collapse:collapse; font-size:0.9rem; }
+    .cb-tab th { font-size:0.72rem; color:#6b7280; font-weight:500; text-align:left; padding:0.35rem 0.4rem; border-bottom:1px solid #e5e7eb; }
+    .cb-tab td { padding:0.45rem 0.4rem; border-bottom:1px solid #f0f1f3; vertical-align:top; }
+    .cb-tab tr:last-child td { border-bottom:0; }
+    .cb-tab .n { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .cb-veh { cursor:pointer; }
+    .cb-veh:hover td { background:#f9fafb; }
+    .cb-veh.sel td { background:#f3f4f6; }
+    .cb-veh b { font-weight:600; }
+    .cb-al { font-size:0.8rem; }
+    .cb-nota { font-size:0.78rem; color:#6b7280; margin-top:0.4rem; }
+    .cb-scroll { overflow-x:auto; }
+    @@media (max-width: 700px) { .cb-ocultar { display:none; } }
+</style>
+
+<div class="cb-top">
+    <div>
+        <h2 style="margin:0">⛽ Combustible</h2>
+        <div class="cb-sub">Cargas de Shell Flota · las trae el robot cada vez que entra a ver el saldo</div>
+    </div>
+    <div class="cb-per">
+        <button class="cb-btn @(periodo == "semana" ? "on" : "")" @onclick='() => Elegir("semana")'>Esta semana</button>
+        <button class="cb-btn @(periodo == "30" ? "on" : "")" @onclick='() => Elegir("30")'>Últimos 30 días</button>
+        <button class="cb-btn @(periodo == "mespasado" ? "on" : "")" @onclick='() => Elegir("mespasado")'>Mes pasado</button>
+    </div>
+</div>
+
+@if (cargando && datos == null)
+{
+    <p class="cb-mut" style="margin-top:1rem">Cargando…</p>
+}
+else if (error != null)
+{
+    <p class="cb-red" style="margin-top:1rem">@error</p>
+}
+else if (datos != null)
+{
+    <div class="cb-card cb-tot">
+        <b>@datos.Cargas carga@(datos.Cargas == 1 ? "" : "s")</b> · @datos.Litros.ToString("#,0", Ar) litros · <b>@Plata(datos.Importe)</b>
+        @if (!string.IsNullOrEmpty(datos.Saldo))
+        {
+            <span> · saldo Shell $@datos.Saldo</span>
+        }
+        <span class="cb-mut"> · @datos.Desde.ToString("dd/MM") al @datos.Hasta.ToString("dd/MM")@(datos.SaldoAt is DateTime sa ? $" · leído {sa.ToArTime():dd/MM HH:mm}" : "")</span>
+    </div>
+
+    @if (datos.Cargas == 0)
+    {
+        <p class="cb-mut" style="margin-top:1rem">No hay cargas en este período. Si el robot recién empezó a traerlas, aparecen después de la próxima lectura del saldo.</p>
+    }
+    else
+    {
+        <div class="cb-sec">Por vehículo</div>
+        <div class="cb-card cb-scroll">
+            <table class="cb-tab">
+                <tr><th>Vehículo</th><th class="n">Cargas</th><th class="n">Litros</th><th class="n">Plata</th><th class="n">Rinde</th><th class="n cb-ocultar">Último km</th></tr>
+                @foreach (var v in datos.Vehiculos)
+                {
+                    <tr class="cb-veh @(filtro == v.Placa ? "sel" : "")" @onclick="() => Filtrar(v.Placa)" title="Ver solo sus cargas">
+                        <td>
+                            <b>@v.Nombre</b> <span class="cb-mut">· @v.Placa</span>
+                            @if (v.Alarma != null) { <div class="cb-red cb-al">⚠ @v.Alarma</div> }
+                        </td>
+                        <td class="n">@v.Cargas</td>
+                        <td class="n">@v.Litros.ToString("#,0", Ar)</td>
+                        <td class="n">@Plata(v.Importe)</td>
+                        <td class="n">@(v.Rinde is decimal r ? $"{r.ToString("0.0", Ar)} km/l" : "")@if (v.Rinde == null) { <span class="cb-mut">no se puede saber</span> }</td>
+                        <td class="n cb-ocultar">@(v.UltimoKm?.ToString("#,0", Ar))</td>
+                    </tr>
+                }
+            </table>
+            <div class="cb-nota">@(filtro == null ? "Tocando un vehículo se ven solo sus cargas." : "Tocalo de nuevo para ver todas.")</div>
+        </div>
+
+        <div class="cb-sec">@(filtro == null ? "Cargas" : $"Cargas de {datos.Vehiculos.FirstOrDefault(v => v.Placa == filtro)?.Nombre} · {filtro}")</div>
+        <div class="cb-card cb-scroll">
+            <table class="cb-tab">
+                <tr><th>Cuándo</th><th>Vehículo · estación</th><th class="n">Litros</th><th class="n">Plata</th><th class="n">Km (anduvo)</th><th class="n">Rinde</th></tr>
+                @foreach (var c in datos.Lista.Where(c => filtro == null || c.Placa == filtro))
+                {
+                    <tr>
+                        <td style="white-space:nowrap">@c.FechaHoraAr.ToString("dd/MM HH:mm")</td>
+                        <td>
+                            @c.Nombre <span class="cb-mut">· @c.Estacion</span>
+                            @if (c.Alarmas.Count > 0) { <div class="cb-red cb-al">⚠ @string.Join(" · ", c.Alarmas)</div> }
+                        </td>
+                        <td class="n">@c.Litros.ToString("0.0", Ar)</td>
+                        <td class="n">@Plata(c.Importe)</td>
+                        <td class="n">
+                            @(c.Odometro?.ToString("#,0", Ar))
+                            @if (c.Anduvo is int a)
+                            {
+                                <span class="@(a < 20 ? "cb-red" : "cb-mut")"> (@(a >= 0 ? "+" : "")@a.ToString("#,0", Ar))</span>
+                            }
+                        </td>
+                        <td class="n">@(c.Rinde?.ToString("0.0", Ar))@if (c.Rinde == null && c.Alarmas.Any(x => x.StartsWith("km") || x.StartsWith("los km"))) { <span class="cb-red">⚠</span> }</td>
+                    </tr>
+                }
+            </table>
+            <div class="cb-nota">"Rinde" = km que anduvo desde la carga anterior ÷ litros de esta carga. En rojo ⚠: km que no avanzan (menos de 20), dos cargas el mismo día, carga antes de las 7 o después de las 21, o rinde mucho peor que lo normal de ese vehículo.</div>
+        </div>
+    }
+}
+
+@code {
+    private static readonly System.Globalization.CultureInfo Ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
+    private CombustibleDto? datos;
+    private bool cargando;
+    private string? error;
+    private string periodo = "30";
+    private string? filtro;
+
+    protected override Task OnInitializedAsync() => Cargar();
+
+    private static string Plata(decimal v) => v.ToString("$#,0", Ar);
+
+    private async Task Elegir(string p) { periodo = p; filtro = null; await Cargar(); }
+    private void Filtrar(string placa) => filtro = filtro == placa ? null : placa;
+
+    private async Task Cargar()
+    {
+        cargando = true; error = null;
+        var hoy = DateTime.UtcNow.ToArTime().Date;
+        DateTime desde, hasta = hoy;
+        switch (periodo)
+        {
+            case "semana":
+                desde = hoy.AddDays(-(((int)hoy.DayOfWeek + 6) % 7)); // lunes
+                break;
+            case "mespasado":
+                desde = new DateTime(hoy.Year, hoy.Month, 1).AddMonths(-1);
+                hasta = new DateTime(hoy.Year, hoy.Month, 1).AddDays(-1);
+                break;
+            default:
+                desde = hoy.AddDays(-29);
+                break;
+        }
+        try { datos = await Api.GetCombustibleAsync(desde, hasta); }
+        catch (Exception ex) { error = "No pude traer las cargas: " + ex.Message; }
+        cargando = false;
+    }
+}
