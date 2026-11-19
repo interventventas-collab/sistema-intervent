@@ -59,6 +59,13 @@
     .alq-fe .g, .alq-plata .g { color:#9ca3af; }
     .alq-rojo { color:#dc2626; }
     .data-table tr.alq-atr > td { background:#fef2f2; }
+    /* 19/11/2026: renglones en dos tonos (como Excel) para no perderse entre una reserva y otra. */
+    .alq-tabla > tbody > tr:nth-child(even) > td { background:#f1f4f8; }
+    .alq-tabla > tbody > tr.alq-atr > td { background:#fef2f2; }
+    .alq-tabla > tbody > tr.alq-atr:nth-child(even) > td { background:#fce4e4; }
+    /* La celda de botones es display:flex en app.css: se despega del renglón (no toma su alto ni su tono). Acá vuelve a ser celda. */
+    .alq-tabla td.actions-cell { display:table-cell; width:1%; max-width:none; vertical-align:middle; }
+    .alq-tabla td.actions-cell .btn-icon { margin-left:0.3rem; }
     .alq-nomarc { color:#b45309; font-size:0.72rem; margin-top:2px; }
     .alq-volvio { font-size:0.78rem; padding:4px 9px; }
 </style>
@@ -232,19 +239,21 @@
         else
         {
             <div class="table-responsive">
-                <table class="data-table">
+                <table class="data-table alq-tabla">
                     <thead>
                         <tr>
                             @* 19/11/2026: las fechas van debajo del número y el cliente se estira (nombre en un
-                               renglón, dirección abajo en gris). Antes el cliente quedaba apretado y muy alto. *@
-                            <th>Número · fechas</th>
-                            <th style="width:34%;">Cliente</th>
-                            <th>@(vista == "retiro" && !BuscandoAlgo ? "Tiene que devolver" : "Lleva")</th>
+                               renglón, dirección y teléfono abajo en gris). Todas las columnas menos Cliente van
+                               con width:1% = se achican a lo que ocupan, y TODO el sobrante se lo lleva el cliente
+                               (antes quedaba un hueco grande entre Lleva y Plata). *@
+                            <th style="width:1%;">Número · fechas</th>
+                            <th>Cliente</th>
+                            <th style="width:1%;">@(vista == "retiro" && !BuscandoAlgo ? "Tiene que devolver" : "Lleva")</th>
                             @* 18/11/2026: Total, seña, cobrado y saldo juntos en una columna para dejarle lugar a las cantidades. *@
-                            <th style="text-align: right;">Plata</th>
-                            <th>Estado</th>
-                            @if (vista == "retiro" && !BuscandoAlgo) { <th></th> }
-                            <th style="width: 96px; text-align:right;">Acciones</th>
+                            <th style="width:1%; text-align: right; padding-left: 2rem;">Plata</th>
+                            <th style="width:1%;">Estado</th>
+                            @if (vista == "retiro" && !BuscandoAlgo) { <th style="width:1%;"></th> }
+                            <th style="width:1%; text-align:right;">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -286,10 +295,6 @@
                                                 @onclick="() => fichaClienteId = r.ClienteId">👁️</button>
                                     }
                                     <strong style="font-size: 0.95rem;">@r.ClienteNombre</strong>
-                                    @if (!string.IsNullOrEmpty(r.ClienteTelefono))
-                                    {
-                                        <span style="font-size: 0.8rem; color: #9ca3af;"> · @r.ClienteTelefono</span>
-                                    }
                                     @if (!string.IsNullOrEmpty(r.DireccionEvento))
                                     {
                                         @* 21/10/2026: botón para copiar SOLO la dirección (para pegarla en Google Maps). El alfiler no se
@@ -299,6 +304,16 @@
                                             <button type="button" title="Copiar la dirección (para pegarla en Google Maps)"
                                                     style="margin-left:0.35rem; padding:0.05rem 0.4rem; font-size:0.72rem; font-weight:600; color:#374151; background:#fff; border:1px solid #d1d5db; border-radius:4px; cursor:pointer; vertical-align:middle;"
                                                     @onclick="() => CopiarDireccion(dirCopiar)" @onclick:stopPropagation="true">📋 Copiar</button>
+                                        </div>
+                                    }
+                                    @* 19/11/2026: el teléfono abajo de la dirección, con su propio Copiar. *@
+                                    @if (!string.IsNullOrEmpty(r.ClienteTelefono))
+                                    {
+                                        var telCopiar = r.ClienteTelefono;
+                                        <div style="font-size: 0.85rem; color: #6b7280; margin-top: 0.15rem;"><span style="user-select:none;">📞 </span>@r.ClienteTelefono
+                                            <button type="button" title="Copiar el teléfono"
+                                                    style="margin-left:0.35rem; padding:0.05rem 0.4rem; font-size:0.72rem; font-weight:600; color:#374151; background:#fff; border:1px solid #d1d5db; border-radius:4px; cursor:pointer; vertical-align:middle;"
+                                                    @onclick="() => CopiarTelefono(telCopiar)" @onclick:stopPropagation="true">📋 Copiar</button>
                                         </div>
                                     }
                                     @{
@@ -397,7 +412,7 @@
                                         <div class="alq-volv">ya volvieron: @string.Join(" · ", volvieron.Select(i => $"{i.CantidadDevuelta.ToString("N0", Ar)} {Corto(i.EquipoNombre).nom}"))</div>
                                     }
                                 </td>
-                                <td class="alq-plata">
+                                <td class="alq-plata" style="width:1%; padding-left:2rem;">
                                     <div style="font-weight:700;">$@FormatMoney(r.MontoTotal)</div>
                                     @if (r.Sena > 0) { <div class="g">seña $@FormatMoney(r.Sena)</div> }
                                     <div class="g">cobró $@FormatMoney(r.MontoCobrado)</div>
@@ -405,7 +420,7 @@
                                     else { <div class="g">al día</div> }
                                 </td>
                                 @* El estado va en TEXTO: el color queda para lo que es alarma de verdad (el saldo). *@
-                                <td style="font-size:0.78rem; color:#6b7280;">
+                                <td style="font-size:0.78rem; color:#6b7280; white-space:nowrap;">
                                     @EstadoTexto(r.Estado)@if (r.NcEstado == "autorizado" && !string.IsNullOrEmpty(r.NcCae))
                                     {
                                         <text> · <b style="color:#b45309;">anulada</b></text>
@@ -1540,6 +1555,17 @@
         {
             await JS.InvokeVoidAsync("copyToClipboard", direccion.Trim());
             ToastService.Success("Dirección copiada");
+        }
+        catch { ToastService.Error("No se pudo copiar"); }
+    }
+
+    private async Task CopiarTelefono(string? tel)
+    {
+        if (string.IsNullOrWhiteSpace(tel)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", tel.Trim());
+            ToastService.Success("Teléfono copiado");
         }
         catch { ToastService.Error("No se pudo copiar"); }
     }
