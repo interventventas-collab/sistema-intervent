@@ -1,5 +1,6 @@
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 @implements IDisposable
 
 @* 19/11/2026 — 💬 WhatsApp Fijo Transradio vuelve al Dashboard, pero como PASTILLA de la columna derecha
@@ -8,12 +9,49 @@
    Pasando el mouse se ven los últimos 3; tocar uno abre ese chat; tocar la pastilla abre el primero sin
    responder (o la pantalla de WhatsApp). Usa las clases de las pastillas (.op-big, .op-t, ...) de
    OficinaPastillas; "order" y color se acomodan con ✏ Acomodar pastillas (clave o-wa).
-   Maqueta aprobada: scratchpad/Gastos_numerito_y_WhatsApp_PROPUESTA.html *@
+   Maqueta aprobada: scratchpad/Gastos_numerito_y_WhatsApp_PROPUESTA.html
+   19/11/2026 (2ª): tocar la pastilla (o un chat del mouse encima) ya NO va a la pantalla grande: abre una
+   VENTANITA flotante encima del Inicio con solo la conversación (PinnedWaChat, el mismo chat chico del
+   depósito) y la lista de chats del Fijo PLEGADA a la izquierda (caritas; ☰ la despliega con nombres).
+   Se mueve desde la barra, se estira desde la esquina y recuerda dónde quedó (js/wa-fijo-flot.js).
+   ↗ = ese chat en la pantalla grande · – = barrita abajo · ✕ = cerrar.
+   Maqueta aprobada: scratchpad/WhatsApp_Fijo_ventanita_PROPUESTA.html *@
 
 <style>
     .op-big.wa { background:linear-gradient(135deg,#bbf7d0,#f0fdf4); }
     .wa-row { cursor:pointer; }
     .wa-row:hover b { text-decoration:underline; }
+
+    .wff { position:fixed; right:300px; top:90px; width:480px; height:600px; min-width:340px; min-height:320px;
+        max-width:calc(100vw - 16px); max-height:calc(100vh - 16px); z-index:8600; resize:both; overflow:hidden;
+        display:flex; flex-direction:column; background:#0f172a; border-radius:14px; box-shadow:0 18px 50px rgba(0,0,0,.35); }
+    .wff-bar { display:flex; align-items:center; gap:0.45rem; padding:0.4rem 0.55rem; background:#111827; color:#e5e7eb;
+        cursor:move; user-select:none; border-bottom:1px solid #1f2937; flex:none; }
+    .wff-bar b { font-size:0.85rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .wff-sp { flex:1; }
+    .wff-ib { width:28px; height:28px; border:none; border-radius:7px; background:#1f2937; color:#cbd5e1; cursor:pointer;
+        display:flex; align-items:center; justify-content:center; font-size:0.85rem; flex:none; }
+    .wff-ib:hover { background:#374151; color:#fff; }
+    .wff-body { flex:1; display:flex; min-height:0; position:relative; }
+    .wff-rail { width:52px; flex:none; background:#0b1220; border-right:1px solid #1f2937; display:flex; flex-direction:column;
+        align-items:center; gap:0.45rem; padding:0.45rem 0; overflow-y:auto; }
+    .wff-av { width:36px; height:36px; border-radius:50%; border:none; background:#e5e7eb; color:#111827; font-weight:700;
+        cursor:pointer; position:relative; flex:none; font-size:0.9rem; }
+    .wff-av.on { outline:2px solid #22c55e; outline-offset:1px; }
+    .wff-av .wff-dot { position:absolute; right:-2px; top:-2px; width:11px; height:11px; border-radius:50%; background:#22c55e; border:2px solid #0b1220; }
+    .wff-chat { flex:1; min-width:0; display:flex; flex-direction:column; }
+    .wff-chat .pwa-card { height:100%; min-height:0; border:none; border-radius:0; box-shadow:none; }
+    .wff-vacio { color:#94a3b8; padding:1rem; font-size:0.85rem; }
+    .wff-lista { position:absolute; left:52px; top:0; bottom:0; width:240px; max-width:calc(100% - 52px); background:#111827;
+        border-right:1px solid #1f2937; box-shadow:6px 0 18px rgba(0,0,0,.35); overflow-y:auto; z-index:3; }
+    .wff-li { padding:0.5rem 0.65rem; border-bottom:1px solid #1f2937; cursor:pointer; color:#e5e7eb; font-size:0.82rem; }
+    .wff-li:hover, .wff-li.on { background:#1f2937; }
+    .wff-li small { display:block; color:#94a3b8; font-size:0.74rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .wff-min { position:fixed; right:22px; bottom:22px; z-index:8600; background:#111827; color:#fff; border:none; border-radius:999px;
+        padding:0.55rem 1rem; box-shadow:0 8px 22px rgba(0,0,0,.3); cursor:pointer; font-size:0.85rem; font-weight:600; }
+    @@media (max-width: 700px) {
+        .wff { left:8px !important; right:8px !important; top:8px !important; bottom:8px !important; width:auto !important; height:auto !important; resize:none; }
+    }
 </style>
 
 <div class="op-big wa" @onclick="Tocar" title="WhatsApp Fijo Transradio">
@@ -37,6 +75,55 @@
         <div class="op-prev-mas wa-row" @onclick='() => Nav.NavigateTo("/whatsapp")'>Abrir WhatsApp ›</div>
     </div>
 </div>
+
+@if (abierta && actual is not null)
+{
+    @if (minimizada)
+    {
+        <button class="wff-min" @onclick="() => { minimizada = false; armarPendiente = true; }" title="Volver a abrir">💬 WhatsApp Fijo · @Nombre(actual)@(sinResp.Count > 0 ? $" ({sinResp.Count})" : "")</button>
+    }
+    else
+    {
+        <div class="wff" id="wa-fijo-flot">
+            <div class="wff-bar">
+                <span>💬</span><b>WhatsApp Fijo</b><span class="wff-sp"></span>
+                <button class="wff-ib" @onclick="Agrandar" title="Abrir este chat en la pantalla grande de WhatsApp">↗</button>
+                <button class="wff-ib" @onclick="Achicar" title="Achicar (queda una barrita abajo)">–</button>
+                <button class="wff-ib" @onclick="Cerrar" title="Cerrar">✕</button>
+            </div>
+            <div class="wff-body">
+                <div class="wff-rail">
+                    <button class="wff-ib" @onclick="() => listaAbierta = !listaAbierta" title="@(listaAbierta ? "Plegar la lista" : "Ver la lista de chats con nombres")">☰</button>
+                    @foreach (var c in ultimas.Take(30))
+                    {
+                        var cc = c;
+                        <button class="wff-av @(cc.Numero == actual.Numero ? "on" : "")" title="@Nombre(cc)" @onclick="() => Abrir(cc)">
+                            @Inicial(cc)@if (EsSinResp(cc)) { <span class="wff-dot"></span> }
+                        </button>
+                    }
+                </div>
+                @if (listaAbierta)
+                {
+                    <div class="wff-lista">
+                        @foreach (var c in ultimas.Take(60))
+                        {
+                            var cc = c;
+                            <div class="wff-li @(cc.Numero == actual.Numero ? "on" : "")" @onclick="() => Abrir(cc)">
+                                <b>@Nombre(cc)</b> · @Hora(cc.UltimoAt)@(EsSinResp(cc) ? " 🟢" : "")
+                                <small>@Corto(cc.UltimoMensaje ?? (string.IsNullOrEmpty(cc.UltimoMediaUrl) ? "" : "📷 Foto"), 60)</small>
+                            </div>
+                        }
+                    </div>
+                }
+                <div class="wff-chat">
+                    <PinnedWaChat @key="@(actual.Numero + "|" + LineaFijo)" Numero="@actual.Numero" LineaPhoneId="@LineaFijo"
+                                  TituloContacto="@Nombre(actual)" NombreLinea="FIJO TRANSRADIO" PuedeAbrirEnGrande="false"
+                                  ClienteId="@actual.ClienteId" ClienteNombre="@actual.ClienteNombre" />
+                </div>
+            </div>
+        </div>
+    }
+}
 
 @code {
     private const string LineaFijo = "1195191513683780"; // FIJO TRANSRADIO 11 2081-2933
@@ -67,14 +154,49 @@
         => string.Equals(c.UltimoDireccion, "INCOMING", StringComparison.OrdinalIgnoreCase)
            && !(c.UltimoMensaje ?? "").TrimStart().StartsWith("#gasto", StringComparison.OrdinalIgnoreCase);
 
+    // ───── Ventanita flotante (19/11/2026) ─────
+    private bool abierta, minimizada, listaAbierta;
+    private ApiClient.TwConvDto? actual;
+
     private void Tocar()
     {
-        if (sinResp.Count > 0) Abrir(sinResp[0]);
-        else Nav.NavigateTo("/whatsapp");
+        if (abierta && !minimizada) { Cerrar(); return; }
+        var c = actual ?? (sinResp.Count > 0 ? sinResp[0] : ultimas.FirstOrDefault());
+        if (c is null) { Nav.NavigateTo("/whatsapp"); return; }
+        Abrir(c);
     }
 
     private void Abrir(ApiClient.TwConvDto c)
-        => Nav.NavigateTo($"/whatsapp?numero={Uri.EscapeDataString(c.Numero)}&linea={LineaFijo}");
+    {
+        actual = c; abierta = true; minimizada = false; listaAbierta = false;
+        armarPendiente = true;
+    }
+
+    private void Cerrar() { abierta = false; minimizada = false; listaAbierta = false; }
+    private void Achicar() { minimizada = true; listaAbierta = false; }
+    private void Agrandar()
+    {
+        if (actual is null) return;
+        var u = $"/whatsapp?numero={Uri.EscapeDataString(actual.Numero)}&linea={LineaFijo}";
+        Cerrar();
+        Nav.NavigateTo(u);
+    }
+
+    private bool armarPendiente;
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (armarPendiente && abierta && !minimizada)
+        {
+            armarPendiente = false;
+            try { await JS.InvokeVoidAsync("waFijoFlot.armar", "wa-fijo-flot"); } catch { }
+        }
+    }
+
+    private static string Inicial(ApiClient.TwConvDto c)
+    {
+        var n = Nombre(c).Trim();
+        return string.IsNullOrEmpty(n) ? "?" : n[..1].ToUpperInvariant();
+    }
 
     private static string Nombre(ApiClient.TwConvDto c)
         => !string.IsNullOrWhiteSpace(c.ClienteNombre) ? c.ClienteNombre!
