@@ -31,6 +31,7 @@ public partial class ApiClient
     public Task<bool> ComentarGastoWaAsync(int id, string texto) => GwEnviar(HttpMethod.Post, $"{GwBase}/{id}/comentarios", new { Texto = texto });
     public Task<bool> AplicarGastoWaAsync(int id, int pagoId) => GwEnviar(HttpMethod.Post, $"{GwBase}/{id}/aplicar", new { PagoId = pagoId });
     public Task<bool> RechazarGastoWaAsync(int id, string? motivo) => GwEnviar(HttpMethod.Post, $"{GwBase}/{id}/rechazar", new { Motivo = motivo });
+    public Task<bool> IgnorarGastoWaAsync(int id) => GwEnviar(HttpMethod.Post, $"{GwBase}/{id}/ignorar", new { });
     public Task<bool> ReabrirGastoWaAsync(int id) => GwEnviar(HttpMethod.Post, $"{GwBase}/{id}/reabrir", new { });
     public async Task<GastoWaNumerosDto?> GetGastoWaNumerosAsync() => await GetAsync<GastoWaNumerosDto>($"{GwBase}/numeros");
     public Task<bool> GuardarGastoWaNumerosAsync(List<string> numeros) => GwEnviar(HttpMethod.Put, $"{GwBase}/numeros", new { Numeros = numeros });

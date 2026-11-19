@@ -547,7 +547,7 @@
         ApiClient.GastoWaDto? g = null;
         try { g = await Api.GetGastoWaAsync(id); } catch { }
         if (g is null) { ToastService.Error("No encontré ese gasto"); return; }
-        if (g.Estado != "PENDIENTE") { ToastService.Error(g.Estado == "APLICADO" ? $"Ese gasto ya está cargado (pago {g.PagoNumero})" : "Ese gasto está rechazado"); return; }
+        if (g.Estado != "PENDIENTE") { ToastService.Error(g.Estado == "APLICADO" ? $"Ese gasto ya está cargado (pago {g.PagoNumero})" : "Ese gasto está ignorado (volvelo a pendiente desde Gastos por WhatsApp)"); return; }
         ShowNuevo();
         gastoWa = g;
         formObservaciones = g.Texto.Length > 400 ? g.Texto[..400] : g.Texto;

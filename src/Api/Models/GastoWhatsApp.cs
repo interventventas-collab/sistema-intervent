@@ -26,7 +26,7 @@ public class GastoWhatsApp
     [Column(TypeName = "decimal(18,2)")] public decimal? Importe { get; set; }
     /// <summary>EFECTIVO / TRANSFERENCIA / MERCADOPAGO si lo dijo en el texto.</summary>
     [MaxLength(20)] public string? Medio { get; set; }
-    /// <summary>PENDIENTE / APLICADO / RECHAZADO.</summary>
+    /// <summary>PENDIENTE / APLICADO / IGNORADO (19/11: reemplaza a RECHAZADO, que queda para lo viejo).</summary>
     [MaxLength(15)] public string Estado { get; set; } = "PENDIENTE";
     /// <summary>Pago a proveedor (Cafe_PagosProveedor) con el que se aplicó.</summary>
     public int? PagoId { get; set; }
