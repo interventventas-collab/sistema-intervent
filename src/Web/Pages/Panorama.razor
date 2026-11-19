@@ -28,10 +28,28 @@
     <div class="pan-top">
         <div>
             <h2 class="pan-h1">Panorama</h2>
+            @* 2026-11-19: el período tiene que verse SIEMPRE y bien grande. Si quedó plantado en otro
+               mes (tocando una barra), se dice y hay un link para volver al mes en curso. *@
+            @if (data is not null)
+            {
+                <div class="pan-periodo">
+                    <span class="pan-periodo-v">@data.Etiqueta</span>
+                    @if (EsMesEnCurso())
+                    {
+                        <span class="pan-muted">· mes en curso · del 1 al @AhoraAr().Day</span>
+                    }
+                    @if (MirandoMesViejo())
+                    {
+                        <button type="button" class="pan-volver" disabled="@cargando" @onclick="VolverAlMesEnCurso">
+                            ← volver a @NombreMes(AhoraAr().Month).ToLowerInvariant()
+                        </button>
+                    }
+                </div>
+            }
             <p class="pan-sub">
                 @if (data is not null)
                 {
-                    <span>@data.Etiqueta · @data.Comparacion</span>
+                    <span>@data.Comparacion</span>
                 }
                 else
                 {
@@ -105,11 +123,64 @@
 
                     @* Logística no factura por ninguna tabla todavía: mostrarle "$0" sería mentirle.
                        Su número grande son las ENTREGAS, que sí se cuentan de verdad. *@
-                    @if (pata.Clave == "lg")
+                    @if (pata.Clave == "lg" && data.Logistica is { } lg)
+                    {
+                        @* 2026-11-19: cuántas entregas de la empresa hicimos NOSOTROS, de qué tipo y quién. *@
+                        <div class="pan-big">@Miles(lg.Propias) <span class="pan-big-u">entregas nuestras</span></div>
+                        @if (lg.PorTipo.Count > 0)
+                        {
+                            <div class="pan-line">@((MarkupString)ListaPares(lg.PorTipo))</div>
+                        }
+                        @if (lg.PorRepartidor.Count > 0)
+                        {
+                            <div class="pan-line">@((MarkupString)ListaPares(lg.PorRepartidor))</div>
+                        }
+                        @if (lg.SinRepartidor > 0)
+                        {
+                            <div class="pan-line pan-muted" title="MercadoLibre los dio por entregados pero nadie los marcó en el mapa ni en el celu: no se sabe quién los llevó.">
+                                + @Miles(lg.SinRepartidor) Flex/me1 entregados sin repartidor anotado
+                            </div>
+                        }
+                        @if (lg.NoNuestras.Count > 0)
+                        {
+                            <div class="pan-line pan-muted">no nuestras: @((MarkupString)ListaPares(lg.NoNuestras))</div>
+                        }
+                    }
+                    else if (pata.Clave == "lg")
                     {
                         <div class="pan-big">@Miles(pata.Operaciones)</div>
                         <div class="pan-line">entregas hechas con gente propia</div>
-                        <div class="pan-line pan-muted">@pata.SinMargenPorque</div>
+                    }
+                    else if (pata.Clave == "ie" && data.Alquiler is { } al)
+                    {
+                        @* 2026-11-19: lo facturado (entregas hasta hoy) + lo que ya está reservado a fin de mes. *@
+                        <div class="pan-big">@Plata(al.Facturado) <span class="pan-big-u">facturado</span></div>
+                        @if (al.EventosReservados > 0)
+                        {
+                            <div class="pan-line">+ @Plata(al.Reservado) reservado de acá a fin de mes</div>
+                            <div class="pan-line">= @Plata(al.Facturado + al.Reservado) si se cumple todo
+                                <span class="pan-sep">·</span> <span>@Miles(al.EventosFacturados + al.EventosReservados) eventos</span></div>
+                        }
+                        else
+                        {
+                            <div class="pan-line">
+                                <span>@Miles(al.EventosFacturados) eventos</span>
+                                @if (pata.VarFacturado is not null)
+                                {
+                                    <span class="pan-sep">·</span>
+                                    @Delta(pata.VarFacturado.Value)
+                                }
+                            </div>
+                        }
+                        @if (al.Cobrado > 0 || al.FaltaCobrar > 0)
+                        {
+                            <div class="pan-line pan-muted">cobrado @Plata(al.Cobrado)
+                                @if (al.FaltaCobrar > 0)
+                                {
+                                    <span class="pan-sep">·</span> <span>falta cobrar @Plata(al.FaltaCobrar)</span>
+                                }
+                            </div>
+                        }
                     }
                     else
                     {
@@ -512,6 +583,13 @@
     .pan-top { display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.1rem; }
     .pan-h1 { margin:0; font-size:1.5rem; font-weight:700; letter-spacing:-0.02em; color:var(--text-primary); }
     .pan-sub { margin:0.2rem 0 0; color:var(--text-secondary); font-size:0.87rem; }
+    /* 2026-11-19: el período, bien visible */
+    .pan-periodo { display:flex; align-items:baseline; gap:0.45rem; flex-wrap:wrap; margin-top:0.25rem; font-size:0.9rem; }
+    .pan-periodo-v { font-size:1.25rem; font-weight:700; color:var(--text-primary); }
+    .pan-volver { appearance:none; border:none; background:none; padding:0; font:inherit; font-size:0.85rem;
+                  color:#2563eb; text-decoration:underline; cursor:pointer; }
+    .pan-big-u { font-size:0.8rem; font-weight:500; letter-spacing:0; color:var(--text-secondary); }
+    .pan-line b { color:var(--text-primary); font-weight:600; }
 
     .pan-nav { display:flex; align-items:center; gap:0.85rem; flex-wrap:wrap; }
     .pan-flechas { display:inline-flex; align-items:center; gap:0.2rem; }
@@ -728,6 +806,31 @@
         catch { visitas = null; }
         StateHasChanged();
     }
+
+    // 2026-11-19
+    private static DateTime AhoraAr() => DateTime.UtcNow.AddHours(-3);
+
+    private static string NombreMes(int m) => CultureInfo.GetCultureInfo("es-AR").DateTimeFormat.GetMonthName(m);
+
+    private bool EsMesEnCurso()
+    {
+        var a = MesActual(); if (a is null) return false;
+        var h = AhoraAr();
+        return a.Value.Year == h.Year && a.Value.Month == h.Month;
+    }
+
+    private async Task VolverAlMesEnCurso()
+    {
+        if (cargando) return;
+        periodo = "mes";
+        mesAnclado = null;
+        await Cargar();
+    }
+
+    /// <summary>"Flex 268 · me1 31 · Frikaf 74", con los números en negrita.</summary>
+    private static string ListaPares(IEnumerable<PanoramaParDto> pares) =>
+        string.Join(" <span class=\"pan-sep\">·</span> ", pares.Select(p =>
+            $"{System.Net.WebUtility.HtmlEncode(p.Nombre)} <b>{p.Cantidad.ToString("N0", CultureInfo.GetCultureInfo("es-AR"))}</b>"));
 
     private async Task CambiarPeriodo(string p)
     {
