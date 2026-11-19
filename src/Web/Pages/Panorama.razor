@@ -131,27 +131,6 @@
                         {
                             <div class="pan-line">@((MarkupString)ListaPares(lg.PorTipo))</div>
                         }
-                        @if (lg.Combustible is { } cb)
-                        {
-                            @* 2026-11-19: Shell Flota — lo gastado en el período y cuánto sale cada entrega. *@
-                            <div class="pan-line pan-shell">
-                                <span>combustible <b>@Plata(cb.Gasto)</b></span>
-                                @if (cb.Cargas > 0)
-                                {
-                                    <span class="pan-sep">·</span><span>@cb.Litros.ToString("N0", Ar) l · @cb.Cargas cargas</span>
-                                }
-                            </div>
-                            @if (cb.CostoPorEntrega is not null)
-                            {
-                                <div class="pan-line" title="Lo cargado en Shell en el período dividido por las entregas hechas por nosotros.">
-                                    <b>@Plata(cb.CostoPorEntrega.Value)</b> de nafta por entrega
-                                </div>
-                            }
-                            @if (cb.Saldo is not null)
-                            {
-                                <div class="pan-line pan-muted">saldo Shell @Plata(cb.Saldo.Value)@(cb.SaldoAt is { } sa ? $" · leído {sa.AddHours(-3):dd/MM HH:mm}" : "")</div>
-                            }
-                        }
                         @if (lg.SinRepartidor > 0)
                         {
                             <div class="pan-line pan-muted" title="MercadoLibre los dio por entregados pero nadie los marcó en el mapa ni en el celu: no se sabe quién los llevó.">
@@ -161,6 +140,31 @@
                         @if (lg.NoNuestras.Count > 0)
                         {
                             <div class="pan-line pan-muted">no nuestras: @((MarkupString)ListaPares(lg.NoNuestras))</div>
+                        }
+                        @if (lg.Combustible is { } cb)
+                        {
+                            @* 2026-11-19: Shell Flota — renglón propio con ⛽ para que no se pierda. Si el robot
+                               todavía no trajo cargas del período, se dice en vez de mostrar "$0". *@
+                            <div class="pan-shell-box">
+                                <div><span class="pan-shell-ico">⛽</span> <b>Shell</b>
+                                    @if (cb.Saldo is not null)
+                                    {
+                                        <span class="pan-sep">·</span><span>saldo <b>@Plata(cb.Saldo.Value)</b></span>
+                                    }
+                                </div>
+                                @if (cb.Cargas > 0)
+                                {
+                                    <div>gastado <b>@Plata(cb.Gasto)</b><span class="pan-sep">·</span>@cb.Litros.ToString("N0", Ar) litros<span class="pan-sep">·</span>@cb.Cargas cargas</div>
+                                    @if (cb.CostoPorEntrega is not null)
+                                    {
+                                        <div title="Lo cargado en Shell en el período dividido por las entregas hechas por nosotros."><b>@Plata(cb.CostoPorEntrega.Value)</b> de nafta por entrega</div>
+                                    }
+                                }
+                                else
+                                {
+                                    <div class="pan-muted">todavía no hay cargas leídas de este período: aparecen cuando el robot lee Shell (⟳ en la pastilla de arriba)</div>
+                                }
+                            </div>
                         }
                     }
                     else if (pata.Clave == "lg")
@@ -671,6 +675,9 @@
                   color:#2563eb; text-decoration:underline; cursor:pointer; }
     .pan-big-u { font-size:0.8rem; font-weight:500; letter-spacing:0; color:var(--text-secondary); }
     .pan-line b { color:var(--text-primary); font-weight:600; }
+    .pan-shell-box { margin-top:0.45rem; padding-top:0.4rem; border-top:1px dashed var(--border); font-size:0.78rem; color:var(--text-secondary); line-height:1.5; }
+    .pan-shell-box b { color:var(--text-primary); font-weight:600; }
+    .pan-shell-ico { font-size:0.85rem; }
     .pan-lg-ley { display:flex; flex-wrap:wrap; gap:0.3rem 0.9rem; font-size:0.75rem; color:var(--text-secondary); }
     .pan-lg-ley i, .pan-lg-t i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
     .pan-lg-fila { display:grid; grid-template-columns:190px minmax(0,1fr) 60px; align-items:center; gap:0.8rem;
