@@ -1,12 +1,17 @@
 @page "/combustible"
 @attribute [Authorize(Roles = "admin")]
 @inject ApiClient Api
+@inject ToastService ToastService
+@implements IDisposable
 
 @* 18/11/2026 — Combustible (Shell Flota). Cada vez que el robot entra a Shell a ver el saldo se trae
    también las cargas del "Reporte transaccional" (últimos 30 días). Acá: total del período, cada
    vehículo con su rinde, y las cargas una abajo de la otra con ⚠ en rojo si algo no cierra
    (km que no avanzan, dos cargas el mismo día, fuera de horario, rinde mucho peor que lo normal).
-   Solo admin. Maqueta aprobada: scratchpad/Combustible_Shell_PROPUESTA.png *@
+   Solo admin. Maqueta aprobada: scratchpad/Combustible_Shell_PROPUESTA.png
+   19/11/2026: pantalla ÚNICA de Shell (pedido del dueño: "centralizar"). Arriba el saldo con "Leer ahora";
+   abajo, plegado, "Cuenta Shell" (usuario, clave y lectura automática) que antes estaba en
+   /integraciones/shell. La pastilla de la barra de arriba trae acá. *@
 
 <style>
     .cb-top { display:flex; justify-content:space-between; align-items:flex-end; gap:0.8rem; flex-wrap:wrap; }
@@ -32,13 +37,51 @@
     .cb-nota { font-size:0.78rem; color:#6b7280; margin-top:0.4rem; }
     .cb-scroll { overflow-x:auto; }
     @@media (max-width: 700px) { .cb-ocultar { display:none; } }
+    .cb-saldo { text-align:right; }
+    .cb-saldo-v { font-size:1.5rem; font-weight:700; color:#111827; font-variant-numeric:tabular-nums; }
+    .cb-leer { border:1px solid #d1d5db; background:#fff; border-radius:7px; padding:0.3rem 0.75rem; font-size:0.85rem; cursor:pointer; margin-left:0.5rem; }
+    .cb-leer:disabled { opacity:0.6; cursor:default; }
+    .cb-prog { display:flex; align-items:center; gap:0.7rem; margin-top:0.8rem; padding:0.6rem 0.8rem; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; font-size:0.85rem; }
+    .cb-spin { width:18px; height:18px; border:3px solid #bfdbfe; border-top-color:#1d4ed8; border-radius:50%; animation:spin 1s linear infinite; flex-shrink:0; }
+    .cb-cuenta-h { cursor:pointer; user-select:none; margin-top:1.6rem; padding-top:0.8rem; border-top:1px solid #e5e7eb; font-size:0.95rem; }
+    .cb-cuenta-h .cb-mut { font-size:0.82rem; }
+    .cb-cuenta { margin-top:0.6rem; display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:0.9rem; }
+    .cb-cuenta label { font-size:0.82rem; color:#374151; display:block; margin:0.4rem 0 0.15rem; }
+    .cb-cuenta input[type=text], .cb-cuenta input[type=password] { width:100%; box-sizing:border-box; padding:0.4rem 0.55rem; border:1px solid #d1d5db; border-radius:6px; font-size:0.9rem; }
+    .cb-hora { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.35rem; }
+    .cb-hora input { padding:0.25rem 0.45rem; border:1px solid #d1d5db; border-radius:6px; }
 </style>
 
 <div class="cb-top">
     <div>
-        <h2 style="margin:0">⛽ Combustible</h2>
-        <div class="cb-sub">Cargas de Shell Flota · las trae el robot cada vez que entra a ver el saldo</div>
+        <h2 style="margin:0">⛽ Combustible · Shell Flota</h2>
+        <div class="cb-sub">Saldo y cargas de Shell · los trae el robot cada vez que entra a Shell</div>
     </div>
+    <div class="cb-saldo">
+        <span class="cb-mut">saldo</span>
+        <span class="cb-saldo-v">@(string.IsNullOrEmpty(cuenta?.LastSaldo) ? "—" : "$" + cuenta!.LastSaldo)</span>
+        <button class="cb-leer" disabled="@(leyendo || cuenta?.HasPassword != true)" @onclick="LeerAhora"
+                title="El robot entra a Shell, lee el código del mail y trae el saldo y las cargas (1 a 3 minutos)">
+            @(leyendo ? "Leyendo…" : "⟳ Leer ahora")
+        </button>
+        <div class="cb-mut" style="font-size:0.78rem">
+            @(cuenta?.LastSaldoAt is DateTime la ? $"leído {la.ToArTime():dd/MM HH:mm}" : "")
+            @(cuenta?.AutoSyncEnabled == true && !string.IsNullOrEmpty(cuenta.AutoSyncTimes) ? $" · solo a las {cuenta.AutoSyncTimes.Replace(",", ", ")}" : " · automático apagado")
+        </div>
+    </div>
+</div>
+
+@if (leyendo)
+{
+    <div class="cb-prog"><div class="cb-spin"></div><div><b>@leerStep</b> <span class="cb-mut">· podés seguir usando el sistema</span></div></div>
+}
+else if (leerResult is { Ok: false })
+{
+    <div class="cb-prog" style="background:#fef2f2;border-color:#fecaca;color:#991b1b">❌ No se pudo leer Shell: @leerResult.Error</div>
+}
+
+<div class="cb-top" style="margin-top:0.9rem">
+    <div></div>
     <div class="cb-per">
         <button class="cb-btn @(periodo == "semana" ? "on" : "")" @onclick='() => Elegir("semana")'>Esta semana</button>
         <button class="cb-btn @(periodo == "30" ? "on" : "")" @onclick='() => Elegir("30")'>Últimos 30 días</button>
@@ -123,7 +166,140 @@ else if (datos != null)
     }
 }
 
+@* ─── Cuenta Shell (antes en Integraciones → Shell Flota) ─── *@
+<div class="cb-cuenta-h" @onclick="() => verCuenta = !verCuenta">
+    @(verCuenta ? "▾" : "▸") <b>Cuenta Shell</b>
+    <span class="cb-mut">· usuario y clave · lectura automática @(cuenta?.AutoSyncEnabled == true ? "prendida" : "apagada")</span>
+</div>
+@if (verCuenta)
+{
+    <div class="cb-cuenta">
+        <div class="cb-card">
+            <b>Datos de acceso</b>
+            <div class="cb-nota">El login de Shell pide un código por mail: el robot lo lee solo de la casilla de Gmail conectada en Integraciones → Email.</div>
+            <label>Usuario de Shell Flota</label>
+            <input type="text" @bind="usuario" placeholder="ej: gppalanica001" />
+            <label>Clave @(cuenta?.HasPassword == true ? "(dejá vacío para no cambiarla)" : "")</label>
+            <input type="password" @bind="password" placeholder="@(cuenta?.HasPassword == true ? "•••••••• (ya guardada)" : "Escribí la clave")" />
+            <label>Alias (opcional)</label>
+            <input type="text" @bind="alias" placeholder="ej: PALANICA HERMANOS SRL" />
+        </div>
+        <div class="cb-card">
+            <b>Leer automático (sin apretar nada)</b>
+            <label style="display:flex;align-items:center;gap:0.5rem;font-weight:600;cursor:pointer;margin-top:0.6rem">
+                <input type="checkbox" @bind="autoEnabled" /> Prendido
+            </label>
+            <div class="cb-nota" style="margin-bottom:0.4rem">Horarios de Argentina. Cada lectura trae el saldo y las cargas.</div>
+            @for (int i = 0; i < horarios.Count; i++)
+            {
+                var idx = i;
+                <div class="cb-hora">
+                    <input type="time" @bind="horarios[idx]" />
+                    <button class="cb-btn" @onclick="() => horarios.RemoveAt(idx)" title="Sacar este horario">✕</button>
+                </div>
+            }
+            <button class="cb-btn" @onclick="() => horarios.Add(new TimeOnly(8, 0))">+ Agregar horario</button>
+        </div>
+    </div>
+    <div style="margin-top:0.7rem">
+        <button class="cb-btn on" disabled="@guardando" @onclick="GuardarCuenta">@(guardando ? "Guardando…" : "Guardar cuenta y horarios")</button>
+    </div>
+}
+
 @code {
+    // 19/11: cuenta Shell + leer ahora (traído de ShellFlota.razor).
+    private Web.Models.ShellAccountDto? cuenta;
+    private bool verCuenta;
+    private string usuario = "", password = "", alias = "";
+    private bool guardando, autoEnabled, leyendo;
+    private List<TimeOnly> horarios = new();
+    private string leerStep = "";
+    private Web.Models.ShellSincronizarResultDto? leerResult;
+    private CancellationTokenSource? pollCts;
+
+    private async Task CargarCuenta()
+    {
+        try
+        {
+            cuenta = await Api.GetShellAccountAsync();
+            if (cuenta is not null)
+            {
+                usuario = cuenta.Usuario;
+                alias = cuenta.Alias ?? "";
+                autoEnabled = cuenta.AutoSyncEnabled;
+                horarios = new List<TimeOnly>();
+                if (!string.IsNullOrWhiteSpace(cuenta.AutoSyncTimes))
+                    foreach (var x in cuenta.AutoSyncTimes.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                        if (TimeOnly.TryParseExact(x.Trim(), "HH:mm", null, System.Globalization.DateTimeStyles.None, out var t))
+                            horarios.Add(t);
+            }
+            else verCuenta = true;   // sin cuenta cargada: abrir directo para cargarla
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo leer la cuenta de Shell: " + ex.Message); }
+    }
+
+    private async Task GuardarCuenta()
+    {
+        if (string.IsNullOrWhiteSpace(usuario)) { ToastService.Error("Poné el usuario"); return; }
+        guardando = true;
+        try
+        {
+            var hs = horarios.Distinct().OrderBy(t => t).Select(t => t.ToString("HH\\:mm")).ToList();
+            cuenta = await Api.SaveShellAccountAsync(new Web.Models.SaveShellAccountRequest
+            {
+                Usuario = usuario.Trim(),
+                Password = string.IsNullOrWhiteSpace(password) ? null : password,
+                Alias = string.IsNullOrWhiteSpace(alias) ? null : alias.Trim(),
+                IsActive = true,
+                AutoSyncEnabled = autoEnabled,
+                AutoSyncTimes = hs.Count > 0 ? string.Join(",", hs) : null
+            });
+            password = "";
+            ToastService.Success("Cuenta de Shell guardada");
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo guardar: " + ex.Message); }
+        finally { guardando = false; }
+    }
+
+    private async Task LeerAhora()
+    {
+        leerResult = null;
+        leerStep = "Iniciando…";
+        leyendo = true;
+        pollCts?.Cancel();
+        pollCts = new CancellationTokenSource();
+        var token = pollCts.Token;
+        _ = Task.Run(async () =>
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(1500, token);
+                    var st = await Api.GetShellTestStatusAsync();
+                    if (st is not null) leerStep = st.Step;
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (TaskCanceledException) { break; }
+                catch { }
+            }
+        }, token);
+        try
+        {
+            leerResult = await Api.SincronizarShellAsync();
+            if (leerResult is { Ok: true })
+            {
+                ToastService.Success("Shell leído: $" + leerResult.Saldo);
+                await CargarCuenta();
+                await Cargar();
+            }
+        }
+        catch (Exception ex) { leerResult = new Web.Models.ShellSincronizarResultDto { Ok = false, Error = ex.Message }; }
+        finally { pollCts?.Cancel(); leyendo = false; StateHasChanged(); }
+    }
+
+    public void Dispose() => pollCts?.Cancel();
+
     private static readonly System.Globalization.CultureInfo Ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
     private CombustibleDto? datos;
     private bool cargando;
@@ -131,7 +307,7 @@ else if (datos != null)
     private string periodo = "30";
     private string? filtro;
 
-    protected override Task OnInitializedAsync() => Cargar();
+    protected override Task OnInitializedAsync() => Task.WhenAll(Cargar(), CargarCuenta());
 
     private static string Plata(decimal v) => v.ToString("$#,0", Ar);
 
