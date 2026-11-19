@@ -2078,6 +2078,18 @@
         catch { /* sin query params, comportamiento normal */ }
     }
 
+    // 19/11/2026: ⚡ Acciones → "Nuevo cliente" llega con ?nuevo={hora}; abre el alta (también si ya estaba acá).
+    [SupplyParameterFromQuery(Name = "nuevo")] public long? NuevoTs { get; set; }
+    private long? nuevoVisto;
+    protected override async Task OnParametersSetAsync()
+    {
+        if (NuevoTs is > 0 && NuevoTs != nuevoVisto)
+        {
+            nuevoVisto = NuevoTs;
+            await ShowCreate();
+        }
+    }
+
     private async Task Load()
     {
         loading = true;
