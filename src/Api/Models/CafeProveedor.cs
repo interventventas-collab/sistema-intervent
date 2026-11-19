@@ -71,6 +71,9 @@ public class CafeProveedor
     [MaxLength(30)]
     public string? Cbu { get; set; }
 
+    /// <summary>19/11/2026 — ⭐ marcado a mano: siempre en "Frecuentes" (Proveedores y Nuevo pago).</summary>
+    public bool Favorito { get; set; } = false;
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

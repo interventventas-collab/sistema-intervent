@@ -15,6 +15,32 @@
             <button class="btn btn-primary" @onclick="ShowCreate">+ Nuevo proveedor</button>
         </div>
     </div>
+    @* 19/11/2026: abre con los ⭐ frecuentes (⭐ a mano, cuenta corriente o 2+ facturas/pagos en 3 meses).
+       El buscador busca en todos. 📦 Mercadería / 🧾 Gastos sale de la categoría puesta en Facturas recibidas. *@
+    <div style="display:flex; gap:0.35rem; flex-wrap:wrap; align-items:center; padding:0.55rem 0.9rem; border-bottom:1px solid #f1f5f9;">
+        @foreach (var (k, txt) in new[] { ("frec", "⭐ Frecuentes"), ("todos", "Todos"), ("sinmov", "Sin movimiento") })
+        {
+            var kk = k;
+            <button type="button" class="pv-tab @(vista == kk ? "on" : "")" @onclick="() => vista = kk">@txt <small>@Cuantos(kk)</small></button>
+        }
+        <span style="flex:1;"></span>
+        @foreach (var (k, txt) in new[] { ("MERCADERIA", "📦 Mercadería"), ("GASTOS", "🧾 Gastos") })
+        {
+            var kk = k;
+            <button type="button" class="pv-tab @(tipo == kk ? "on" : "")" @onclick="() => tipo = tipo == kk ? null : kk">@txt</button>
+        }
+    </div>
+    <style>
+        .pv-tab { border:1px solid #d1d5db; border-radius:16px; padding:0.2rem 0.75rem; background:#fff; font-weight:600; font-size:0.8rem; cursor:pointer; }
+        .pv-tab.on { background:#111827; color:#fff; border-color:#111827; }
+        .pv-tab small { font-weight:400; opacity:0.75; }
+        .pv-star { border:0; background:none; cursor:pointer; font-size:1.05rem; padding:0 0.25rem 0 0; color:#d1d5db; vertical-align:-1px; }
+        .pv-star.on { color:#f59e0b; }
+        .pv-pill { display:inline-block; border-radius:999px; padding:0 0.45rem; font-size:0.68rem; font-weight:700; margin-left:0.3rem; vertical-align:1px; }
+        .pv-pill.mer { background:#e0f2fe; color:#075985; }
+        .pv-pill.gas { background:#f1f5f9; color:#334155; }
+        .pv-pill.cta { background:#fef3c7; color:#92400e; }
+    </style>
     <div class="card-body" style="padding: 0;">
         @if (loading)
         {
@@ -47,7 +73,16 @@
                         {
                             <tr>
                                 <td>
+                                    @{ uso.TryGetValue(p.Id, out var u); }
+                                    <button type="button" class="pv-star @(u?.Favorito == true ? "on" : "")" title="@(u?.Favorito == true ? "Sacar de frecuentes" : "Dejarlo siempre en frecuentes")" @onclick="() => Estrella(p)">@(u?.Favorito == true ? "★" : "☆")</button>
                                     <strong>@p.Nombre</strong>
+                                    @if (u?.Tipo == "MERCADERIA") { <span class="pv-pill mer">📦 mercadería</span> }
+                                    else if (u?.Tipo == "GASTOS") { <span class="pv-pill gas" title="@u.Categoria">🧾 @u.Categoria</span> }
+                                    @if (p.CuentaCorriente) { <span class="pv-pill cta">cta cte</span> }
+                                    @if (u is not null && (u.Facturas90 > 0 || u.Ultima is not null))
+                                    {
+                                        <div style="font-size: 0.74rem; color: #9ca3af;">@(u.Facturas90 == 1 ? "1 factura" : $"{u.Facturas90} facturas") en 3 meses@(u.Ultima is DateTime ud ? " · último movimiento " + ud.ToString("dd/MM/yy") : "")</div>
+                                    }
                                     @if (!string.IsNullOrEmpty(p.Contacto))
                                     {
                                         <div style="font-size: 0.78rem; color: #6b7280;">👤 @p.Contacto</div>
@@ -333,12 +368,42 @@
         get
         {
             if (proveedores is null) return new();
-            if (string.IsNullOrWhiteSpace(filtroTexto)) return proveedores;
+            if (string.IsNullOrWhiteSpace(filtroTexto)) return PorVista(proveedores).ToList();
             var t = filtroTexto.Trim();
             bool h(string? s) => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
             return proveedores.Where(p => h(p.Nombre) || h(p.Contacto) || h(p.Telefono) || h(p.Email) || h(p.Notas)
                 || h(p.Cuit) || h(p.Ciudad) || h(p.Provincia) || h(p.Direccion)).ToList();
         }
+    }
+
+    // 19/11/2026: Frecuentes / Todos / Sin movimiento + 📦/🧾 + ⭐
+    private Dictionary<int, ApiClient.ProveedorUsoDto> uso = new();
+    private string vista = "frec";
+    private string? tipo;
+    private IEnumerable<CafeProveedorDto> PorVista(IEnumerable<CafeProveedorDto> l, string? v = null)
+    {
+        v ??= vista;
+        if (uso.Count == 0) return l;   // sin datos de uso: todos
+        bool Es(CafeProveedorDto p, Func<ApiClient.ProveedorUsoDto, bool> f) => uso.TryGetValue(p.Id, out var u) && f(u);
+        var r = v switch
+        {
+            "frec" => l.Where(p => Es(p, u => u.Frecuente)),
+            "sinmov" => l.Where(p => Es(p, u => u.SinMovimiento)),
+            _ => l,
+        };
+        if (tipo is not null) r = r.Where(p => Es(p, u => u.Tipo == tipo));
+        return r;
+    }
+    private int Cuantos(string v) => proveedores is null ? 0 : PorVista(proveedores, v).Count();
+    private async Task Estrella(CafeProveedorDto p)
+    {
+        var u = uso.GetValueOrDefault(p.Id);
+        var nuevo = !(u?.Favorito ?? false);
+        if (!await Api.PonerProveedorFavoritoAsync(p.Id, nuevo)) { ToastService.Error("No se pudo guardar"); return; }
+        uso[p.Id] = u is null
+            ? new ApiClient.ProveedorUsoDto(p.Id, nuevo, nuevo || p.CuentaCorriente, false, 0, 0, null, null, null)
+            : u with { Favorito = nuevo, Frecuente = nuevo || p.CuentaCorriente || u.Facturas90 >= 2 || u.Pagos90 >= 2 };
+        ToastService.Success(nuevo ? $"{p.Nombre} queda en frecuentes" : $"{p.Nombre} sale de los ⭐");
     }
 
     protected override async Task OnInitializedAsync()
@@ -350,7 +415,7 @@
     private async Task Load()
     {
         loading = true;
-        try { proveedores = await Api.GetCafeProveedoresAsync() ?? new(); }
+        try { proveedores = await Api.GetCafeProveedoresAsync() ?? new(); uso = (await Api.GetProveedoresUsoAsync()).ToDictionary(x => x.Id); }
         catch { proveedores = new(); ToastService.Error("Error al cargar"); }
         loading = false;
     }

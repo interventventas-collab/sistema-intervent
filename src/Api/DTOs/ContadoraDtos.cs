@@ -348,6 +348,9 @@ public class PagarComprasDesdeBancoRequest
     /// <summary>Importe a imputar por factura (IdComprobante → monto). Permite pagos parciales.
     /// Si una factura no está acá (o el monto es ≤ 0), se paga el saldo completo (retrocompatible).</summary>
     public Dictionary<string, decimal>? Importes { get; set; }
+    /// <summary>19/11/2026: CUIT del proveedor cuando el movimiento no lo trae (débito automático que se
+    /// emparejó por nombre en Facturas recibidas). Si el movimiento trae CUIT, manda el del movimiento.</summary>
+    public string? Cuit { get; set; }
 }
 
 public class PagoBancoResultDto

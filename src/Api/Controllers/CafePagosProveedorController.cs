@@ -53,8 +53,10 @@ public class CafePagosProveedorController : ControllerBase
     {
         var c = await _ctacte.GetCuentaAsync(proveedorId);
         if (c is null) return NotFound();
+        // 19/11/2026: sin cuenta corriente se ofrecen sus facturas de ARCA sin pagar (últimos 180 días).
+        var docs = c.CuentaCorriente ? c.Pendientes : await _ctacte.FacturasSueltasAsync(proveedorId);
         return Ok(new PendientesProveedorDto(c.CuentaCorriente, c.Desde, c.Oficial, c.NoOficial, c.ACuenta, c.Total,
-            c.Pendientes.Select(d => new DocPendienteDto(d.Clave, d.Tipo, d.Numero, d.Oficial, d.Fecha, d.Total, d.Pagado, d.Saldo, d.TieneArchivo)).ToList()));
+            docs.Select(d => new DocPendienteDto(d.Clave, d.Tipo, d.Numero, d.Oficial, d.Fecha, d.Total, d.Pagado, d.Saldo, d.TieneArchivo)).ToList()));
     }
 
     /// <summary>20/10/2026: e-cheq que le firmamos a este proveedor y todavía no se usaron en un pago.</summary>

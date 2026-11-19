@@ -301,7 +301,17 @@
                                 }
                                 else if (!string.IsNullOrEmpty(m.LeyendaAdicional2))
                                 {
+                                    @* 19/11/2026: como las cobranzas — si la transferencia coincide clavada con una factura
+                                       impaga del proveedor (de cualquiera, no solo cuenta corriente), se sugiere el pago. *@
+                                    @if (sugerenciasPago.TryGetValue(m.Id, out var sp))
+                                    {
+                                        <div style="font-size:0.7rem; color:#047857; margin-bottom:.15rem;">💡 Es el pago de @sp.FacturaLabel</div>
+                                    }
                                     <div style="display:flex; gap:.3rem; align-items:center; flex-wrap:wrap;">
+                                        @if (sp is not null)
+                                        {
+                                            <button class="btn-asociar" style="background:#059669;" disabled="@(registrandoMov == m.Id)" title="Carga el pago en Tesorería: sale del banco y la factura queda pagada" @onclick="() => RegistrarSugerido(sp)">💸 Registrar pago</button>
+                                        }
                                         <button class="btn-asociar" @onclick="() => AbrirModalCompra(m)" style="background:#7c3aed;">🧾 Asociar a compra</button>
                                         <button class="btn-ignorar" @onclick="() => AbrirModalIgnorar(m)" title="Ignorar este movimiento (lo resolvés a mano)">⊘ Ignorar</button>
                                     </div>
@@ -482,7 +492,7 @@
                 @if (loadingFacturasCompra) { <p>Buscando facturas…</p> }
                 else if (facturasCompra.Count == 0)
                 {
-                    <p style="color:#6b7280;">No encontré nada pendiente de este proveedor (CUIT @movCompra.LeyendaAdicional2). Solo aparecen los proveedores que llevan cuenta corriente (Clientes y proveedores → Cuenta corriente proveedores). Si lleva, puede que la factura todavía no haya entrado de AFIP o que ya esté paga.</p>
+                    <p style="color:#6b7280;">No encontré nada pendiente de este proveedor (CUIT @movCompra.LeyendaAdicional2). Si es de un proveedor con cuenta corriente aparece lo que debe; si no, sus facturas de ARCA sin pagar de los últimos 6 meses. Puede que la factura todavía no haya entrado de ARCA o que ya esté paga.</p>
                 }
                 else
                 {
@@ -757,6 +767,25 @@
             if (res is not null) pagosCompraPorMov = res.ToDictionary(x => x.MovId, x => x.Facturas);
         }
         catch { /* secundario: si falla, los egresos quedan sin el badge verde */ }
+        // 19/11/2026: sugerencia de pago en cada transferencia que coincide con una factura (como las cobranzas).
+        try { sugerenciasPago = (await Api.GetCruceBancoPreviewAsync() ?? new()).GroupBy(c => c.MovId).ToDictionary(g => g.Key, g => g.First()); }
+        catch { sugerenciasPago = new(); }
+    }
+
+    private Dictionary<int, CrucePropuestoDto> sugerenciasPago = new();
+    private int? registrandoMov;
+    private async Task RegistrarSugerido(CrucePropuestoDto c)
+    {
+        registrandoMov = c.MovId;
+        try
+        {
+            var res = await Api.AplicarCruceBancoAsync(new() { new CruceAplicarItem { MovId = c.MovId, IdComprobante = c.IdComprobante } });
+            if (res is null || !res.Ok || res.PagosCreados == 0) { ToastService.Error(res?.Error ?? "No se pudo registrar el pago"); return; }
+            ToastService.Success($"✓ Pago registrado: {c.ProveedorNombre} · {c.FacturaLabel}");
+            await CargarPagosBanco();
+        }
+        catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
+        finally { registrandoMov = null; }
     }
 
     // ── Pagar factura de compra desde una transferencia del banco ──

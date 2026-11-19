@@ -34,6 +34,60 @@ public class CafeProveedoresController : ControllerBase
             stats.TryGetValue(p.Id, out var s2) ? s2.Total : 0m)).ToList());
     }
 
+    /// <summary>19/11/2026 — Frecuentes / Todos / Sin movimiento. Por proveedor: facturas de ARCA y pagos de los
+    /// últimos 90 días y del año, la categoría que se le puso en Facturas recibidas (📦 Mercadería o 🧾 gastos)
+    /// y el ⭐. Frecuente = ⭐, cuenta corriente, o 2+ facturas o pagos en 3 meses.</summary>
+    public record UsoDto(int Id, bool Favorito, bool Frecuente, bool SinMovimiento, int Facturas90, int Pagos90,
+        DateTime? Ultima, string? Categoria, string? Tipo);
+
+    [HttpGet("uso")]
+    public async Task<List<UsoDto>> Uso()
+    {
+        var hoy = DateTime.UtcNow.AddHours(-3).Date;
+        var d90 = hoy.AddDays(-90); var d365 = hoy.AddDays(-365);
+        var provs = await _db.CafeProveedores.AsNoTracking()
+            .Select(p => new { p.Id, p.Cuit, p.Favorito, p.CuentaCorriente }).ToListAsync();
+        var facts = await _db.ContadoraComprobantes.AsNoTracking()
+            .Where(c => c.Naturaleza == "COMPRA" && c.ReceptorDoc != null && c.FechaEmision >= d365 && !c.EsNotaCredito)
+            .GroupBy(c => c.ReceptorDoc!)
+            .Select(g => new { Cuit = g.Key, N90 = g.Count(x => x.FechaEmision >= d90), N = g.Count(), Ultima = g.Max(x => x.FechaEmision) })
+            .ToDictionaryAsync(x => x.Cuit);
+        var pagos = await _db.CafePagosProveedor.AsNoTracking()
+            .Where(p => p.Estado == "VIGENTE" && p.Fecha >= d365)
+            .GroupBy(p => p.ProveedorId)
+            .Select(g => new { Id = g.Key, N90 = g.Count(x => x.Fecha >= d90), N = g.Count(), Ultima = g.Max(x => x.Fecha) })
+            .ToDictionaryAsync(x => x.Id);
+        var compras = (await _db.CafeCompras.AsNoTracking()
+            .Where(c => c.ProveedorId != null && c.Estado != "ANULADA" && c.Fecha >= d365)
+            .Select(c => c.ProveedorId!.Value).Distinct().ToListAsync()).ToHashSet();
+        var cats = await _db.ComprasProveedorConfigs.AsNoTracking().Where(c => c.Categoria != null)
+            .ToDictionaryAsync(c => c.Cuit, c => c.Categoria);
+
+        return provs.Select(p =>
+        {
+            var f = p.Cuit != null && facts.TryGetValue(p.Cuit, out var ff) ? ff : null;
+            var pg = pagos.TryGetValue(p.Id, out var pp) ? pp : null;
+            var f90 = f?.N90 ?? 0; var p90 = pg?.N90 ?? 0;
+            var frec = p.Favorito || p.CuentaCorriente || f90 >= 2 || p90 >= 2;
+            var sinMov = !frec && (f?.N ?? 0) == 0 && (pg?.N ?? 0) == 0 && !compras.Contains(p.Id);
+            DateTime? ult = new[] { f?.Ultima, pg?.Ultima }.Where(x => x.HasValue).Max();
+            var cat = p.Cuit != null && cats.TryGetValue(p.Cuit, out var cc) ? cc : null;
+            var tipo = cat is null ? null : cat.StartsWith("Mercader") ? "MERCADERIA" : "GASTOS";
+            return new UsoDto(p.Id, p.Favorito, frec, sinMov, f90, p90, ult, cat, tipo);
+        }).ToList();
+    }
+
+    public record FavoritoReq(bool Favorito);
+    [HttpPut("{id:int}/favorito")]
+    public async Task<IActionResult> Favorito(int id, [FromBody] FavoritoReq req)
+    {
+        var p = await _db.CafeProveedores.FindAsync(id);
+        if (p is null) return NotFound(new { error = "Proveedor no encontrado" });
+        p.Favorito = req.Favorito; p.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetById(int id)
     {

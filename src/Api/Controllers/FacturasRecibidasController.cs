@@ -125,6 +125,14 @@ public class FacturasRecibidasController : ControllerBase
         var ids = filas.Select(f => f.IdComprobante).ToList();
         var extras = await _db.ComprasFacturaExtras.AsNoTracking().Where(e => ids.Contains(e.IdComprobante)).ToDictionaryAsync(e => e.IdComprobante);
 
+        // 19/11/2026: pagos de Tesorería a facturas de proveedores SIN cuenta corriente (💸 Pagar / desde el banco).
+        var pagosTes = (await _db.CafePagosProveedorComprobantes.AsNoTracking()
+                .Where(c => c.AfipIdComprobante != null && ids.Contains(c.AfipIdComprobante) && c.Pago!.Estado == "VIGENTE")
+                .Select(c => new { c.AfipIdComprobante, c.Importe, c.Pago!.Numero, c.Pago.Fecha, c.Pago.ExtractoMovId,
+                    Caja = c.Pago.Medios.Select(m => m.Caja!.Nombre).FirstOrDefault() })
+                .ToListAsync())
+            .GroupBy(x => x.AfipIdComprobante!).ToDictionary(g => g.Key, g => g.ToList());
+
         var ar = System.Globalization.CultureInfo.GetCultureInfo("es-AR");
         var res = filas.Select(f =>
         {
@@ -139,6 +147,13 @@ public class FacturasRecibidasController : ControllerBase
                     ? (s <= 0.01m ? "pagada" : s < f.Total - 0.01m ? "debe " + s.ToString("$#,0", ar) : "a pagar")
                     : "anterior a la cuenta corriente";
                 via = "cuenta corriente";
+            }
+            else if (!f.EsNotaCredito && pagosTes.TryGetValue(f.IdComprobante, out var pts))
+            {
+                var pagadoTes = pts.Sum(x => x.Importe);
+                var u = pts.OrderByDescending(x => x.Fecha).First();
+                pago = pagadoTes >= f.Total - 0.01m ? "pagada" : "debe " + (f.Total - pagadoTes).ToString("$#,0", ar);
+                via = $"Pago {u.Numero} · {(u.ExtractoMovId != null ? "transferencia " : "")}{u.Caja ?? "Tesorería"} {u.Fecha.AddHours(-3):dd/MM}";
             }
             else if (!f.EsNotaCredito && ex?.PagoMedio != null)
             {
@@ -178,6 +193,23 @@ public class FacturasRecibidasController : ControllerBase
     {
         await ComprasAfipRobot.GuardarAsync(_db, ComprasAfipRobot.KeyVistas, DateTime.UtcNow.ToString("o"));
         return Ok(new { ok = true });
+    }
+
+    /// <summary>19/11/2026: todos los que nos facturaron en el año pasan a ser proveedores (se crean los que faltan,
+    /// con nombre y CUIT de ARCA). Lo llama la pantalla al abrir; no hace nada si no falta ninguno.</summary>
+    [HttpPost("proveedores-faltantes")]
+    public async Task<IActionResult> ProveedoresFaltantes() => Ok(new { creados = await _ctacte.CrearFaltantesDesdeArcaAsync() });
+
+    /// <summary>19/11/2026: proveedor de la factura para "💸 Pagar" (si no estaba cargado, se crea).</summary>
+    [HttpPost("{id}/proveedor")]
+    public async Task<IActionResult> ProveedorDeFactura(string id)
+    {
+        var f = await _db.ContadoraComprobantes.AsNoTracking().Where(c => c.IdComprobante == id && c.Naturaleza == "COMPRA")
+            .Select(c => new { c.ReceptorDoc, c.ReceptorNombre }).FirstOrDefaultAsync();
+        if (f is null) return NotFound(new { error = "Factura no encontrada" });
+        var p = await _ctacte.AsegurarProveedorAsync(f.ReceptorDoc, f.ReceptorNombre);
+        if (p is null) return BadRequest(new { error = "La factura no trae un CUIT válido" });
+        return Ok(new { proveedorId = p.Id });
     }
 
     /// <summary>"↻ Traer ahora": entra a ARCA en segundo plano (1–3 minutos).</summary>
@@ -348,6 +380,7 @@ public class FacturasRecibidasController : ControllerBase
         var usadosMp = (await _db.ComprasFacturaExtras.AsNoTracking().Where(e => e.PagoMpMovId != null).Select(e => e.PagoMpMovId!.Value).ToListAsync()).ToHashSet();
         var usadosBco = (await _db.ComprasFacturaExtras.AsNoTracking().Where(e => e.PagoExtractoMovId != null).Select(e => e.PagoExtractoMovId!.Value).ToListAsync())
             .Concat(await _db.ContadoraComprobantePagos.AsNoTracking().Where(p => p.ExtractoMovId != null && !p.Anulado).Select(p => p.ExtractoMovId!.Value).ToListAsync())
+            .Concat(await _db.CafePagosProveedor.AsNoTracking().Where(p => p.ExtractoMovId != null && p.Estado == "VIGENTE").Select(p => p.ExtractoMovId!.Value).ToListAsync())
             .ToHashSet();
         HashSet<string> Rech(string fid) => extras.TryGetValue(fid, out var ex) ? (ex.Rechazados ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet() : new();
 

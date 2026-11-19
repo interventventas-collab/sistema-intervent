@@ -2293,25 +2293,33 @@ public class ContadoraService
 
     // 17/09/2026: el cruce banco ↔ compra ahora registra un PAGO A PROVEEDOR de verdad (Tesorería),
     // que descuenta de la caja del banco y cancela documentos de la cuenta corriente del proveedor
-    // (facturas de AFIP o cotizaciones). Solo para proveedores con cuenta corriente. Los cruces
+    // (facturas de AFIP o cotizaciones). 19/11/2026: para todos los proveedores (sin cuenta corriente, sus
+    // facturas de ARCA sin pagar). Los cruces
     // viejos (ContadoraComprobantePagos con ExtractoMovId) se siguen mostrando y se pueden deshacer.
 
-    private async Task<CafeProveedor?> ProveedorCtaCtePorCuitAsync(string? cuit)
+    /// <summary>19/11/2026: el proveedor de un CUIT, sea o no de cuenta corriente. Si no está cargado pero nos
+    /// facturó (ARCA), se crea solo con ese nombre. Null si el CUIT no es de nadie.</summary>
+    private async Task<CafeProveedor?> ProveedorPorCuitAsync(string? cuit)
     {
         var c = ProveedorCtaCteService.NormCuit(cuit);
-        if (c.Length == 0) return null;
-        return await _db.CafeProveedores.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Cuit == c && p.CuentaCorriente && p.CuentaCorrienteDesde != null);
+        if (c.Length != 11) return null;
+        var p = (await _db.CafeProveedores.AsNoTracking().Where(x => x.Cuit == c).ToListAsync())
+            .OrderByDescending(x => x.CuentaCorriente).ThenByDescending(x => x.IsActive).FirstOrDefault();
+        if (p is not null) return p;
+        var nombre = await _db.ContadoraComprobantes.AsNoTracking()
+            .Where(x => x.Naturaleza == "COMPRA" && x.ReceptorDoc == c).OrderByDescending(x => x.FechaEmision)
+            .Select(x => x.ReceptorNombre).FirstOrDefaultAsync();
+        if (nombre is null) return null;
+        return await _ctacte.AsegurarProveedorAsync(c, nombre);
     }
 
-    /// <summary>Lo que un proveedor (por CUIT) tiene pendiente en su cuenta corriente. IdComprobante = clave del documento.</summary>
+    /// <summary>Lo que un proveedor (por CUIT) tiene pendiente: su cuenta corriente o, si no lleva, sus facturas
+    /// de ARCA sin pagar (19/11/2026). IdComprobante = clave del documento.</summary>
     public async Task<List<FacturaCompraImpagaDto>> GetFacturasImpagasProveedorAsync(string cuit)
     {
-        var prov = await ProveedorCtaCtePorCuitAsync(cuit);
+        var prov = await ProveedorPorCuitAsync(cuit);
         if (prov is null) return new();
-        var cta = await _ctacte.GetCuentaAsync(prov.Id);
-        if (cta is null) return new();
-        return cta.Pendientes.OrderByDescending(d => d.Fecha)
+        return (await _ctacte.PendientesAsync(prov.Id)).OrderByDescending(d => d.Fecha)
             .Select(d => new FacturaCompraImpagaDto
             {
                 IdComprobante = d.Clave, TipoComprobante = d.Tipo, Etiqueta = d.Etiqueta,
@@ -2331,11 +2339,11 @@ public class ContadoraService
         if (await _db.CafePagosProveedor.AnyAsync(p => p.ExtractoMovId == mov.Id && p.Estado == "VIGENTE"))
             return new PagoBancoResultDto { Ok = false, Error = "Esta transferencia ya pagó otras facturas. Deshacé ese cruce primero." };
 
-        var prov = await ProveedorCtaCtePorCuitAsync(mov.LeyendaAdicional2);
+        var cuitMov = ProveedorCtaCteService.NormCuit(mov.LeyendaAdicional2);
+        var prov = await ProveedorPorCuitAsync(cuitMov.Length == 11 ? cuitMov : req.Cuit);
         if (prov is null)
-            return new PagoBancoResultDto { Ok = false, Error = "Ese CUIT no es de un proveedor con cuenta corriente." };
-        var cta = await _ctacte.GetCuentaAsync(prov.Id);
-        var pend = (cta?.Pendientes ?? new()).ToDictionary(d => d.Clave);
+            return new PagoBancoResultDto { Ok = false, Error = "No encontré de qué proveedor es ese CUIT." };
+        var pend = (await _ctacte.PendientesAsync(prov.Id)).ToDictionary(d => d.Clave);
 
         var items = new List<ProveedorCtaCteService.ItemPago>();
         foreach (var clave in req.IdComprobantes.Distinct())
@@ -2427,8 +2435,9 @@ public class ContadoraService
     }
 
     /// <summary>Detecta cruces automáticos: transferencias del banco (egresos con CUIT, no cruzadas todavía)
-    /// de un proveedor con cuenta corriente, que coinciden clavadas en importe con UNO SOLO de sus
-    /// documentos pendientes. Los dudosos quedan para hacer a mano.</summary>
+    /// que coinciden clavadas en importe con UNO SOLO de los documentos pendientes del proveedor. 19/11/2026: ya
+    /// no solo cuenta corriente: también los demás (sus facturas de ARCA sin pagar, transferencias de los últimos
+    /// 120 días); si el proveedor no estaba cargado se crea con el nombre de ARCA. Los dudosos van a mano.</summary>
     public async Task<List<CrucePropuestoDto>> PreviewCruceBancoAsync()
     {
         var reconSet = (await _db.ContadoraComprobantePagos
@@ -2438,31 +2447,35 @@ public class ContadoraService
             .Where(p => p.Estado == "VIGENTE" && p.ExtractoMovId != null)
             .Select(p => p.ExtractoMovId!.Value).Distinct().ToListAsync());
 
-        var provs = (await _db.CafeProveedores.AsNoTracking()
+        var hace120 = DateTime.UtcNow.AddHours(-3).Date.AddDays(-120);
+        var ctaDesde = (await _db.CafeProveedores.AsNoTracking()
                 .Where(p => p.CuentaCorriente && p.CuentaCorrienteDesde != null && p.Cuit != null)
-                .Select(p => new { p.Id, p.Cuit, p.CuentaCorrienteDesde })
-                .ToListAsync())
-            .GroupBy(p => p.Cuit!).ToDictionary(g => g.Key, g => g.First());
-        if (provs.Count == 0) return new();
-        var cuits = provs.Keys.ToList();
+                .Select(p => new { p.Cuit, p.CuentaCorrienteDesde }).ToListAsync())
+            .GroupBy(p => p.Cuit!).ToDictionary(g => g.Key, g => g.First().CuentaCorrienteDesde!.Value.Date);
+        var ctaCuits = ctaDesde.Keys.ToList();
 
         var movs = (await _db.CafeExtractoMovimientos
-            .Where(m => m.Debitos > 0 && m.LeyendaAdicional2 != null && cuits.Contains(m.LeyendaAdicional2))
+            .Where(m => m.Debitos > 0 && m.IgnoradoAt == null && m.LeyendaAdicional2 != null
+                        && (m.Fecha >= hace120 || ctaCuits.Contains(m.LeyendaAdicional2)))
             .Select(m => new { m.Id, m.Fecha, m.Debitos, m.LeyendaAdicional1, m.LeyendaAdicional2 })
             .ToListAsync())
-            .Where(m => !reconSet.Contains(m.Id) && m.Fecha.Date >= provs[m.LeyendaAdicional2!].CuentaCorrienteDesde!.Value.Date)
+            .Where(m => !reconSet.Contains(m.Id) && System.Text.RegularExpressions.Regex.IsMatch(m.LeyendaAdicional2!.Trim(), @"^\d{11}$")
+                        && (!ctaDesde.TryGetValue(m.LeyendaAdicional2!, out var d0) || m.Fecha.Date >= d0))
             .OrderBy(m => m.Fecha).ThenBy(m => m.Id)   // el egreso más viejo se queda con la factura
             .ToList();
         if (movs.Count == 0) return new();
 
-        var cuentas = await _ctacte.CalcularAsync(movs.Select(m => provs[m.LeyendaAdicional2!].Id).Distinct().ToList());
-        var pendPorCuit = movs.Select(m => m.LeyendaAdicional2!).Distinct()
-            .ToDictionary(c => c, c => cuentas.TryGetValue(provs[c].Id, out var cta) ? cta.Pendientes : new());
+        var pendPorCuit = new Dictionary<string, List<ProveedorCtaCteService.Doc>>();
+        foreach (var cuit in movs.Select(m => m.LeyendaAdicional2!.Trim()).Distinct())
+        {
+            var prov = await ProveedorPorCuitAsync(cuit);
+            pendPorCuit[cuit] = prov is null ? new() : await _ctacte.PendientesAsync(prov.Id);
+        }
 
         var props = new List<CrucePropuestoDto>();
         foreach (var m in movs)
         {
-            var lista = pendPorCuit[m.LeyendaAdicional2!];
+            var lista = pendPorCuit[m.LeyendaAdicional2!.Trim()];
             var exactas = lista.Where(f => Math.Abs(f.Saldo - m.Debitos) < 0.01m).ToList();
             if (exactas.Count != 1) continue;   // 0 = no coincide; >1 = ambiguo, va a mano
             var f = exactas[0];
