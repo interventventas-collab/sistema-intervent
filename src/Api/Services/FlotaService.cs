@@ -17,7 +17,7 @@ public class FlotaService
     public FlotaService(AppDbContext db, ShellCargasService shell) { _db = db; _shell = shell; }
 
     public record Coche(string Placa, string Nombre, int? Km, DateTime? UltimaCarga, bool Propio,
-        int? RepartidorId, string? Repartidor, long? FotoVer);
+        int? RepartidorId, string? Repartidor, long? FotoVer, DateTime? KmAt = null);
     public record CocheElegido(string? Placa, string Nombre, string? Comentario, int? Km, long? FotoVer, DateTime ElegidoAt);
 
     public static DateTime HoyAr => DateTime.UtcNow.AddHours(-3).Date;
@@ -27,7 +27,7 @@ public class FlotaService
     {
         var shell = await _shell.FlotaAsync();
         var filas = await _db.FlotaVehiculos.AsNoTracking()
-            .Select(f => new { f.Placa, f.Nombre, f.RepartidorId, f.FotoAt, TieneFoto = f.Foto != null })
+            .Select(f => new { f.Placa, f.Nombre, f.RepartidorId, f.FotoAt, f.KmManual, f.KmManualAt, TieneFoto = f.Foto != null })
             .ToListAsync();
         var porPlaca = filas.ToDictionary(f => f.Placa, StringComparer.OrdinalIgnoreCase);
         var reps = await _db.CafeRepartidores.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.Nombre);
@@ -38,8 +38,8 @@ public class FlotaService
         {
             if (!todosLosPropios && f.RepartidorId != soloPropiosDe) continue;
             if (lista.Any(c => c.Placa.Equals(f.Placa, StringComparison.OrdinalIgnoreCase))) continue;
-            lista.Add(new Coche(f.Placa, f.Nombre ?? f.Placa, null, null, true, f.RepartidorId,
-                reps.TryGetValue(f.RepartidorId!.Value, out var rn) ? rn : null, Ver(f.Placa)));
+            lista.Add(new Coche(f.Placa, f.Nombre ?? f.Placa, f.KmManual, null, true, f.RepartidorId,
+                reps.TryGetValue(f.RepartidorId!.Value, out var rn) ? rn : null, Ver(f.Placa), f.KmManualAt));
         }
         // Los propios primero (al que lo tiene le conviene verlo arriba), después los de Shell por última carga.
         return lista.OrderByDescending(c => c.Propio).ThenByDescending(c => c.UltimaCarga).ToList();
@@ -147,6 +147,20 @@ public class FlotaService
         await _db.SaveChangesAsync();
         return (true, null);
     }
+
+    /// <summary>El dueño de un auto propio anota sus km (desde su celu).</summary>
+    public async Task<(bool ok, string? error)> KmPropioAsync(int repartidorId, string placa, int km)
+    {
+        var f = await _db.FlotaVehiculos.FirstOrDefaultAsync(x => x.Placa == placa && x.RepartidorId == repartidorId);
+        if (f is null) return (false, "Ese vehículo no es tuyo.");
+        if (km < 0 || km > 2_000_000) return (false, "Revisá los km.");
+        f.KmManual = km; f.KmManualAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return (true, null);
+    }
+
+    public async Task<bool> EsPropioDeAsync(int repartidorId, string placa)
+        => await _db.FlotaVehiculos.AnyAsync(x => x.Placa == placa && x.RepartidorId == repartidorId);
 
     public async Task BorrarPropioAsync(string placa)
     {

@@ -404,7 +404,7 @@ else if (datos != null)
         try { flotaAdm = await Api.GetFlotaAsync(); } catch { flotaAdm = null; }
     }
 
-    private static bool EsMoto(string n) => n.Contains("zanella", StringComparison.OrdinalIgnoreCase) || n.Contains("moto", StringComparison.OrdinalIgnoreCase);
+    private static bool EsMoto(string n) => n.Contains("moto", StringComparison.OrdinalIgnoreCase);
 
     private async Task SubirFoto(string placa, InputFileChangeEventArgs e)
     {

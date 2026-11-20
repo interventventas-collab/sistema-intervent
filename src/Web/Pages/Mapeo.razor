@@ -871,6 +871,12 @@
                                 </div>
                             }
                             <div style="flex:1; min-width:0;">
+                            @* 20/11/2026: el repartidor la movió desde su celu (calle cortada, el cliente tarda…). *@
+                            @{ var movida = g.Manual.FirstOrDefault(m => m.MovidaTexto != null)?.MovidaTexto; }
+                            @if (movida is not null)
+                            {
+                                <div style="font-size:0.68rem; color:#6d28d9; padding:0 0.45rem 0.05rem;" title="Lo cambió el repartidor desde su celu">↕ @movida</div>
+                            }
                             @{
                             if (vistaReducida)
                             {

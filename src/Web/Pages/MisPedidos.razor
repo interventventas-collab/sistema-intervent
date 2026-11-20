@@ -460,6 +460,23 @@
         font-family:ui-monospace,Menlo,monospace; font-weight:800; font-size:0.78rem; letter-spacing:0.04em; color:#111827; line-height:1.35; }
     .mp-cotro textarea { width:100%; box-sizing:border-box; border:1.5px solid #d1d5db; border-radius:10px; padding:0.5rem; font-family:inherit; font-size:0.95rem; min-height:60px; }
     .mp-cbtn { display:block; width:100%; margin-top:0.5rem; padding:0.7rem; border:none; border-radius:10px; background:#0e7490; color:#fff; font-weight:800; font-size:0.95rem; cursor:pointer; }
+    /* 20/11/2026: cambiar el orden de la ruta desde el celu */
+    .mp-ruta-handle { flex:0 0 auto; align-self:center; font-size:1.15rem; color:#9ca3af; padding:0.2rem 0.15rem; cursor:grab; touch-action:none; user-select:none; }
+    .mp-ahora { flex:0 0 auto; border:1px solid #0e7490; background:#fff; color:#0e7490; font-weight:800; font-size:0.72rem; border-radius:8px; padding:0.3rem 0.45rem; cursor:pointer; white-space:nowrap; }
+    .mp-dejar { display:block; width:100%; margin:0.1rem 0 0.7rem; padding:0.55rem; background:#fff; border:1.5px dashed #6b7280; border-radius:10px; color:#374151; font-weight:800; font-size:0.9rem; cursor:pointer; }
+    .mp-dejar-op { display:flex; gap:0.35rem; margin:0.1rem 0 0.7rem; }
+    .mp-dejar-op button { flex:1; padding:0.55rem 0.3rem; background:#fff; border:1.5px solid #0e7490; border-radius:10px; color:#0e7490; font-weight:800; font-size:0.82rem; cursor:pointer; }
+    .mp-dejar-op button.x { flex:0 0 auto; border-color:#d1d5db; color:#6b7280; }
+    .mp-drag-ghost { opacity:0.4; }
+    .mp-cwrap { display:flex; flex-direction:column; gap:0.25rem; }
+    .mp-cwrap .mp-ccard { flex:1; }
+    .mp-cacc { display:flex; gap:0.3rem; }
+    .mp-cacc button, .mp-cacc label { flex:1; text-align:center; font-size:0.8rem; font-weight:700; padding:0.35rem 0.2rem; border:1px solid #d1d5db; border-radius:8px; background:#fff; color:#374151; cursor:pointer; font-family:inherit; }
+    .mp-cacc label.yendo { opacity:0.5; }
+    .mp-ckmedit { display:flex; gap:0.3rem; }
+    .mp-ckmedit input { flex:1; min-width:0; border:1.5px solid #0e7490; border-radius:8px; padding:0.35rem; font-size:0.95rem; }
+    .mp-ckmedit button { border:none; border-radius:8px; background:#0e7490; color:#fff; font-weight:800; padding:0 0.6rem; }
+    .mp-ckmat { font-size:0.7rem; color:#9ca3af; text-align:center; }
     .mp-cerr { color:#b91c1c; font-size:0.82rem; margin-top:0.4rem; }
     .mp-ccerrar { display:block; width:100%; margin-top:0.6rem; padding:0.55rem; background:transparent; border:1px solid #d1d5db; border-radius:10px; color:#374151; font-weight:700; cursor:pointer; }
     .mpc-mas { display:block; width:100%; margin-top:0.5rem; padding:0.6rem; background:white; border:1px solid #d1d5db; border-radius:10px; font-weight:700; color:#374151; cursor:pointer; }
@@ -1333,14 +1350,21 @@
         </div>
         @if (entradas.Count > 0)
         {
-            <div style="font-size:0.72rem; color:#6b7280; margin:0 0 0.5rem;">💡 En el orden de la ruta que armaste en el mapa. Tocá cualquiera para abrirla.</div>
+            <div style="font-size:0.72rem; color:#6b7280; margin:0 0 0.5rem;">💡 En el orden de la ruta. Tocá cualquiera para abrirla. Si tenés que cambiar el orden, arrastrá desde ⠿ o usá "Hacer ahora".</div>
         }
+        var pendCab = entradas.Count(x => x.tipo != "hecha" && x.idx == 1);
+        <div id="mp-ruta-lista">
         @foreach (var e in entradas)
         {
             var st = e.st;
             var abierta = abiertaId == st.Id;
             var esActual = ParadaActualId == st.Id;
-            <div id="@($"mp-parada-{st.Id}")" style="display:flex; gap:0.4rem; align-items:flex-start;">
+            var movible = e.tipo != "hecha" && e.idx == 1 && pendCab > 1;
+            <div id="@($"mp-parada-{st.Id}")" class="@(movible ? "mp-ruta-mov" : "")" data-cab="@(movible ? st.Id : 0)" style="display:flex; gap:0.4rem; align-items:flex-start;">
+                @if (movible)
+                {
+                    <span class="mp-ruta-handle" title="Arrastrá para cambiar el orden">⠿</span>
+                }
                 @if (e.orden < 99998 && e.idx == 1)
                 {
                     <div style="flex:0 0 auto; margin-top:@(abierta ? "0.55rem" : "0.35rem"); background:@(e.tipo == "hecha" ? "#d1d5db" : "#0891b2"); color:white; font-weight:800; font-size:0.72rem; width:@(abierta ? "24px" : "20px"); height:@(abierta ? "24px" : "20px"); border-radius:50%; display:flex; align-items:center; justify-content:center;">@e.orden</div>
@@ -1385,11 +1409,32 @@
                                 }
                             </div>
                             <span style="flex:0 0 auto; font-size:0.66rem; font-weight:800; letter-spacing:0.03em; padding:3px 8px; border-radius:6px; background:@chip.Bg; color:@chip.Fg;">@chip.Txt</span>
+                            @if (movible)
+                            {
+                                <button type="button" class="mp-ahora" disabled="@moviendoRuta" @onclick:stopPropagation="true" @onclick="() => HacerAhora(st.Id)">Hacer ahora</button>
+                            }
                         </div>
+                    }
+                    @* 20/11/2026: la que le toca no se puede hacer ahora (calle cortada, el cliente tarda…). *@
+                    @if (abierta && esActual && movible)
+                    {
+                        @if (!dejarAbierto)
+                        {
+                            <button type="button" class="mp-dejar" disabled="@moviendoRuta" @onclick="() => dejarAbierto = true">⏭ Dejar para después</button>
+                        }
+                        else
+                        {
+                            <div class="mp-dejar-op">
+                                <button type="button" disabled="@moviendoRuta" @onclick="() => DejarParaDespues(st.Id, false)">Después de la que sigue</button>
+                                <button type="button" disabled="@moviendoRuta" @onclick="() => DejarParaDespues(st.Id, true)">Al final</button>
+                                <button type="button" class="x" @onclick="() => dejarAbierto = false">✕</button>
+                            </div>
+                        }
                     }
                 </div>
             </div>
         }
+        </div>
         @* Botón para volver a la parada que le toca, cuando se fue a mirar otra cosa. *@
         @if (ParadaActualId is int actualId)
         {
@@ -3317,6 +3362,17 @@
             }
         }
 
+        // 20/11/2026: arrastrar paradas de la ruta (⠿). El JS no hace nada si ya está enganchado.
+        if (!loading && mapeoRuta.Count > 1)
+        {
+            try
+            {
+                sortableRef ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("mpInitRuta", "mp-ruta-lista", sortableRef);
+            }
+            catch { }
+        }
+
         // Inicializar Sortable cada vez que el contenedor existe pero todavía no se enganchó
         if (!loading && !sortableInicializado && pedidos.Any(p => !p.YaEntregada))
         {
@@ -4050,8 +4106,122 @@
         finally { cocheGuardando = false; }
     }
 
+    // ─── 20/11/2026: el repartidor cambia el orden de su ruta (botones o arrastrando) y el Mapeo lo ve ───
+    private bool moviendoRuta;
+    private bool dejarAbierto;
+
+    /// <summary>Las paradas de hoy agrupadas por puerta (como las muestra la lista), en el orden actual.</summary>
+    private List<List<Web.Models.MisPedidosMapeoDto>> GruposRuta()
+    {
+        var g = AgruparPorDomicilio();
+        return mapeoRuta
+            .Select(s => (s, k: g.TryGetValue(s.Id, out var x) ? (x.orden, x.idx, 0) : (1_000_000, 1, s.Id)))
+            .GroupBy(t => (t.k.Item1, t.k.Item3))
+            .OrderBy(gr => gr.Key.Item1).ThenBy(gr => gr.Key.Item2)
+            .Select(gr => gr.OrderBy(t => t.k.Item2).Select(t => t.s).ToList())
+            .ToList();
+    }
+
+    private async Task MoverEnRuta(Func<List<List<Web.Models.MisPedidosMapeoDto>>, List<List<Web.Models.MisPedidosMapeoDto>>?> reordenar,
+        int cabezaId, string accion)
+    {
+        if (moviendoRuta) return;
+        var grupos = GruposRuta();
+        var hechas = grupos.Where(g => g.All(ParadaHecha)).ToList();
+        var pend = grupos.Where(g => !g.All(ParadaHecha)).ToList();
+        var nuevas = reordenar(pend);
+        if (nuevas is null) return;
+        var movida = grupos.FirstOrDefault(g => g[0].Id == cabezaId) ?? new();
+        var ids = hechas.Concat(nuevas).SelectMany(g => g.Select(x => x.Id)).ToArray();
+        moviendoRuta = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/mapeo/orden",
+                new { StopIds = ids, MovidaIds = movida.Select(x => x.Id).ToArray(), Accion = accion });
+            if (!resp.IsSuccessStatusCode) { await JS.InvokeVoidAsync("alert", await LeerError(resp)); }
+            dejarAbierto = false;
+            await RecargarInterno(silencioso: false);
+        }
+        catch { try { await JS.InvokeVoidAsync("alert", "Sin conexión. Probá de nuevo."); } catch { } }
+        finally { moviendoRuta = false; }
+    }
+
+    private Task HacerAhora(int cabezaId) => MoverEnRuta(pend =>
+    {
+        var i = pend.FindIndex(g => g[0].Id == cabezaId);
+        if (i <= 0) return null;
+        var g = pend[i]; pend.RemoveAt(i); pend.Insert(0, g);
+        return pend;
+    }, cabezaId, "ahora");
+
+    private Task DejarParaDespues(int cabezaId, bool alFinal) => MoverEnRuta(pend =>
+    {
+        var i = pend.FindIndex(g => g[0].Id == cabezaId);
+        if (i < 0 || i == pend.Count - 1) return null;
+        var g = pend[i]; pend.RemoveAt(i);
+        pend.Insert(alFinal ? pend.Count : Math.Min(i + 1, pend.Count), g);
+        return pend;
+    }, cabezaId, alFinal ? "final" : "despues");
+
+    /// <summary>Lo llama el JS al soltar una parada arrastrada: las cabezas pendientes en el orden nuevo.</summary>
+    [JSInvokable]
+    public Task OnRutaArrastrada(int[] cabezasEnOrden, int movidaId) => InvokeAsync(() => MoverEnRuta(pend =>
+    {
+        var pos = cabezasEnOrden.Select((id, i) => (id, i)).ToDictionary(x => x.id, x => x.i);
+        var nuevas = pend.OrderBy(g => pos.TryGetValue(g[0].Id, out var i) ? i : int.MaxValue).ToList();
+        return nuevas.Select(g => g[0].Id).SequenceEqual(pend.Select(g => g[0].Id)) ? null : nuevas;
+    }, movidaId, "arrastre"));
+
+    private string? kmEditando;
+    private string kmTexto = "";
+    private bool propioGuardando;
+
+    private async Task GuardarKmPropio(string placa)
+    {
+        var limpio = new string((kmTexto ?? "").Where(char.IsDigit).ToArray());
+        if (!int.TryParse(limpio, out var km) || km <= 0) { cocheError = "Poné los km que marca el tablero."; return; }
+        propioGuardando = true; cocheError = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/coche/propio/{Uri.EscapeDataString(placa)}/km", new { Km = km });
+            if (!resp.IsSuccessStatusCode) { cocheError = await LeerError(resp); return; }
+            kmEditando = null;
+            await CargarCoche();
+        }
+        catch { cocheError = "Sin conexión. Probá de nuevo."; }
+        finally { propioGuardando = false; }
+    }
+
+    private async Task SubirFotoPropio(string placa, InputFileChangeEventArgs e)
+    {
+        if (propioGuardando) return;
+        propioGuardando = true; cocheError = null;
+        StateHasChanged();
+        try
+        {
+            using var st = e.File.OpenReadStream(20_000_000);
+            using var ms = new MemoryStream();
+            await st.CopyToAsync(ms); ms.Position = 0;
+            using var content = new MultipartFormDataContent();
+            var sc = new StreamContent(ms);
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(e.File.ContentType) ? "image/jpeg" : e.File.ContentType);
+            content.Add(sc, "file", e.File.Name);
+            var resp = await Http.PostAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/coche/propio/{Uri.EscapeDataString(placa)}/foto", content);
+            if (!resp.IsSuccessStatusCode) { cocheError = await LeerError(resp); return; }
+            await CargarCoche();
+        }
+        catch (Exception ex) { cocheError = ex.Message.Contains("exceeds") ? "La foto es muy pesada." : "No se pudo subir la foto. Probá de nuevo."; }
+        finally { propioGuardando = false; }
+    }
+
+    private static async Task<string> LeerError(HttpResponseMessage resp)
+    {
+        try { var d = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>(); if (d?.GetValueOrDefault("error") is { } m) return m; } catch { }
+        return "No se pudo guardar. Probá de nuevo.";
+    }
+
     private static bool EsMoto(string nombre) =>
-        nombre.Contains("zanella", StringComparison.OrdinalIgnoreCase) || nombre.Contains("moto", StringComparison.OrdinalIgnoreCase);
+        nombre.Contains("moto", StringComparison.OrdinalIgnoreCase);
 
     private static string Corto(string? t, int n) => string.IsNullOrEmpty(t) ? "" : t.Length <= n ? t : t[..(n - 1)] + "…";
 
@@ -4070,6 +4240,7 @@
             @foreach (var c in miCoche?.Opciones ?? new())
             {
                 var on = miCoche?.Elegido?.Placa == c.Placa;
+                <div class="mp-cwrap">
                 <button type="button" class="mp-ccard @(on ? "on" : "")" disabled="@cocheGuardando" @onclick="() => ElegirCoche(c.Placa)">
                     @if (c.FotoVer is long fv)
                     {
@@ -4085,6 +4256,31 @@
                         @if (c.Km is int km) { <span class="mp-ckm">@km.ToString("N0", EsAr) km</span> }
                     </span>
                 </button>
+                @* 20/11/2026 (2ª): su auto propio no pasa por Shell: él mismo anota los km y cambia la foto. *@
+                @if (c.Propio)
+                {
+                    @if (kmEditando == c.Placa)
+                    {
+                        <div class="mp-ckmedit">
+                            <input type="number" inputmode="numeric" placeholder="km del tablero" @bind="kmTexto" @bind:event="oninput" />
+                            <button type="button" disabled="@propioGuardando" @onclick="() => GuardarKmPropio(c.Placa)">@(propioGuardando ? "…" : "Guardar")</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mp-cacc">
+                            <button type="button" @onclick="() => { kmEditando = c.Placa; kmTexto = c.Km?.ToString() ?? string.Empty; cocheError = null; }">✏ km</button>
+                            <label class="@(propioGuardando ? "yendo" : "")">📷 foto
+                                <InputFile OnChange="e => SubirFotoPropio(c.Placa, e)" accept="image/*" style="display:none" />
+                            </label>
+                        </div>
+                        @if (c.KmAt is DateTime ka)
+                        {
+                            <div class="mp-ckmat">km anotados el @ka.AddHours(-3).ToString("dd/MM")</div>
+                        }
+                    }
+                }
+                </div>
             }
             <button type="button" class="mp-ccard @(cocheOtro ? "on" : "")" @onclick="() => { cocheOtro = true; cocheError = null; }">
                 <span class="mp-cfoto-no">✍️</span>

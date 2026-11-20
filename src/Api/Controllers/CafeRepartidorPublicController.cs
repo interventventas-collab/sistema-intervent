@@ -848,6 +848,51 @@ public class CafeRepartidorPublicController : ControllerBase
 
     /// <summary>Devuelve la lista de pedidos cargados por el repartidor. URL publica con
     /// token fijo del repartidor — sin PIN. El PIN solo se pide al CONFIRMAR entrega/cobro.</summary>
+    // ─── 20/11/2026: el repartidor cambia el orden de SU ruta de hoy (botones o arrastrando) ───
+    // Manda todas sus paradas de hoy en el orden nuevo; se renumeran 1..N y el Mapeo de la oficina
+    // lo ve igual. En las que movió queda anotado quién y cuándo.
+    public record OrdenRutaRequest(int[] StopIds, int[]? MovidaIds, string? Accion);
+
+    [HttpPost("mis-pedidos/{tokenRepartidor}/mapeo/orden")]
+    public async Task<IActionResult> OrdenRuta(string tokenRepartidor, [FromBody] OrdenRutaRequest req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound();
+        if (req?.StopIds is null || req.StopIds.Length == 0) return BadRequest(new { error = "Nada para ordenar." });
+        var driverIds = await _db.MapeoDrivers.Where(d => d.CafeRepartidorId == r.Id).Select(d => d.Id).ToListAsync();
+        var hoyAr = DateTime.UtcNow.AddHours(-3).Date;
+        var suyas = await _db.MapeoStops
+            .Where(s => s.AssignedDriverId != null && driverIds.Contains(s.AssignedDriverId.Value) && s.FechaReparto == hoyAr)
+            .ToListAsync();
+        var porId = suyas.ToDictionary(s => s.Id);
+        if (req.StopIds.Any(id => !porId.ContainsKey(id)))
+            return BadRequest(new { error = "La ruta cambió mientras la mirabas. Tocá 🔄 y probá de nuevo." });
+
+        // Las que mandó, en ese orden; las que no vinieron (recién asignadas) quedan al final como estaban.
+        var orden = req.StopIds.Distinct().Select(id => porId[id]).ToList();
+        orden.AddRange(suyas.Where(s => !req.StopIds.Contains(s.Id))
+            .OrderBy(s => s.OrderInRoute ?? int.MaxValue).ThenBy(s => s.Id));
+        var now = DateTime.UtcNow;
+        int n = 1;
+        foreach (var s in orden)
+        {
+            if (s.OrderInRoute != n) { s.OrderInRoute = n; s.UpdatedAt = now; }
+            n++;
+        }
+        var nombre = string.IsNullOrWhiteSpace(r.Nombre) ? "El repartidor" : r.Nombre.Split(' ')[0];
+        var texto = req.Accion switch
+        {
+            "despues" => $"{nombre} la pasó para después",
+            "final" => $"{nombre} la dejó para el final",
+            "ahora" => $"{nombre} la adelantó",
+            _ => $"{nombre} la cambió de lugar"
+        };
+        foreach (var id in req.MovidaIds ?? Array.Empty<int>())
+            if (porId.TryGetValue(id, out var m)) { m.MovidaTexto = texto; m.MovidaAt = now; }
+        await _db.SaveChangesAsync();
+        return Ok();
+    }
+
     // ─── 20/11/2026: con qué vehículo sale a repartir (lo elige arriba, entre su nombre y Shell) ───
     public record CocheElegirRequest(string? Placa, string? Comentario);
 
@@ -867,6 +912,33 @@ public class CafeRepartidorPublicController : ControllerBase
         var (ok, error) = await flota.ElegirAsync(r.Id, req.Placa, req.Comentario);
         if (!ok) return BadRequest(new { error });
         return Ok(await flota.ElegidoHoyAsync(r.Id));
+    }
+
+    public record KmPropioRequest(int Km);
+
+    /// <summary>20/11/2026 (2ª): el dueño de un auto propio (Nacho, Siena) anota los km.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/coche/propio/{placa}/km")]
+    public async Task<IActionResult> KmPropio(string tokenRepartidor, string placa, [FromBody] KmPropioRequest req, [FromServices] FlotaService flota)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound();
+        var (ok, error) = await flota.KmPropioAsync(r.Id, placa, req.Km);
+        return ok ? Ok() : BadRequest(new { error });
+    }
+
+    /// <summary>20/11/2026 (2ª): el dueño de un auto propio cambia la foto desde el celu.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/coche/propio/{placa}/foto")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<IActionResult> FotoPropio(string tokenRepartidor, string placa, IFormFile? file, [FromServices] FlotaService flota)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound();
+        if (!await flota.EsPropioDeAsync(r.Id, placa)) return BadRequest(new { error = "Ese vehículo no es tuyo." });
+        if (file is null || file.Length == 0) return BadRequest(new { error = "Elegí una foto." });
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms); ms.Position = 0;
+        var (ok, error) = await flota.GuardarFotoAsync(placa, ms);
+        return ok ? Ok() : BadRequest(new { error });
     }
 
     [HttpGet("mis-pedidos/{tokenRepartidor}/coche/foto/{placa}")]

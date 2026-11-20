@@ -9105,3 +9105,15 @@ BEGIN
     CREATE INDEX IX_Rep_CocheDia_Fecha ON Rep_CocheDia(FechaAr, RepartidorId);
 END
 GO
+
+-- 2026-11-20 (2ª): el repartidor anota los km de SU auto propio desde el celu.
+-- ⚠ PROD: correr a mano ANTES de publicar la API.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='KmManual' AND Object_ID=Object_ID('Flota_Vehiculos'))
+    ALTER TABLE Flota_Vehiculos ADD KmManual INT NULL, KmManualAt DATETIME2 NULL;
+GO
+
+-- 2026-11-20 (3ª): el repartidor cambia el orden de su ruta desde el celu; queda anotado quién y cuándo.
+-- ⚠ PROD: correr a mano ANTES de publicar la API.
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MovidaTexto' AND Object_ID=Object_ID('MapeoStops'))
+    ALTER TABLE MapeoStops ADD MovidaTexto NVARCHAR(120) NULL, MovidaAt DATETIME2 NULL;
+GO
