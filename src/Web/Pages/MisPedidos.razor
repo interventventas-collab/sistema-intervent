@@ -4051,7 +4051,7 @@
     }
 
     private static bool EsMoto(string nombre) =>
-        nombre.Contains("zanella", StringComparison.OrdinalIgnoreCase) || nombre.Contains("moto", StringComparison.OrdinalIgnoreCase);
+        nombre.Contains("moto", StringComparison.OrdinalIgnoreCase);
 
     private static string Corto(string? t, int n) => string.IsNullOrEmpty(t) ? "" : t.Length <= n ? t : t[..(n - 1)] + "…";
 
