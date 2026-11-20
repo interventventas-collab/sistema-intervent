@@ -849,7 +849,10 @@ public class MapeoStopsController : ControllerBase
     public record PendienteDto(string Tipo, int Id, string Numero, string Cliente, string? Localidad,
         string? Direccion, bool SinDireccion, string? Detalle, string Estado, DateTime Fecha,
         DateTime? FechaEntrega, int? DiasAtraso, bool ParaHoy,
-        int? StopId, DateTime? EnMapaDia, string? Repartidor, string? RepartidorColor);
+        int? StopId, DateTime? EnMapaDia, string? Repartidor, string? RepartidorColor,
+        // 2026-11-20: detalle para el cartelito que aparece pasando el cursor (ventana flotante del Mapeo).
+        List<string>? Lineas = null, decimal? Total = null, string? Nota = null,
+        DateTime? Retiro = null, string? Horario = null, DateTime? CargadaAt = null);
 
     private static readonly Dictionary<string, string> EstadoPrepTexto = new()
     {
@@ -917,7 +920,12 @@ public class MapeoStopsController : ControllerBase
                 Resumen(v.Items.Select(i => (i.Cantidad, i.ProductoNombreSnapshot))),
                 v.EstadoPreparacion is not null && EstadoPrepTexto.TryGetValue(v.EstadoPreparacion, out var t) ? t : "Sin armar",
                 v.Fecha, null, dias > 2 ? dias : null, true,
-                st?.Id, st?.FechaReparto, st?.AssignedDriver?.Nombre, st?.AssignedDriver?.Color));
+                st?.Id, st?.FechaReparto, st?.AssignedDriver?.Nombre, st?.AssignedDriver?.Color,
+                v.Items.Where(i => !string.IsNullOrWhiteSpace(i.ProductoNombreSnapshot))
+                    .Select(i => $"{i.Cantidad}× {i.ProductoNombreSnapshot!.Trim()}").Take(25).ToList(),
+                v.ArcaImpTotal is > 0 ? v.ArcaImpTotal : v.Total,
+                Primero(v.ComentarioArmado, v.Observaciones),
+                null, null, v.CreatedAt));
         }
         foreach (var r in alqs)
         {
@@ -931,9 +939,119 @@ public class MapeoStopsController : ControllerBase
                 Resumen(r.Items.Select(i => (i.Cantidad, Primero(i.EquipoNav?.Nombre, i.Descripcion) ?? ""))),
                 r.Estado == "confirmado" ? "Confirmado" : "Reservado",
                 r.CreatedAt, r.FechaEntrega, atraso > 0 ? atraso : null, r.FechaEntrega.Date == dia,
-                st?.Id, st?.FechaReparto, st?.AssignedDriver?.Nombre, st?.AssignedDriver?.Color));
+                st?.Id, st?.FechaReparto, st?.AssignedDriver?.Nombre, st?.AssignedDriver?.Color,
+                r.Items.Select(i => $"{i.Cantidad}× {Primero(i.EquipoNav?.Nombre, i.Descripcion) ?? "equipo"}").Take(25).ToList(),
+                r.MontoTotal,
+                Primero(r.NotasInternas, r.Notas),
+                r.FechaRetiro,
+                string.IsNullOrWhiteSpace(r.HoraInicio) ? null : (r.HoraInicio + (string.IsNullOrWhiteSpace(r.HoraFin) ? "" : " a " + r.HoraFin)),
+                r.CreatedAt));
         }
         return Ok(new { dia = dia.ToString("yyyy-MM-dd"), items = lista });
+    }
+
+    // ══════════ 2026-11-20: "isla" de novedades del Mapeo ══════════
+    // Lo que va entrando (Flex, ME1, ventas, alquileres) con su fecha de entrega, para avisar mientras
+    // mapean. Lee solo la base: los Flex/ME1 nuevos entran solos por el aviso de MercadoLibre.
+    public record NovedadDto(string Tipo, string Ref, string Titulo, string? Sub, DateTime EntroAt,
+        DateTime? Entrega, string EntregaTexto, bool ParaElDia, bool EnMapa);
+
+    [HttpGet("novedades")]
+    public async Task<IActionResult> Novedades([FromQuery] DateTime? fecha = null)
+    {
+        var dia = FechaDelMapa(fecha);
+        var hoy = HoyAr();
+        var desdeEntro = DateTime.UtcNow.AddHours(-36);
+        var enDia = await _db.MapeoStops.AsNoTracking().Where(s => s.FechaReparto == dia && s.OriginRefId != null)
+            .Select(s => new { s.Origin, s.OriginRefId }).ToListAsync();
+        var refsMeli = enDia.Where(x => x.Origin is "flex" or "me1").Select(x => x.OriginRefId!).ToHashSet();
+        var refsVenta = enDia.Where(x => x.Origin == "venta_cafe").Select(x => x.OriginRefId!).ToHashSet();
+        var refsAlq = enDia.Where(x => x.Origin == "alquiler").Select(x => x.OriginRefId!).ToHashSet();
+        static DateTime? Ar(DateTime? utc) => utc?.AddHours(-3);
+        var es = new System.Globalization.CultureInfo("es-AR");
+        string Dia(DateTime d) => d.Date == hoy ? $"hoy {d:dd/MM}"
+            : d.Date == hoy.AddDays(1) ? $"mañana {d:dd/MM}"
+            : d.Date < hoy ? $"atrasado {d:dd/MM}"
+            : d.ToString("ddd dd/MM", es);
+        static string Junto(params string?[] xs) => string.Join(" · ", xs.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
+        var res = new List<NovedadDto>();
+
+        // Flex: los del día (y atrasados) + los que entraron hace poco aunque sean para otro día.
+        var d2 = dia.AddDays(1).AddHours(3);
+        var d7 = dia.AddDays(-7).AddHours(3);   // atrasados de hasta una semana (más viejos ya no son de la isla)
+        var flex = await _db.MeliShipments.AsNoTracking()
+            .Where(s => s.LogisticType == "self_service" && s.Latitude != null && s.Longitude != null
+                     && s.Status != "delivered" && s.Status != "cancelled" && s.Status != "not_delivered"
+                     && ((s.EstimatedDeliveryLimit != null && s.EstimatedDeliveryLimit < d2 && s.EstimatedDeliveryLimit >= d7) || s.DateCreated >= desdeEntro))
+            .ToListAsync();
+        foreach (var f in flex)
+        {
+            var lim = Ar(f.EstimatedDeliveryLimit)?.Date;
+            res.Add(new NovedadDto("flex", f.MeliShipmentId.ToString(), f.ReceiverName ?? f.BuyerNickname ?? "Flex",
+                Junto(f.AddressLine, f.City), f.DateCreated ?? DateTime.UtcNow, lim,
+                lim is DateTime ld ? Dia(ld) : "MeLi todavía no dice el día", lim is DateTime l && l <= dia,
+                refsMeli.Contains(f.MeliShipmentId.ToString())));
+        }
+        foreach (var m in await Me1PendientesAsync())
+        {
+            var lim = Ar(m.EstimatedDeliveryLimit)?.Date;
+            res.Add(new NovedadDto("me1", m.MeliShipmentId.ToString(), m.ReceiverName ?? m.BuyerNickname ?? "ME1",
+                Junto(m.AddressLine, m.City), m.DateCreated ?? DateTime.UtcNow, lim,
+                lim is DateTime ld ? "llega hasta " + ld.ToString("dd/MM") : "sin fecha", true,
+                refsMeli.Contains(m.MeliShipmentId.ToString())));
+        }
+        foreach (var v in await VentasRecientesAsync(dia))
+        {
+            if (v.TipoComprobante == "PRO" || (v.TipoComprobante ?? "").StartsWith("NC")) continue;
+            var cli = v.ClienteNav;
+            res.Add(new NovedadDto("venta", v.Id.ToString(), v.ClienteNombreSnapshot ?? cli?.Nombre ?? "Venta",
+                Junto(v.Numero, v.ClienteDomicilioEntregaSnapshot ?? v.ClienteDireccionSnapshot ?? cli?.DomicilioEntrega ?? cli?.Direccion ?? "sin dirección"),
+                v.CreatedAt, null, "cargada " + v.CreatedAt.AddHours(-3).ToString("dd/MM HH:mm"), true,
+                refsVenta.Contains(v.Id.ToString())));
+        }
+        var alqs = await _db.AlqReservas.AsNoTracking().Include(r => r.ClienteNav)
+            .Where(r => (r.Estado == "reservado" || r.Estado == "confirmado") && r.EntregadoPorRepartidorId == null
+                     && r.FechaEntrega >= dia.AddDays(-7) && (r.FechaEntrega < dia.AddDays(1) || r.CreatedAt >= desdeEntro))
+            .ToListAsync();
+        foreach (var a in alqs)
+            res.Add(new NovedadDto("alquiler", a.Id.ToString(), a.ClienteNav?.Nombre ?? "Alquiler",
+                Junto(a.Numero, a.DireccionEvento ?? a.ClienteNav?.DomicilioEntrega ?? a.ClienteNav?.Direccion ?? "sin dirección"),
+                a.CreatedAt, a.FechaEntrega.Date, "entrega " + Dia(a.FechaEntrega), a.FechaEntrega.Date <= dia,
+                refsAlq.Contains(a.Id.ToString())));
+
+        return Ok(new { dia = dia.ToString("yyyy-MM-dd"), items = res.OrderByDescending(x => x.EntroAt).Take(150).ToList() });
+    }
+
+    public record TraerNovedadesRequest(List<long>? Envios, List<int>? Ventas, List<int>? Alquileres);
+
+    /// <summary>Trae al mapa del día lo elegido en la isla (envíos de MeLi, ventas, alquileres). No duplica.</summary>
+    [HttpPost("novedades/traer")]
+    public async Task<IActionResult> TraerNovedades([FromBody] TraerNovedadesRequest req, [FromQuery] DateTime? fecha = null)
+    {
+        var dia = FechaDelMapa(fecha);
+        var envIds = req?.Envios ?? new();
+        int n = 0, sinUbic = 0;
+        if (envIds.Count > 0)
+            n += await SumarEnviosAsync(await _db.MeliShipments.Where(s => envIds.Contains(s.MeliShipmentId)).ToListAsync(), dia);
+        var fallas = new List<string>();
+        var vIds = req?.Ventas ?? new();
+        var aIds = req?.Alquileres ?? new();
+        foreach (var v in await _db.CafeVentas.Include(x => x.ClienteNav).Where(x => vIds.Contains(x.Id)).ToListAsync())
+        {
+            var r = await _ventaMapeo.SumarVentaAsync(v, fecha: dia);
+            if (!r.Ok) fallas.Add($"{v.Numero}: {r.Mensaje}");
+            else if (!r.YaEstaba) { n++; if (r.SinUbicacion) sinUbic++; }
+        }
+        foreach (var a in await _db.AlqReservas.Include(x => x.ClienteNav).Where(x => aIds.Contains(x.Id)).ToListAsync())
+        {
+            var r = await _alqMapeo.SumarReservaAsync(a, fecha: dia);
+            if (!r.Ok) fallas.Add($"{a.Numero}: {r.Mensaje}");
+            else if (!r.YaEstaba) n++;
+        }
+        var msg = n == 0 ? "Ya estaba en el mapa." : $"Sumé {n} al mapa del {dia:dd/MM}.";
+        if (sinUbic > 0) msg += $" · {sinUbic} sin ubicación, buscalas en el mapa";
+        if (fallas.Count > 0) msg += " · No pude: " + string.Join(" / ", fallas);
+        return Ok(new { creadas = n, mensaje = msg });
     }
 
     public record SumarPendientesRequest(List<int>? Ventas, List<int>? Alquileres);
