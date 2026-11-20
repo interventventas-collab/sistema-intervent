@@ -460,6 +460,15 @@
         font-family:ui-monospace,Menlo,monospace; font-weight:800; font-size:0.78rem; letter-spacing:0.04em; color:#111827; line-height:1.35; }
     .mp-cotro textarea { width:100%; box-sizing:border-box; border:1.5px solid #d1d5db; border-radius:10px; padding:0.5rem; font-family:inherit; font-size:0.95rem; min-height:60px; }
     .mp-cbtn { display:block; width:100%; margin-top:0.5rem; padding:0.7rem; border:none; border-radius:10px; background:#0e7490; color:#fff; font-weight:800; font-size:0.95rem; cursor:pointer; }
+    .mp-cwrap { display:flex; flex-direction:column; gap:0.25rem; }
+    .mp-cwrap .mp-ccard { flex:1; }
+    .mp-cacc { display:flex; gap:0.3rem; }
+    .mp-cacc button, .mp-cacc label { flex:1; text-align:center; font-size:0.8rem; font-weight:700; padding:0.35rem 0.2rem; border:1px solid #d1d5db; border-radius:8px; background:#fff; color:#374151; cursor:pointer; font-family:inherit; }
+    .mp-cacc label.yendo { opacity:0.5; }
+    .mp-ckmedit { display:flex; gap:0.3rem; }
+    .mp-ckmedit input { flex:1; min-width:0; border:1.5px solid #0e7490; border-radius:8px; padding:0.35rem; font-size:0.95rem; }
+    .mp-ckmedit button { border:none; border-radius:8px; background:#0e7490; color:#fff; font-weight:800; padding:0 0.6rem; }
+    .mp-ckmat { font-size:0.7rem; color:#9ca3af; text-align:center; }
     .mp-cerr { color:#b91c1c; font-size:0.82rem; margin-top:0.4rem; }
     .mp-ccerrar { display:block; width:100%; margin-top:0.6rem; padding:0.55rem; background:transparent; border:1px solid #d1d5db; border-radius:10px; color:#374151; font-weight:700; cursor:pointer; }
     .mpc-mas { display:block; width:100%; margin-top:0.5rem; padding:0.6rem; background:white; border:1px solid #d1d5db; border-radius:10px; font-weight:700; color:#374151; cursor:pointer; }
@@ -4050,6 +4059,54 @@
         finally { cocheGuardando = false; }
     }
 
+    private string? kmEditando;
+    private string kmTexto = "";
+    private bool propioGuardando;
+
+    private async Task GuardarKmPropio(string placa)
+    {
+        var limpio = new string((kmTexto ?? "").Where(char.IsDigit).ToArray());
+        if (!int.TryParse(limpio, out var km) || km <= 0) { cocheError = "Poné los km que marca el tablero."; return; }
+        propioGuardando = true; cocheError = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/coche/propio/{Uri.EscapeDataString(placa)}/km", new { Km = km });
+            if (!resp.IsSuccessStatusCode) { cocheError = await LeerError(resp); return; }
+            kmEditando = null;
+            await CargarCoche();
+        }
+        catch { cocheError = "Sin conexión. Probá de nuevo."; }
+        finally { propioGuardando = false; }
+    }
+
+    private async Task SubirFotoPropio(string placa, InputFileChangeEventArgs e)
+    {
+        if (propioGuardando) return;
+        propioGuardando = true; cocheError = null;
+        StateHasChanged();
+        try
+        {
+            using var st = e.File.OpenReadStream(20_000_000);
+            using var ms = new MemoryStream();
+            await st.CopyToAsync(ms); ms.Position = 0;
+            using var content = new MultipartFormDataContent();
+            var sc = new StreamContent(ms);
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(e.File.ContentType) ? "image/jpeg" : e.File.ContentType);
+            content.Add(sc, "file", e.File.Name);
+            var resp = await Http.PostAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/coche/propio/{Uri.EscapeDataString(placa)}/foto", content);
+            if (!resp.IsSuccessStatusCode) { cocheError = await LeerError(resp); return; }
+            await CargarCoche();
+        }
+        catch (Exception ex) { cocheError = ex.Message.Contains("exceeds") ? "La foto es muy pesada." : "No se pudo subir la foto. Probá de nuevo."; }
+        finally { propioGuardando = false; }
+    }
+
+    private static async Task<string> LeerError(HttpResponseMessage resp)
+    {
+        try { var d = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>(); if (d?.GetValueOrDefault("error") is { } m) return m; } catch { }
+        return "No se pudo guardar. Probá de nuevo.";
+    }
+
     private static bool EsMoto(string nombre) =>
         nombre.Contains("moto", StringComparison.OrdinalIgnoreCase);
 
@@ -4070,6 +4127,7 @@
             @foreach (var c in miCoche?.Opciones ?? new())
             {
                 var on = miCoche?.Elegido?.Placa == c.Placa;
+                <div class="mp-cwrap">
                 <button type="button" class="mp-ccard @(on ? "on" : "")" disabled="@cocheGuardando" @onclick="() => ElegirCoche(c.Placa)">
                     @if (c.FotoVer is long fv)
                     {
@@ -4085,6 +4143,31 @@
                         @if (c.Km is int km) { <span class="mp-ckm">@km.ToString("N0", EsAr) km</span> }
                     </span>
                 </button>
+                @* 20/11/2026 (2ª): su auto propio no pasa por Shell: él mismo anota los km y cambia la foto. *@
+                @if (c.Propio)
+                {
+                    @if (kmEditando == c.Placa)
+                    {
+                        <div class="mp-ckmedit">
+                            <input type="number" inputmode="numeric" placeholder="km del tablero" @bind="kmTexto" @bind:event="oninput" />
+                            <button type="button" disabled="@propioGuardando" @onclick="() => GuardarKmPropio(c.Placa)">@(propioGuardando ? "…" : "Guardar")</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="mp-cacc">
+                            <button type="button" @onclick="() => { kmEditando = c.Placa; kmTexto = c.Km?.ToString() ?? string.Empty; cocheError = null; }">✏ km</button>
+                            <label class="@(propioGuardando ? "yendo" : "")">📷 foto
+                                <InputFile OnChange="e => SubirFotoPropio(c.Placa, e)" accept="image/*" style="display:none" />
+                            </label>
+                        </div>
+                        @if (c.KmAt is DateTime ka)
+                        {
+                            <div class="mp-ckmat">km anotados el @ka.AddHours(-3).ToString("dd/MM")</div>
+                        }
+                    }
+                }
+                </div>
             }
             <button type="button" class="mp-ccard @(cocheOtro ? "on" : "")" @onclick="() => { cocheOtro = true; cocheError = null; }">
                 <span class="mp-cfoto-no">✍️</span>

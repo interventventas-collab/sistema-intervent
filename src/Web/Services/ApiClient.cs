@@ -7265,7 +7265,7 @@ public partial class ApiClient
 
     // ─── 20/11/2026: vehículos. El repartidor elige con cuál sale (celu); la oficina sube fotos y autos propios. ───
     public record FlotaCocheDto(string Placa, string Nombre, int? Km, DateTime? UltimaCarga, bool Propio,
-        int? RepartidorId, string? Repartidor, long? FotoVer);
+        int? RepartidorId, string? Repartidor, long? FotoVer, DateTime? KmAt = null);
     public record FlotaElegidoDto(string? Placa, string Nombre, string? Comentario, int? Km, long? FotoVer, DateTime ElegidoAt);
     public record MiCocheDto(FlotaElegidoDto? Elegido, List<FlotaCocheDto> Opciones);
     public record FlotaRepDto(int Id, string Nombre);

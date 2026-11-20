@@ -869,6 +869,33 @@ public class CafeRepartidorPublicController : ControllerBase
         return Ok(await flota.ElegidoHoyAsync(r.Id));
     }
 
+    public record KmPropioRequest(int Km);
+
+    /// <summary>20/11/2026 (2ª): el dueño de un auto propio (Nacho, Siena) anota los km.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/coche/propio/{placa}/km")]
+    public async Task<IActionResult> KmPropio(string tokenRepartidor, string placa, [FromBody] KmPropioRequest req, [FromServices] FlotaService flota)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound();
+        var (ok, error) = await flota.KmPropioAsync(r.Id, placa, req.Km);
+        return ok ? Ok() : BadRequest(new { error });
+    }
+
+    /// <summary>20/11/2026 (2ª): el dueño de un auto propio cambia la foto desde el celu.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/coche/propio/{placa}/foto")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<IActionResult> FotoPropio(string tokenRepartidor, string placa, IFormFile? file, [FromServices] FlotaService flota)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound();
+        if (!await flota.EsPropioDeAsync(r.Id, placa)) return BadRequest(new { error = "Ese vehículo no es tuyo." });
+        if (file is null || file.Length == 0) return BadRequest(new { error = "Elegí una foto." });
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms); ms.Position = 0;
+        var (ok, error) = await flota.GuardarFotoAsync(placa, ms);
+        return ok ? Ok() : BadRequest(new { error });
+    }
+
     [HttpGet("mis-pedidos/{tokenRepartidor}/coche/foto/{placa}")]
     public async Task<IActionResult> FotoCoche(string tokenRepartidor, string placa, [FromServices] FlotaService flota)
     {

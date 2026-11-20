@@ -20,6 +20,9 @@ public class FlotaVehiculo
     public int? RepartidorId { get; set; }
     public byte[]? Foto { get; set; }
     public DateTime? FotoAt { get; set; }
+    /// <summary>Solo autos propios: los km que anota el dueño desde su celu (no pasan por Shell).</summary>
+    public int? KmManual { get; set; }
+    public DateTime? KmManualAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
