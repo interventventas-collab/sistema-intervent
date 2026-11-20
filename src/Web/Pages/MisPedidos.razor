@@ -435,8 +435,12 @@
     .ofi-lab { font-size:0.7rem; font-weight:800; color:#6b7280; margin:0.1rem 0.15rem 0.3rem; }
     .ofi-total { font-size:0.85rem; color:#374151; margin:0.2rem 0.15rem 0.3rem; }
     /* 20/11/2026: vehículo con el que sale */
-    .mp-coche { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.1rem; background:rgba(255,255,255,0.16); color:#fff;
-        border:1.5px solid rgba(255,255,255,0.35); border-radius:10px; padding:0.35rem 0.55rem; cursor:pointer; font-family:inherit; min-width:84px; max-width:120px; flex-shrink:0; margin-left:auto; }
+    .mp-hd2 { display:flex; align-items:stretch; gap:0.5rem; margin-top:0.7rem; }
+    .mp-hd2 .mp-calcus { flex-direction:row; margin:0 0 0 auto; align-self:center; }
+    .mp-coche { display:grid; grid-template-columns:auto 1fr; grid-auto-flow:column; grid-template-rows:auto auto; align-items:center; column-gap:0.5rem; text-align:left;
+        background:rgba(255,255,255,0.16); color:#fff; border:1.5px solid rgba(255,255,255,0.35); border-radius:10px; padding:0.35rem 0.55rem;
+        cursor:pointer; font-family:inherit; min-width:0; flex:0 1 auto; }
+    .mp-coche-img { grid-row:1 / span 2; }
     .mp-coche.falta { border:1.5px dashed #fff; }
     .mp-coche-t { font-size:0.7rem; opacity:0.9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
     .mp-coche-v { font-size:0.95rem; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
@@ -505,7 +509,29 @@
                     <div class="mp-name">@nombre</div>
                     <div class="mp-hd-fecha">@FechaLabel</div>
                 </div>
-                @* 20/11/2026: con qué vehículo sale. Entre su nombre y Shell; tocándolo se abren las tarjetas. *@
+                @* 21/10/2026: el saldo de Shell Flota (lo ven TODOS los repartidores) va acá, siempre a
+                   la vista, en el lugar del camioncito. *@
+                @if (!string.IsNullOrWhiteSpace(oficina?.ShellSaldo))
+                {
+                    <div class="mp-shell">
+                        <div class="mp-shell-t">⛽ Shell Flota</div>
+                        <div class="mp-shell-v">@ShellTexto(oficina!.ShellSaldo)</div>
+                        @if (oficina.ShellAt is DateTime sa)
+                        {
+                            <div class="mp-shell-a">act. @(sa.AddHours(-3).Date == HoyAr ? sa.AddHours(-3).ToString("HH:mm") : sa.AddHours(-3).ToString("dd/MM HH:mm"))</div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="font-size: 3rem;">🚚</div>
+                }
+            </div>
+            @if (miCoche is not null || VeCalcuPrecios || VeCalcuAlquiler)
+            {
+            <div class="mp-hd2">
+                @* 20/11/2026: con qué vehículo sale; tocándolo se abren las tarjetas. Va en un 2º renglón con las calcus
+                   (en el celu, arriba entre el nombre y Shell, la foto tapaba el nombre). *@
                 @if (miCoche is not null)
                 {
                     var ce = miCoche.Elegido;
@@ -541,24 +567,8 @@
                         }
                     </div>
                 }
-                @* 21/10/2026: el saldo de Shell Flota (lo ven TODOS los repartidores) va acá, siempre a
-                   la vista, en el lugar del camioncito. *@
-                @if (!string.IsNullOrWhiteSpace(oficina?.ShellSaldo))
-                {
-                    <div class="mp-shell">
-                        <div class="mp-shell-t">⛽ Shell Flota</div>
-                        <div class="mp-shell-v">@ShellTexto(oficina!.ShellSaldo)</div>
-                        @if (oficina.ShellAt is DateTime sa)
-                        {
-                            <div class="mp-shell-a">act. @(sa.AddHours(-3).Date == HoyAr ? sa.AddHours(-3).ToString("HH:mm") : sa.AddHours(-3).ToString("dd/MM HH:mm"))</div>
-                        }
-                    </div>
-                }
-                else
-                {
-                    <div style="font-size: 3rem;">🚚</div>
-                }
             </div>
+            }
         </div>
 
         @if (cocheAbierto && cocheDespues is null)
@@ -3055,6 +3065,7 @@
     }
 
     private System.Threading.Timer? refreshTimer;
+    private int ticksOficina;
 
     // ───────────────────────────────────────────────────────────────────────
     // 2026-09-17: "POR DONDE VAN" — el celu manda la ubicacion mientras reparte.
@@ -3156,6 +3167,8 @@
                 // volvía a la parada actual: si Nacho estaba bajando a mirar envíos viejos o cobranzas,
                 // parpadeaba y lo subía de golpe cada medio minuto.
                 if (modal is null && !escaneando && rechazoOrigen is null && me1ConfirmEntrega is null && noEntregadaStopId is null) await RecargarEnSilencio();
+                // 20/11/2026: el saldo de Shell se leía solo al abrir: quedaba el de la mañana todo el día.
+                if (++ticksOficina % 4 == 0) { await CargarOficina(); StateHasChanged(); }
             });
         }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
