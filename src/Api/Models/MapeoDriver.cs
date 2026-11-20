@@ -80,6 +80,11 @@ public class MapeoStop
     [Column(TypeName = "date")]
     public DateTime FechaReparto { get; set; } = DateTime.UtcNow.AddHours(-3).Date;
 
+    /// <summary>20/11/2026: si el repartidor la movió desde su celu ("Nacho la pasó para después") y cuándo.
+    /// Se ve en el Mapeo de la oficina.</summary>
+    [MaxLength(120)] public string? MovidaTexto { get; set; }
+    public DateTime? MovidaAt { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }

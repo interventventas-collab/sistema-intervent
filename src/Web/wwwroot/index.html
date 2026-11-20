@@ -1516,6 +1516,33 @@
             });
         };
 
+        // 2026-11-20: arrastrar paradas de la ruta en /mis-pedidos (manija ⠿). Al soltar, devuelve la
+        // tarjeta a su lugar (la lista la vuelve a dibujar Blazor con el orden guardado) y le pasa a C#
+        // las paradas en el orden nuevo. Ese orden se guarda en el Mapeo.
+        window.mpInitRuta = function(containerId, dotNetRef) {
+            var el = document.getElementById(containerId);
+            if (!el || el._sortableInstance) return;
+            el._sortableInstance = Sortable.create(el, {
+                handle: '.mp-ruta-handle',
+                draggable: '.mp-ruta-mov',
+                animation: 150,
+                ghostClass: 'mp-drag-ghost',
+                forceFallback: true,
+                fallbackTolerance: 5,
+                touchStartThreshold: 5,
+                onEnd: function(evt) {
+                    if (evt.oldIndex === evt.newIndex) return;
+                    var ids = [];
+                    el.querySelectorAll('.mp-ruta-mov').forEach(function(x) { ids.push(parseInt(x.getAttribute('data-cab'), 10)); });
+                    var mov = parseInt(evt.item.getAttribute('data-cab'), 10);
+                    var from = evt.from;
+                    from.removeChild(evt.item);
+                    from.insertBefore(evt.item, from.children[evt.oldIndex] || null);
+                    if (dotNetRef) dotNetRef.invokeMethodAsync('OnRutaArrastrada', ids, mov);
+                }
+            });
+        };
+
         window.mpSaveOrden = function(token, ids) {
             try {
                 localStorage.setItem('mp-orden-' + token, JSON.stringify(ids));

@@ -126,6 +126,8 @@ public class PublicStopDto
 public class MapeoStopDto
 {
     public int Id { get; set; }
+    // 20/11/2026: "Nacho la pasó para después · 14:32" si el repartidor la movió desde su celu.
+    public string? MovidaTexto { get; set; }
     public string Origin { get; set; } = "manual";
     public string? OriginRefId { get; set; }
     public string? Alias { get; set; }

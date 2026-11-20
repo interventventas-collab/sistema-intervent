@@ -45,7 +45,9 @@ public class MapeoStopsController : ControllerBase
         // 2026-09-03: cuántos días hace que MercadoLibre lo prometió y sigue sin entregar. null = al
         // día. Uno de ayer y uno de hace cinco días no son lo mismo, y el mapa lo tiene que decir.
         int? DiasAtraso = null,
-        DateTime? DateDelivered = null, string? ReceiverName = null);
+        DateTime? DateDelivered = null, string? ReceiverName = null,
+        // 2026-11-20: "Nacho la pasó para después · 14:32" si el repartidor la movió desde su celu.
+        string? MovidaTexto = null);
 
     // ══════════════════════════════════════════════════════════════════════════════
     // 2026-09-03: EL MAPA AHORA TIENE DÍAS.
@@ -83,7 +85,8 @@ public class MapeoStopsController : ControllerBase
         s.Id, s.Origin, s.OriginRefId, s.Alias, s.Direccion, s.Latitude, s.Longitude,
         s.ContactName, s.Telefono, s.Notas, s.InternalStatus,
         s.AssignedDriverId, s.AssignedDriver?.Nombre, s.AssignedDriver?.Color,
-        s.AssignedVehicleSlot, s.OrderInRoute, s.CreatedAt, s.Localidad, s.FechaReparto);
+        s.AssignedVehicleSlot, s.OrderInRoute, s.CreatedAt, s.Localidad, s.FechaReparto,
+        MovidaTexto: s.MovidaTexto is null ? null : $"{s.MovidaTexto} · {s.MovidaAt?.AddHours(-3):HH:mm}");
 
     /// <summary>Las paradas de UN día. Sin `fecha` devuelve las de hoy, que es lo que hacía siempre.</summary>
     [HttpGet]
