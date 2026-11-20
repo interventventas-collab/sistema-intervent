@@ -1543,6 +1543,46 @@
             });
         };
 
+        // 2026-11-20: ventana flotante que se arrastra desde su barra (Mapeo → Ventas y alquileres
+        // pendientes). Recuerda dónde la dejaste. No se va fuera de la pantalla.
+        window.ventanaArrastrable = function(id, handleSel, clave) {
+            var w = document.getElementById(id);
+            if (!w || w._arrastrable) return;
+            w._arrastrable = true;
+            var h = w.querySelector(handleSel) || w;
+            function poner(x, y) {
+                x = Math.max(0, Math.min(window.innerWidth - 120, x));
+                y = Math.max(0, Math.min(window.innerHeight - 60, y));
+                w.style.left = x + 'px'; w.style.top = y + 'px';
+            }
+            try { var g = JSON.parse(localStorage.getItem(clave) || 'null'); if (g) poner(g.x, g.y); } catch (e) {}
+            var d = null;
+            h.addEventListener('pointerdown', function(e) {
+                if (e.target.closest('button,input,a')) return;
+                d = { x: e.clientX - w.offsetLeft, y: e.clientY - w.offsetTop };
+                h.setPointerCapture(e.pointerId); h.style.cursor = 'grabbing';
+            });
+            h.addEventListener('pointermove', function(e) { if (d) poner(e.clientX - d.x, e.clientY - d.y); });
+            h.addEventListener('pointerup', function() {
+                if (!d) return; d = null; h.style.cursor = '';
+                try { localStorage.setItem(clave, JSON.stringify({ x: w.offsetLeft, y: w.offsetTop })); } catch (e) {}
+            });
+        };
+
+        // 2026-11-20: "ding" cortito de la isla del Mapeo cuando entra algo para el día.
+        window.mapeoDing = function() {
+            try {
+                var C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+                var c = window._mapeoAudio || (window._mapeoAudio = new C());
+                [880, 1320].forEach(function(f, i) {
+                    var o = c.createOscillator(), g = c.createGain(), t = c.currentTime + i * 0.12;
+                    o.type = 'sine'; o.frequency.value = f;
+                    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+                    o.connect(g); g.connect(c.destination); o.start(t); o.stop(t + 0.3);
+                });
+            } catch (e) {}
+        };
+
         window.mpSaveOrden = function(token, ids) {
             try {
                 localStorage.setItem('mp-orden-' + token, JSON.stringify(ids));

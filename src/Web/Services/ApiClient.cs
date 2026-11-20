@@ -9256,6 +9256,12 @@ public partial class ApiClient
     public async Task<MapeoTraerResult?> SumarPendientesAlMapaAsync(List<int> ventas, List<int> alquileres, DateTime? fecha = null)
         => await PostAsync<MapeoTraerResult>("/api/mapeo/stops/pendientes/sumar" + FechaQs(fecha, "?"), new { ventas, alquileres });
 
+    /// <summary>20/11/2026: lo que va entrando (Flex, ME1, ventas, alquileres) para la isla del Mapeo.</summary>
+    public async Task<MapeoNovedadesResp?> GetMapeoNovedadesAsync(DateTime? fecha = null)
+        => await GetAsync<MapeoNovedadesResp>("/api/mapeo/stops/novedades" + FechaQs(fecha, "?"));
+    public async Task<MapeoTraerResult?> TraerNovedadesAlMapaAsync(List<long> envios, List<int> ventas, List<int> alquileres, DateTime? fecha = null)
+        => await PostAsync<MapeoTraerResult>("/api/mapeo/stops/novedades/traer" + FechaQs(fecha, "?"), new { envios, ventas, alquileres });
+
     public async Task<object?> AssignBulkStopsAsync(List<int> stopIds, int? driverId)
         => await PostAsync<object>("/api/mapeo/stops/assign-bulk", new { stopIds, driverId });
 
@@ -11083,7 +11089,14 @@ public record MapeoPendientesResp(string? Dia, List<MapeoPendienteDto> Items);
 public record MapeoPendienteDto(string Tipo, int Id, string Numero, string Cliente, string? Localidad,
     string? Direccion, bool SinDireccion, string? Detalle, string Estado, DateTime Fecha,
     DateTime? FechaEntrega, int? DiasAtraso, bool ParaHoy,
-    int? StopId, DateTime? EnMapaDia, string? Repartidor, string? RepartidorColor);
+    int? StopId, DateTime? EnMapaDia, string? Repartidor, string? RepartidorColor,
+    List<string>? Lineas = null, decimal? Total = null, string? Nota = null,
+    DateTime? Retiro = null, string? Horario = null, DateTime? CargadaAt = null);
+
+// 20/11/2026: isla de novedades del Mapeo
+public record MapeoNovedadDto(string Tipo, string Ref, string Titulo, string? Sub, DateTime EntroAt,
+    DateTime? Entrega, string EntregaTexto, bool ParaElDia, bool EnMapa);
+public record MapeoNovedadesResp(string Dia, List<MapeoNovedadDto> Items);
 
 // 18/11/2026: combustible Shell
 public record CombustibleCargaDto(int Id, string Placa, string Nombre, string? Vehiculo, string? Estacion, string? Producto,

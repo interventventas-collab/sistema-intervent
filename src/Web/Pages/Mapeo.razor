@@ -30,7 +30,55 @@
     .mapeo-side-reabrir svg { width: 16px; height: 16px; }
     .mapeo-side-list { flex: 1; overflow-y: auto; padding: 0.3rem; }
     /* 2026-09-24: panel "Pendientes de entregar" (tapa el listado mientras está abierto). */
-    .pend-panel { position: absolute; inset: 0; z-index: 30; background: #fff; display: flex; flex-direction: column; }
+    .pend-panel { position: fixed; left: 70px; top: 90px; width: 410px; max-width: 94vw; height: min(74vh, 680px); z-index: 9500; background: #fff;
+        display: flex; flex-direction: column; border: 1px solid #d1d5db; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.22); overflow: hidden; }
+    /* 2026-11-20: isla de novedades arriba del mapa */
+    .isla { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); z-index: 640; background: #0b0b0b; color: #fff; border-radius: 22px;
+        overflow: hidden; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.25); transition: width .4s cubic-bezier(.2,.9,.3,1.15), border-radius .3s; font-size: 0.82rem; }
+    .isla.min { width: auto; }
+    .isla.noti { width: min(470px, 92%); animation: islaPop .45s cubic-bezier(.2,.9,.3,1.3); }
+    .isla.open { width: min(580px, 94%); border-radius: 16px; cursor: default; }
+    @@keyframes islaPop { 0% { transform: translateX(-50%) scale(.6); opacity: .4; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+    .isla-min { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.9rem; white-space: nowrap; }
+    .isla-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex: 0 0 auto; animation: islaLate 1.8s infinite; }
+    @@keyframes islaLate { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,.7); } 70% { box-shadow: 0 0 0 7px rgba(34,197,94,0); } 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); } }
+    .isla-cnt { background: #dc2626; border-radius: 10px; padding: 0 0.45rem; font-weight: 700; }
+    .isla-noti { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.8rem; }
+    .isla-nt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .isla-nt span { color: #a3a3a3; font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .isla-ic { flex: 0 0 auto; border-radius: 7px; padding: 0.1rem 0.4rem; font-size: 0.65rem; font-weight: 800; letter-spacing: .03em; }
+    .isla-ic.flex { background: #facc15; color: #422006; } .isla-ic.me1 { background: #38bdf8; color: #082f49; }
+    .isla-ic.venta { background: #4ade80; color: #052e16; } .isla-ic.alquiler { background: #c084fc; color: #3b0764; }
+    .isla-tr { border: 1px solid #525252; background: transparent; color: #fff; border-radius: 8px; padding: 0.15rem 0.55rem; font-size: 0.75rem; cursor: pointer; white-space: nowrap; }
+    .isla-tr:hover { background: #262626; } .isla-tr:disabled { opacity: .5; }
+    .isla-top { display: flex; align-items: center; gap: 0.5rem; padding: 0.55rem 0.8rem 0.3rem; }
+    .isla-top b { flex: 1; }
+    .isla-link { color: #a3a3a3; cursor: pointer; font-size: 0.78rem; }
+    .isla-tabs { display: flex; gap: 0.35rem; padding: 0.2rem 0.7rem 0.5rem; flex-wrap: wrap; }
+    .isla-tab { padding: 0.15rem 0.65rem; border-radius: 12px; background: #262626; font-size: 0.75rem; cursor: pointer; }
+    .isla-tab.on { background: #fff; color: #111; }
+    .isla-list { max-height: 46vh; overflow-y: auto; }
+    .isla-it { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.8rem; border-top: 1px solid #1f1f1f; }
+    .isla-it.ya { opacity: .55; } .isla-it.otro { opacity: .5; }
+    .isla-t { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .isla-t span { color: #a3a3a3; font-size: 0.72rem; overflow: hidden; text-overflow: ellipsis; }
+    .isla-fe { font-size: 0.7rem; border-radius: 8px; padding: 0.05rem 0.45rem; white-space: nowrap; background: #262626; color: #a3a3a3; }
+    .isla-fe.hoy { background: #14532d; color: #bbf7d0; }
+    .isla-ok { color: #4ade80; font-size: 0.72rem; white-space: nowrap; }
+    .isla-sep { color: #737373; font-size: 0.72rem; padding: 0.45rem 0.8rem; border-top: 1px solid #1f1f1f; }
+    .isla-vacio { color: #a3a3a3; padding: 0.8rem; text-align: center; }
+    .isla-pie { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.5rem 0.8rem; border-top: 1px solid #1f1f1f; color: #737373; font-size: 0.72rem; }
+    .pend-drag { display: flex; align-items: center; gap: 0.4rem; cursor: grab; user-select: none; }
+    .pend-almapa { background: #fff; border: 1px solid #1d4ed8; color: #1d4ed8; border-radius: 6px; padding: 0 0.4rem; font-size: 0.72rem; font-weight: 700; line-height: 1.6; cursor: pointer; white-space: nowrap; }
+    .pend-almapa:hover { background: #eff6ff; }
+    .pend-hover { position: fixed; z-index: 9800; width: 290px; background: #111827; color: #f9fafb; border-radius: 10px; padding: 0.6rem 0.75rem; font-size: 0.8rem;
+        line-height: 1.4; box-shadow: 0 10px 28px rgba(0,0,0,0.3); pointer-events: none; }
+    .pend-hover .ph-tit { font-weight: 700; font-size: 0.88rem; } .pend-hover .ph-tit span { font-weight: 400; color: #9ca3af; }
+    .pend-hover .ph-dir, .pend-hover .ph-fila { color: #d1d5db; margin-top: 0.2rem; }
+    .pend-hover .ph-fila b { color: #fff; }
+    .pend-hover .ph-items { margin: 0.35rem 0 0; padding-left: 1rem; } .pend-hover .ph-items li.mas { list-style: none; color: #9ca3af; }
+    .pend-hover .ph-total { margin-top: 0.35rem; font-weight: 700; }
+    .pend-hover .ph-nota { margin-top: 0.3rem; color: #fde68a; }
     .pend-head { padding: 0.6rem 0.7rem; border-bottom: 1px solid #e5e7eb; }
     .pend-x { border: none; background: transparent; font-size: 1.3rem; line-height: 1; color: #6b7280; cursor: pointer; }
     .pend-chips { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.45rem; }
@@ -387,103 +435,6 @@
         </button>
     }
     <div class="mapeo-side" style="position:relative; @(sideCollapsed ? "display:none;" : "")">
-        @if (showPendientes)
-        {
-            var visibles = PendientesFiltrados().ToList();
-            var tildables = visibles.Where(PuedeTildarse).ToList();
-            <div class="pend-panel">
-                <div class="pend-head">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:700; font-size:0.98rem; color:#111827;">Pendientes de entregar</span>
-                        <button class="pend-x" @onclick="() => showPendientes = false" title="Cerrar y volver al listado">&times;</button>
-                    </div>
-                    <div class="pend-chips">
-                        <button class="pend-chip @(pendTipo == "todo" ? "sel" : "")" @onclick="@(() => pendTipo = "todo")">Todo · @pendientes.Count</button>
-                        <button class="pend-chip @(pendTipo == "venta" ? "sel" : "")" @onclick="@(() => pendTipo = "venta")">Ventas · @pendientes.Count(p => p.Tipo == "venta")</button>
-                        <button class="pend-chip @(pendTipo == "alquiler" ? "sel" : "")" @onclick="@(() => pendTipo = "alquiler")">Alquileres · @pendientes.Count(p => p.Tipo == "alquiler")</button>
-                    </div>
-                    <div class="pend-chips">
-                        <button class="pend-chip @(pendFiltro == "hoy" ? "sel" : "")" @onclick="@(() => TogglePendFiltro("hoy"))"
-                                title="Las ventas pendientes y los alquileres que se entregan este día">Para hoy · @pendientes.Count(p => p.ParaHoy)</button>
-                        <button class="pend-chip @(pendFiltro == "atrasados" ? "sel" : "")" @onclick="@(() => TogglePendFiltro("atrasados"))"
-                                title="Alquileres con la entrega ya pasada y ventas de hace más de 2 días">Atrasados · @pendientes.Count(p => p.DiasAtraso > 0)</button>
-                        <button class="pend-chip @(pendFiltro == "sindir" ? "sel" : "")" @onclick="@(() => TogglePendFiltro("sindir"))">Sin dirección · @pendientes.Count(p => p.SinDireccion)</button>
-                    </div>
-                    <input class="form-input" style="width:100%; margin-top:0.45rem; height:32px; font-size:0.85rem;" placeholder="Buscar cliente, número o zona"
-                           @bind="pendBuscar" @bind:event="oninput" />
-                </div>
-                <div class="pend-sub">
-                    <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer;">
-                        <input type="checkbox" checked="@(tildables.Count > 0 && tildables.All(p => pendTildados.Contains(Clave(p))))"
-                               @onchange="e => TildarTodos(tildables, (bool)(e.Value ?? false))" />
-                        Tildar todos los de la lista
-                    </label>
-                    <span>@pendTildados.Count tildado@(pendTildados.Count == 1 ? "" : "s")</span>
-                </div>
-                <div class="pend-list">
-                    @if (pendCargando && pendientes.Count == 0)
-                    {
-                        <div class="pend-vacio">Cargando…</div>
-                    }
-                    else if (visibles.Count == 0)
-                    {
-                        <div class="pend-vacio">No hay nada pendiente con ese filtro.</div>
-                    }
-                    @foreach (var p in visibles)
-                    {
-                        var clave = Clave(p);
-                        var enEsteMapa = p.StopId is not null && p.EnMapaDia?.Date == FechaMapa.Date;
-                        <div class="pend-row @(pendTildados.Contains(clave) ? "on" : "") @(enEsteMapa ? "ya" : "")">
-                            @if (enEsteMapa)
-                            {
-                                <span class="pend-pin" title="Ya está en el mapa de este día">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                                </span>
-                            }
-                            else
-                            {
-                                <input type="checkbox" checked="@pendTildados.Contains(clave)" disabled="@(!PuedeTildarse(p))"
-                                       title="@(p.SinDireccion ? "Cargale la dirección de entrega para poder sumarla" : "Sumar al mapa")"
-                                       @onchange="e => Tildar(clave, (bool)(e.Value ?? false))" />
-                            }
-                            <div style="min-width:0;">
-                                <div class="pend-tit">
-                                    @p.Cliente <span class="pend-num">· @(p.Tipo == "alquiler" ? "Alquiler " : "")@p.Numero</span>
-                                </div>
-                                <div class="pend-det">
-                                    @(string.IsNullOrWhiteSpace(p.Localidad) ? "" : p.Localidad + " · ")@p.Detalle@(p.FechaEntrega is DateTime fe ? $" · entrega {fe:dd/MM}" : "")
-                                </div>
-                                @if (enEsteMapa)
-                                {
-                                    <div class="pend-det">ya está en el mapa@(string.IsNullOrWhiteSpace(p.Repartidor) ? " · sin repartidor" : " · asignado a " + p.Repartidor)</div>
-                                }
-                                else if (p.EnMapaDia is DateTime otroDia)
-                                {
-                                    <div class="pend-det">está en el mapa del @otroDia.ToString("dd/MM")</div>
-                                }
-                                @if (p.SinDireccion)
-                                {
-                                    <div class="pend-det" style="color:#b91c1c;">Sin dirección de entrega</div>
-                                }
-                            </div>
-                            <div class="pend-der">
-                                <button type="button" class="pend-ojo" title="Ver el comprobante (y descargarlo)" @onclick="() => AbrirComprobante(p)">👁️</button>
-                                @if (p.DiasAtraso is int da && da > 0)
-                                {
-                                    <span class="pend-est alarma">@(p.Tipo == "alquiler" ? $"Atrasado {da} día{(da == 1 ? "" : "s")}" : $"Hace {da} días")</span>
-                                }
-                                <span class="pend-est">@p.Estado</span>
-                            </div>
-                        </div>
-                    }
-                </div>
-                <div style="padding:0.55rem 0.7rem; border-top:1px solid #e5e7eb;">
-                    <button class="btn btn-primary" style="width:100%;" disabled="@(pendTildados.Count == 0 || pendSumando)" @onclick="SumarTildados">
-                        @(pendSumando ? "Sumando…" : pendTildados.Count == 0 ? "Tildá lo que querés sumar" : $"Sumar {pendTildados.Count} al mapa")
-                    </button>
-                </div>
-            </div>
-        }
         <div class="mapeo-side-header" style="display:flex; justify-content:space-between; align-items:center;">
             @{
                 // Conteo real (deduplicado): los Flex que ya fueron importados como parada
@@ -1381,6 +1332,91 @@
         </div>
     </div>
     <div class="mapeo-map" style="position:relative;">
+        @* 2026-11-20: la "isla" de novedades — avisa lo que va entrando mientras mapean. *@
+        @if (!SoloLectura && !dibujandoZona && !modoOrden && !modoGuiada && !modoAsignacion && !modoArmar && novedades.Count > 0)
+        {
+            var nPend = NovPendientes.Count();
+            <div class="isla @islaModo" @onclick="AbrirIsla">
+                @if (islaModo == "noti" && islaNoti is MapeoNovedadDto nn)
+                {
+                    <div class="isla-noti">
+                        <span class="isla-ic @nn.Tipo">@TipoCorto(nn.Tipo)</span>
+                        <span class="isla-nt">
+                            <b>@TipoEntro(nn.Tipo) · @nn.EntregaTexto</b>
+                            <span>@nn.Titulo@(string.IsNullOrWhiteSpace(nn.Sub) ? "" : " · " + nn.Sub)</span>
+                        </span>
+                        @if (!nn.EnMapa && nn.ParaElDia)
+                        {
+                            <button type="button" class="isla-tr" disabled="@islaTrayendo" @onclick:stopPropagation="true" @onclick="() => TraerNovedad(nn)">+ Traer</button>
+                        }
+                    </div>
+                }
+                else if (islaModo == "open")
+                {
+                    <div class="isla-top">
+                        <span class="isla-dot"></span>
+                        <b>Novedades · mapa del @FechaMapa.ToString("ddd dd/MM", EsAr)</b>
+                        <span class="isla-link" title="@(islaMudo ? "Prender el sonido" : "Apagar el sonido")" @onclick:stopPropagation="true" @onclick="ToggleMudo">@(islaMudo ? "🔕" : "🔔")</span>
+                        <span class="isla-link" @onclick:stopPropagation="true" @onclick="AchicarIsla">Achicar ▴</span>
+                    </div>
+                    <div class="isla-tabs">
+                        @foreach (var t in new[] { "flex", "me1", "venta", "alquiler" })
+                        {
+                            var nt = novedades.Count(x => x.Tipo == t && x.ParaElDia && !x.EnMapa);
+                            <span class="isla-tab @(islaTab == t ? "on" : "")" @onclick:stopPropagation="true" @onclick="() => islaTab = t">@TipoLargo(t)@(nt > 0 ? $" · {nt}" : "")</span>
+                        }
+                    </div>
+                    <div class="isla-list" @onclick:stopPropagation="true">
+                        @{
+                            var delTab = novedades.Where(x => x.Tipo == islaTab).ToList();
+                            var hoyL = delTab.Where(x => x.ParaElDia).OrderBy(x => x.EnMapa).ThenByDescending(x => x.EntroAt).ToList();
+                            var otros = delTab.Where(x => !x.ParaElDia).OrderBy(x => x.Entrega ?? DateTime.MaxValue).ToList();
+                        }
+                        @if (hoyL.Count == 0 && otros.Count == 0)
+                        {
+                            <div class="isla-vacio">No entró nada de @TipoLargo(islaTab).ToLower() en el último día y medio.</div>
+                        }
+                        @foreach (var x in hoyL)
+                        {
+                            <div class="isla-it @(x.EnMapa ? "ya" : "")">
+                                <span class="isla-ic @x.Tipo">@TipoCorto(x.Tipo)</span>
+                                <span class="isla-t">@x.Titulo<span>@x.Sub · entró @x.EntroAt.AddHours(-3).ToString("dd/MM HH:mm")</span></span>
+                                <span class="isla-fe hoy">@x.EntregaTexto</span>
+                                @if (x.EnMapa) { <span class="isla-ok">✓ en el mapa</span> }
+                                else { <button type="button" class="isla-tr" disabled="@islaTrayendo" @onclick="() => TraerNovedad(x)">+ Traer</button> }
+                            </div>
+                        }
+                        @if (otros.Count > 0)
+                        {
+                            <div class="isla-sep">Para otros días · no cuentan en el numerito</div>
+                            @foreach (var x in otros)
+                            {
+                                <div class="isla-it otro">
+                                    <span class="isla-ic @x.Tipo">@TipoCorto(x.Tipo)</span>
+                                    <span class="isla-t">@x.Titulo<span>@x.Sub</span></span>
+                                    <span class="isla-fe">@x.EntregaTexto</span>
+                                </div>
+                            }
+                        }
+                    </div>
+                    <div class="isla-pie" @onclick:stopPropagation="true">
+                        <span>Se actualiza solo cada 30 segundos</span>
+                        @if (nPend > 0)
+                        {
+                            <button type="button" class="isla-tr" disabled="@islaTrayendo" @onclick="TraerTodasNovedades">@(islaTrayendo ? "Trayendo…" : $"Traer los {nPend} de este día")</button>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="isla-min">
+                        <span class="isla-dot"></span>
+                        <span>En vivo · @FechaMapa.ToString("ddd dd/MM", EsAr)</span>
+                        @if (nPend > 0) { <span class="isla-cnt" title="Para este día y todavía no están en el mapa">@nPend</span> }
+                    </div>
+                }
+            </div>
+        }
         @if (dibujandoZona)
         {
             <div style="position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:600; background:#1d4ed8; color:#fff; border-radius:10px; box-shadow:0 3px 14px rgba(0,0,0,0.35); padding:0.5rem 0.7rem; display:flex; gap:0.6rem; align-items:center; flex-wrap:wrap;">
@@ -3789,6 +3825,142 @@
     </div>
 }
 
+@* 2026-11-20: la ventana de "Pendientes" ahora FLOTA y se arrastra (antes tapaba el listado de la izquierda). *@
+@if (showPendientes)
+{
+    var visibles = PendientesFiltrados().ToList();
+    var tildables = visibles.Where(PuedeTildarse).ToList();
+    <div class="pend-panel" id="pendVentana">
+        <div class="pend-head">
+            <div class="pend-drag" title="Arrastrá para moverla">
+                <span style="color:#9ca3af; font-size:1rem;">⠿</span>
+                <span style="flex:1; font-weight:700; font-size:0.98rem; color:#111827;">Ventas y alquileres pendientes</span>
+                <button class="pend-x" @onclick="() => showPendientes = false" title="Cerrar y volver al listado">&times;</button>
+            </div>
+            <div class="pend-chips">
+                <button class="pend-chip @(pendTipo == "todo" ? "sel" : "")" @onclick="@(() => pendTipo = "todo")">Todo · @pendientes.Count</button>
+                <button class="pend-chip @(pendTipo == "venta" ? "sel" : "")" @onclick="@(() => pendTipo = "venta")">Ventas · @pendientes.Count(p => p.Tipo == "venta")</button>
+                <button class="pend-chip @(pendTipo == "alquiler" ? "sel" : "")" @onclick="@(() => pendTipo = "alquiler")">Alquileres · @pendientes.Count(p => p.Tipo == "alquiler")</button>
+            </div>
+            <div class="pend-chips">
+                <button class="pend-chip @(pendFiltro == "hoy" ? "sel" : "")" @onclick="@(() => TogglePendFiltro("hoy"))"
+                        title="Las ventas pendientes y los alquileres que se entregan este día">Para hoy · @pendientes.Count(p => p.ParaHoy)</button>
+                <button class="pend-chip @(pendFiltro == "manana" ? "sel" : "")" @onclick="@(() => TogglePendFiltro("manana"))"
+                        title="Alquileres que se entregan el día siguiente al del mapa">Mañana · @pendientes.Count(EsDeManana)</button>
+                <button class="pend-chip @(pendFiltro == "atrasados" ? "sel" : "")" @onclick="@(() => TogglePendFiltro("atrasados"))"
+                        title="Alquileres con la entrega ya pasada y ventas de hace más de 2 días">Atrasados · @pendientes.Count(p => p.DiasAtraso > 0)</button>
+                <button class="pend-chip @(pendFiltro == "sindir" ? "sel" : "")" @onclick="@(() => TogglePendFiltro("sindir"))">Sin dirección · @pendientes.Count(p => p.SinDireccion)</button>
+            </div>
+            <input class="form-input" style="width:100%; margin-top:0.45rem; height:32px; font-size:0.85rem;" placeholder="Buscar cliente, número o zona"
+                   @bind="pendBuscar" @bind:event="oninput" />
+        </div>
+        <div class="pend-sub">
+            <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer;">
+                <input type="checkbox" checked="@(tildables.Count > 0 && tildables.All(p => pendTildados.Contains(Clave(p))))"
+                       @onchange="e => TildarTodos(tildables, (bool)(e.Value ?? false))" />
+                Tildar todos los de la lista
+            </label>
+            <span>@pendTildados.Count tildado@(pendTildados.Count == 1 ? "" : "s")</span>
+        </div>
+        <div class="pend-list">
+            @if (pendCargando && pendientes.Count == 0)
+            {
+                <div class="pend-vacio">Cargando…</div>
+            }
+            else if (visibles.Count == 0)
+            {
+                <div class="pend-vacio">No hay nada pendiente con ese filtro.</div>
+            }
+            @foreach (var p in visibles)
+            {
+                var clave = Clave(p);
+                var enEsteMapa = p.StopId is not null && p.EnMapaDia?.Date == FechaMapa.Date;
+                <div class="pend-row @(pendTildados.Contains(clave) ? "on" : "") @(enEsteMapa ? "ya" : "")"
+                     @onmouseenter="e => MostrarDetalle(p, e)" @onmouseleave="() => pendHover = null">
+                    @if (enEsteMapa)
+                    {
+                        <span class="pend-pin" title="Ya está en el mapa de este día">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                        </span>
+                    }
+                    else
+                    {
+                        <input type="checkbox" checked="@pendTildados.Contains(clave)" disabled="@(!PuedeTildarse(p))"
+                               title="@(p.SinDireccion ? "Cargale la dirección de entrega para poder sumarla" : "Sumar al mapa")"
+                               @onchange="e => Tildar(clave, (bool)(e.Value ?? false))" />
+                    }
+                    <div style="min-width:0;">
+                        <div class="pend-tit">
+                            @p.Cliente <span class="pend-num">· @(p.Tipo == "alquiler" ? "Alquiler " : "")@p.Numero</span>
+                        </div>
+                        <div class="pend-det">
+                            @(string.IsNullOrWhiteSpace(p.Localidad) ? "" : p.Localidad + " · ")@p.Detalle@(p.FechaEntrega is DateTime fe ? $" · entrega {fe:dd/MM}" : "")
+                        </div>
+                        @if (enEsteMapa)
+                        {
+                            <div class="pend-det">ya está en el mapa@(string.IsNullOrWhiteSpace(p.Repartidor) ? " · sin repartidor" : " · asignado a " + p.Repartidor)</div>
+                        }
+                        else if (p.EnMapaDia is DateTime otroDia)
+                        {
+                            <div class="pend-det">está en el mapa del @otroDia.ToString("dd/MM")</div>
+                        }
+                        @if (p.SinDireccion)
+                        {
+                            <div class="pend-det" style="color:#b91c1c;">Sin dirección de entrega</div>
+                        }
+                    </div>
+                    <div class="pend-der">
+                        <span style="display:flex; gap:0.25rem;">
+                            @if (!enEsteMapa && PuedeTildarse(p))
+                            {
+                                <button type="button" class="pend-almapa" disabled="@pendSumando" title="Sumarla al mapa de este día" @onclick="() => SumarUno(p)">+ Al mapa</button>
+                            }
+                            <button type="button" class="pend-ojo" title="Ver el comprobante (y descargarlo)" @onclick="() => AbrirComprobante(p)">👁️</button>
+                        </span>
+                        @if (p.DiasAtraso is int da && da > 0)
+                        {
+                            <span class="pend-est alarma">@(p.Tipo == "alquiler" ? $"Atrasado {da} día{(da == 1 ? "" : "s")}" : $"Hace {da} días")</span>
+                        }
+                        <span class="pend-est">@p.Estado</span>
+                    </div>
+                </div>
+            }
+        </div>
+        <div style="padding:0.55rem 0.7rem; border-top:1px solid #e5e7eb;">
+            <button class="btn btn-primary" style="width:100%;" disabled="@(pendTildados.Count == 0 || pendSumando)" @onclick="SumarTildados">
+                @(pendSumando ? "Sumando…" : pendTildados.Count == 0 ? "Tildá lo que querés sumar" : $"Sumar {pendTildados.Count} al mapa")
+            </button>
+        </div>
+    </div>
+}
+
+@* 2026-11-20: pasando el cursor por una venta o alquiler, el detalle sin abrir nada. *@
+@if (pendHover is MapeoPendienteDto ph && showPendientes)
+{
+    <div class="pend-hover" style="left:@(hoverX)px; top:@(hoverY)px;">
+        <div class="ph-tit">@ph.Cliente <span>· @(ph.Tipo == "alquiler" ? "Alquiler " : "")@ph.Numero</span></div>
+        @if (!string.IsNullOrWhiteSpace(ph.Direccion)) { <div class="ph-dir">📍 @ph.Direccion@(string.IsNullOrWhiteSpace(ph.Localidad) ? "" : " · " + ph.Localidad)</div> }
+        @if (ph.Tipo == "alquiler")
+        {
+            <div class="ph-fila">Entrega <b>@(ph.FechaEntrega?.ToString("ddd dd/MM", EsAr))</b>@(ph.Horario is null ? "" : " · " + ph.Horario) · retiro <b>@(ph.Retiro?.ToString("ddd dd/MM", EsAr))</b></div>
+        }
+        else if (ph.CargadaAt is DateTime ca)
+        {
+            <div class="ph-fila">Cargada @ca.AddHours(-3).ToString("ddd dd/MM HH:mm", EsAr) · @ph.Estado</div>
+        }
+        @if (ph.Lineas is { Count: > 0 })
+        {
+            <ul class="ph-items">
+                @foreach (var l in ph.Lineas.Take(12)) { <li>@l</li> }
+                @if (ph.Lineas.Count > 12) { <li class="mas">… y @(ph.Lineas.Count - 12) más</li> }
+            </ul>
+        }
+        @if (ph.Total is decimal tot && tot > 0) { <div class="ph-total">Total $@tot.ToString("N0", EsAr)</div> }
+        @if (!string.IsNullOrWhiteSpace(ph.Nota)) { <div class="ph-nota">💬 @ph.Nota</div> }
+        @if (ph.SinDireccion) { <div class="ph-nota" style="color:#b91c1c;">Sin dirección de entrega</div> }
+    </div>
+}
+
 @* 2026-09-24: ojito 👁️ de "Pendientes": el comprobante de la venta/alquiler, con Descargar y Grande. *@
 @if (pendComprobante is MapeoPendienteDto pc)
 {
@@ -5573,6 +5745,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (ventanaPendPorEnganchar && showPendientes)
+        {
+            ventanaPendPorEnganchar = false;
+            try { await JS.InvokeVoidAsync("ventanaArrastrable", "pendVentana", ".pend-drag", "mapeo.pendVentana"); } catch { }
+        }
         if (firstRender)
         {
             selfRef = DotNetObjectReference.Create(this);
@@ -5602,6 +5779,7 @@
             await PrenderLineasAlEntrar(); // las líneas de los recorridos arrancan visibles
             StateHasChanged();
             IniciarAutoRefresh(); // refresco automático del mapa (envíos escaneados aparecen solos)
+            IniciarIsla();        // 2026-11-20: isla de novedades (cada 30 s)
         }
         // (Re)engancha el arrastre de la lista (⠿) cuando está a la vista la ruta ordenable.
         // El JS destruye la instancia previa antes de crear una nueva, así que es seguro llamarlo en cada render.
@@ -8518,6 +8696,7 @@
         if (pendFiltro == "hoy") q = q.Where(p => p.ParaHoy);
         else if (pendFiltro == "atrasados") q = q.Where(p => p.DiasAtraso > 0);
         else if (pendFiltro == "sindir") q = q.Where(p => p.SinDireccion);
+        else if (pendFiltro == "manana") q = q.Where(EsDeManana);
         var b = (pendBuscar ?? "").Trim();
         if (b.Length > 0)
             q = q.Where(p => (p.Cliente ?? "").Contains(b, StringComparison.OrdinalIgnoreCase)
@@ -8528,7 +8707,136 @@
         return q.OrderBy(p => EnEsteMapa(p)).ThenByDescending(p => p.DiasAtraso ?? 0);
     }
 
+    // ══════════ 2026-11-20: isla de novedades ══════════
+    // Cada 30 s pregunta qué entró (Flex, ME1, ventas, alquileres). Lo que aparece por primera vez y es
+    // para el día del mapa la hace crecer unos segundos (con un "ding"); lo de otros días va aparte, en gris.
+    private List<MapeoNovedadDto> novedades = new();
+    private readonly HashSet<string> islaVistos = new();
+    private DateTime? islaDia;
+    private string islaModo = "min";            // min | noti | open
+    private MapeoNovedadDto? islaNoti;
+    private string islaTab = "flex";
+    private bool islaTrayendo, islaMudo, islaMudoLeido;
+    private System.Threading.Timer? islaTimer;
+    private System.Threading.Timer? islaVolverTimer;
+    private bool ventanaPendPorEnganchar;
+
+    private IEnumerable<MapeoNovedadDto> NovPendientes => novedades.Where(x => x.ParaElDia && !x.EnMapa);
+    private static string ClaveNov(MapeoNovedadDto x) => x.Tipo + ":" + x.Ref;
+    private static string TipoCorto(string t) => t switch { "flex" => "FLEX", "me1" => "ME1", "venta" => "VENTA", _ => "ALQ" };
+    private static string TipoLargo(string t) => t switch { "flex" => "Flex", "me1" => "ME1", "venta" => "Ventas", _ => "Alquileres" };
+    private static string TipoEntro(string t) => t switch { "flex" => "Entró un Flex", "me1" => "Entró un ME1", "venta" => "Se cargó una venta", _ => "Nuevo alquiler" };
+
+    private void IniciarIsla()
+    {
+        if (islaTimer is not null || SoloLectura) return;
+        islaTimer = new System.Threading.Timer(async _ =>
+        {
+            try { await InvokeAsync(CargarNovedades); } catch { }
+        }, null, 1500, 30000);
+    }
+
+    private async Task CargarNovedades()
+    {
+        if (SoloLectura) return;
+        var dia = FechaMapa.Date;
+        MapeoNovedadesResp? r;
+        try { r = await Api.GetMapeoNovedadesAsync(dia); } catch { return; }
+        if (r is null) return;
+        var primera = islaDia != dia;
+        if (primera) { islaVistos.Clear(); islaDia = dia; islaModo = "min"; }
+        if (!islaMudoLeido)
+        {
+            islaMudoLeido = true;
+            try { islaMudo = await JS.InvokeAsync<bool>("eval", "localStorage.getItem('mapeo.islaMuda')==='1'"); } catch { }
+        }
+        novedades = r.Items ?? new();
+        var nuevos = novedades.Where(x => !islaVistos.Contains(ClaveNov(x))).ToList();
+        foreach (var x in nuevos) islaVistos.Add(ClaveNov(x));
+        // La primera vez (o al cambiar de día) solo se anota lo que hay: no avisamos de golpe todo lo viejo.
+        var avisar = primera ? new List<MapeoNovedadDto>() : nuevos.Where(x => x.ParaElDia && !x.EnMapa).ToList();
+        if (avisar.Count > 0)
+        {
+            islaNoti = avisar.OrderByDescending(x => x.EntroAt).First();
+            islaTab = islaNoti.Tipo;
+            if (islaModo != "open")
+            {
+                islaModo = "noti";
+                islaVolverTimer?.Dispose();
+                islaVolverTimer = new System.Threading.Timer(_ => InvokeAsync(() => { if (islaModo == "noti") { islaModo = "min"; StateHasChanged(); } }),
+                    null, 4500, System.Threading.Timeout.Infinite);
+            }
+            if (!islaMudo) { try { await JS.InvokeVoidAsync("mapeoDing"); } catch { } }
+        }
+        StateHasChanged();
+    }
+
+    private void AchicarIsla() { islaModo = "min"; islaNoti = null; }
+
+    private void AbrirIsla()
+    {
+        if (islaModo == "open") return;
+        if (islaNoti is null) islaTab = NovPendientes.Select(x => x.Tipo).FirstOrDefault() ?? islaTab;
+        islaModo = "open";
+    }
+
+    private async Task ToggleMudo()
+    {
+        islaMudo = !islaMudo;
+        try { await JS.InvokeVoidAsync("eval", $"localStorage.setItem('mapeo.islaMuda','{(islaMudo ? "1" : "0")}')"); } catch { }
+    }
+
+    private Task TraerNovedad(MapeoNovedadDto x) => TraerNovedadesLista(new() { x });
+    private Task TraerTodasNovedades() => TraerNovedadesLista(NovPendientes.ToList());
+
+    private async Task TraerNovedadesLista(List<MapeoNovedadDto> lista)
+    {
+        if (islaTrayendo || lista.Count == 0 || DiaPasadoNoSeToca()) return;
+        islaTrayendo = true;
+        try
+        {
+            var env = lista.Where(x => x.Tipo is "flex" or "me1").Select(x => long.Parse(x.Ref)).ToList();
+            var ven = lista.Where(x => x.Tipo == "venta").Select(x => int.Parse(x.Ref)).ToList();
+            var alq = lista.Where(x => x.Tipo == "alquiler").Select(x => int.Parse(x.Ref)).ToList();
+            var r = await Api.TraerNovedadesAlMapaAsync(env, ven, alq, FechaMapa);
+            var msg = string.IsNullOrWhiteSpace(r?.Mensaje) ? "Listo." : r!.Mensaje!;
+            if (msg.Contains("No pude") || msg.Contains("sin ubicación")) ToastService.Warning(msg);
+            else ToastService.Success(msg);
+            if (islaModo == "noti") islaModo = "min";
+            await LoadStops();
+            await RenderMap(keepView: true);
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo traer: " + ex.Message); }
+        finally
+        {
+            islaTrayendo = false;
+            await CargarNovedades();
+            await CargarTraerEstado();
+            StateHasChanged();
+        }
+    }
+
     private void TogglePendFiltro(string f) => pendFiltro = pendFiltro == f ? null : f;
+    private bool EsDeManana(MapeoPendienteDto p) => p.FechaEntrega?.Date == FechaMapa.Date.AddDays(1);
+    private static readonly System.Globalization.CultureInfo EsAr = new("es-AR");
+
+    // 2026-11-20: detalle al pasar el cursor + "+ Al mapa" de a una.
+    private MapeoPendienteDto? pendHover;
+    private double hoverX, hoverY;
+    private double altoPantalla = 900, anchoPantalla = 1600;
+    private void MostrarDetalle(MapeoPendienteDto p, MouseEventArgs e)
+    {
+        pendHover = p;
+        hoverX = e.ClientX + 300 > anchoPantalla ? Math.Max(8, e.ClientX - 310) : e.ClientX + 18;
+        hoverY = Math.Max(8, Math.Min(e.ClientY - 20, altoPantalla - 330));
+    }
+
+    private async Task SumarUno(MapeoPendienteDto p)
+    {
+        pendTildados.Clear();
+        pendTildados.Add(Clave(p));
+        await SumarTildados();
+    }
     private void Tildar(string clave, bool on) { if (on) pendTildados.Add(clave); else pendTildados.Remove(clave); }
     private void TildarTodos(List<MapeoPendienteDto> lista, bool on)
     {
@@ -8541,8 +8849,14 @@
         if (DiaPasadoNoSeToca()) return;
         showPendientes = true;
         pendTildados.Clear();
-        if (sideCollapsed) await ToggleSideCollapsed();
+        try
+        {
+            var dim = await JS.InvokeAsync<double[]>("eval", "[window.innerWidth, window.innerHeight]");
+            anchoPantalla = dim[0]; altoPantalla = dim[1];
+        }
+        catch { }
         await CargarPendientes();
+        ventanaPendPorEnganchar = true;
     }
 
     private async Task CargarPendientes()
@@ -9046,6 +9360,8 @@
     public async ValueTask DisposeAsync()
     {
         if (autoRefreshTimer is not null) { await autoRefreshTimer.DisposeAsync(); autoRefreshTimer = null; }
+        if (islaTimer is not null) { await islaTimer.DisposeAsync(); islaTimer = null; }
+        islaVolverTimer?.Dispose();
         try { await JS.InvokeVoidAsync("mapeoFlex.destroy"); } catch { }
         if (wedgeOn) { try { await JS.InvokeVoidAsync("scannerWedge.stop"); } catch { } }
         selfRef?.Dispose();
