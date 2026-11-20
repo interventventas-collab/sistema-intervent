@@ -57,6 +57,10 @@
     .isla-tabs { display: flex; gap: 0.35rem; padding: 0.2rem 0.7rem 0.5rem; flex-wrap: wrap; }
     .isla-tab { padding: 0.15rem 0.65rem; border-radius: 12px; background: #262626; font-size: 0.75rem; cursor: pointer; }
     .isla-tab.on { background: #fff; color: #111; }
+    .isla-bus { display: flex; align-items: center; gap: 0.5rem; padding: 0.15rem 0.7rem 0.45rem; }
+    .isla-bus input { flex: 1; background: #1f1f1f; border: 1px solid #333; border-radius: 9px; color: #fff; padding: 0.35rem 0.6rem; font-size: 0.8rem; outline: none; }
+    .isla-bus input:focus { border-color: #737373; }
+    .isla-tab.fe { background: transparent; border: 1px solid #333; } .isla-tab.fe.on { background: #e5e5e5; color: #111; border-color: #e5e5e5; }
     .isla-list { max-height: 46vh; overflow-y: auto; }
     .isla-it { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.8rem; border-top: 1px solid #1f1f1f; }
     .isla-it.ya { opacity: .55; } .isla-it.otro { opacity: .5; }
@@ -1333,7 +1337,7 @@
     </div>
     <div class="mapeo-map" style="position:relative;">
         @* 2026-11-20: la "isla" de novedades — avisa lo que va entrando mientras mapean. *@
-        @if (!SoloLectura && !dibujandoZona && !modoOrden && !modoGuiada && !modoAsignacion && !modoArmar && novedades.Count > 0)
+        @if (!SoloLectura && !dibujandoZona && !modoOrden && !modoGuiada && !modoAsignacion && !modoArmar && islaDia is not null)
         {
             var nPend = NovPendientes.Count();
             <div class="isla @islaModo" @onclick="AbrirIsla">
@@ -1359,22 +1363,36 @@
                         <span class="isla-link" title="@(islaMudo ? "Prender el sonido" : "Apagar el sonido")" @onclick:stopPropagation="true" @onclick="ToggleMudo">@(islaMudo ? "🔕" : "🔔")</span>
                         <span class="isla-link" @onclick:stopPropagation="true" @onclick="AchicarIsla">Achicar ▴</span>
                     </div>
+                    @* 2026-11-20 (2ª): buscador (busca también más atrás) + filtro por fecha de entrega. *@
+                    <div class="isla-bus" @onclick:stopPropagation="true">
+                        <input placeholder="Buscar venta, alquiler, nombre, usuario de MeLi, nº de envío o dirección" value="@islaBuscar" @oninput="BuscarIslaInput" />
+                        @if (islaBuscando) { <span class="isla-link">buscando…</span> }
+                        else if (islaResultados is not null) { <span class="isla-link" @onclick="LimpiarBusquedaIsla">✕ limpiar</span> }
+                    </div>
+                    <div class="isla-tabs">
+                        @foreach (var f in new[] { ("todo", "Todo"), ("hoy", "Para este día"), ("manana", "Mañana"), ("atrasados", "Atrasados") })
+                        {
+                            <span class="isla-tab fe @(islaFecha == f.Item1 ? "on" : "")" @onclick:stopPropagation="true" @onclick="() => islaFecha = f.Item1">@f.Item2</span>
+                        }
+                    </div>
                     <div class="isla-tabs">
                         @foreach (var t in new[] { "flex", "me1", "venta", "alquiler" })
                         {
-                            var nt = novedades.Count(x => x.Tipo == t && x.ParaElDia && !x.EnMapa);
+                            var nt = islaResultados is not null
+                                ? IslaFuente.Count(x => x.Tipo == t && PasaFechaIsla(x))
+                                : novedades.Count(x => x.Tipo == t && x.ParaElDia && !x.EnMapa);
                             <span class="isla-tab @(islaTab == t ? "on" : "")" @onclick:stopPropagation="true" @onclick="() => islaTab = t">@TipoLargo(t)@(nt > 0 ? $" · {nt}" : "")</span>
                         }
                     </div>
                     <div class="isla-list" @onclick:stopPropagation="true">
                         @{
-                            var delTab = novedades.Where(x => x.Tipo == islaTab).ToList();
+                            var delTab = IslaFuente.Where(x => x.Tipo == islaTab && PasaFechaIsla(x)).ToList();
                             var hoyL = delTab.Where(x => x.ParaElDia).OrderBy(x => x.EnMapa).ThenByDescending(x => x.EntroAt).ToList();
                             var otros = delTab.Where(x => !x.ParaElDia).OrderBy(x => x.Entrega ?? DateTime.MaxValue).ToList();
                         }
                         @if (hoyL.Count == 0 && otros.Count == 0)
                         {
-                            <div class="isla-vacio">No entró nada de @TipoLargo(islaTab).ToLower() en el último día y medio.</div>
+                            <div class="isla-vacio">@(islaResultados is not null ? $"No encontré {TipoLargo(islaTab).ToLower()} con «{islaBuscar}»." : islaFecha != "todo" ? "Nada con ese filtro." : $"No entró nada de {TipoLargo(islaTab).ToLower()} en el último día y medio.")</div>
                         }
                         @foreach (var x in hoyL)
                         {
@@ -8721,6 +8739,51 @@
     private System.Threading.Timer? islaVolverTimer;
     private bool ventanaPendPorEnganchar;
 
+    // Buscador de la isla: con texto pide al servidor (busca hasta 30 días atrás); sin texto, lo de siempre.
+    private string islaBuscar = "";
+    private List<MapeoNovedadDto>? islaResultados;
+    private bool islaBuscando;
+    private string islaFecha = "todo";        // todo | hoy | manana | atrasados
+    private CancellationTokenSource? islaBusCts;
+    private IEnumerable<MapeoNovedadDto> IslaFuente => islaResultados ?? novedades;
+
+    private bool PasaFechaIsla(MapeoNovedadDto x) => islaFecha switch
+    {
+        "hoy" => x.ParaElDia && !(x.Entrega?.Date < FechaMapa.Date),
+        "manana" => x.Entrega?.Date == FechaMapa.Date.AddDays(1),
+        "atrasados" => x.Entrega?.Date < FechaMapa.Date,
+        _ => true
+    };
+
+    private async Task BuscarIslaInput(ChangeEventArgs e)
+    {
+        islaBuscar = e.Value?.ToString() ?? "";
+        islaBusCts?.Cancel();
+        var cts = islaBusCts = new CancellationTokenSource();
+        if (islaBuscar.Trim().Length < 2) { islaResultados = null; islaBuscando = false; return; }
+        try { await Task.Delay(400, cts.Token); } catch { return; }
+        await BuscarIsla(cts.Token);
+    }
+
+    private async Task BuscarIsla(CancellationToken ct = default)
+    {
+        if (islaBuscar.Trim().Length < 2) { islaResultados = null; return; }
+        islaBuscando = true; StateHasChanged();
+        try
+        {
+            var r = await Api.GetMapeoNovedadesAsync(FechaMapa, islaBuscar);
+            if (ct.IsCancellationRequested) return;
+            islaResultados = r?.Items ?? new();
+            // Si en la solapa elegida no hay nada pero en otra sí, saltamos a esa.
+            if (!islaResultados.Any(x => x.Tipo == islaTab) && islaResultados.Count > 0)
+                islaTab = islaResultados[0].Tipo;
+        }
+        catch { }
+        finally { if (!ct.IsCancellationRequested) { islaBuscando = false; StateHasChanged(); } }
+    }
+
+    private void LimpiarBusquedaIsla() { islaBusCts?.Cancel(); islaBuscar = ""; islaResultados = null; islaBuscando = false; }
+
     private IEnumerable<MapeoNovedadDto> NovPendientes => novedades.Where(x => x.ParaElDia && !x.EnMapa);
     private static string ClaveNov(MapeoNovedadDto x) => x.Tipo + ":" + x.Ref;
     private static string TipoCorto(string t) => t switch { "flex" => "FLEX", "me1" => "ME1", "venta" => "VENTA", _ => "ALQ" };
@@ -8811,6 +8874,7 @@
         {
             islaTrayendo = false;
             await CargarNovedades();
+            if (islaResultados is not null) await BuscarIsla();
             await CargarTraerEstado();
             StateHasChanged();
         }
