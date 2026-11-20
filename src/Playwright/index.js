@@ -3242,10 +3242,21 @@ async function leerOtpShellDesdeGmail(gmailUser, gmailPass, sinceEpochMs) {
 
   const client = new ImapFlow({ host: 'imap.gmail.com', port: 993, secure: true, auth: { user: gmailUser, pass: gmailPass }, logger: false });
   await client.connect();
-  let code = null;
+  // 20/11/2026: además de la Bandeja de entrada, buscar en "Todos" y en Spam (a veces Gmail lo
+  // archiva o lo marca como spam y el robot se rendía con "no llegó el código").
+  let carpetas = ['INBOX'];
   try {
-    for (let intento = 0; intento < 20 && !code; intento++) {
-      const lock = await client.getMailboxLock('INBOX');
+    const boxes = await client.list();
+    for (const b of boxes) if (b.specialUse === '\\All' || b.specialUse === '\\Junk') carpetas.push(b.path);
+  } catch {}
+  let code = null;
+  const hasta = Date.now() + 200000; // 20/11/2026: ~3 min y pico (antes ~90 s); la API espera hasta 6 min
+  try {
+    for (let intento = 0; Date.now() < hasta && !code; intento++) {
+     for (const carpeta of carpetas) {
+      if (code) break;
+      let lock;
+      try { lock = await client.getMailboxLock(carpeta); } catch { continue; }
       try {
         const desde = new Date(sinceEpochMs - 90000);
         let ids = [];
@@ -3278,12 +3289,14 @@ async function leerOtpShellDesdeGmail(gmailUser, gmailPass, sinceEpochMs) {
             }
             if (!contenido) contenido = mejor.source.toString().replace(/#\s*[0-9a-fA-F]{3,8}\b/g, ' ');
             const c = extraerCodigo(contenido);
-            if (c) { console.log('[shell][OTP] código extraído (mail más nuevo ' + mejor.internalDate.toISOString() + '):', c); code = c; }
+            if (c) { console.log('[shell][OTP] código extraído (' + carpeta + ', mail ' + mejor.internalDate.toISOString() + ', a los ' + Math.round((Date.now() - sinceEpochMs) / 1000) + ' s):', c); code = c; }
           }
         }
       } finally { lock.release(); }
+     }
       if (!code) await sleep(4500);
     }
+    if (!code) console.log('[shell][OTP] sin mail de Shell después de ' + Math.round((Date.now() - sinceEpochMs) / 1000) + ' s (busqué en ' + carpetas.join(', ') + ')');
   } finally { await client.logout().catch(() => {}); }
   return code;
 }
@@ -3343,7 +3356,15 @@ async function runShellSaldo({ usuario, password, gmailUser, gmailPass }) {
   let code = null;
   try { code = await leerOtpShellDesdeGmail(gmailUser, gmailPass, loginAt); }
   catch (e) { shellState.result = { ok: false, error: 'No pude leer el mail (IMAP): ' + (e?.message || e) }; await sleep(10000); return; }
-  if (!code) { shellState.result = { ok: false, error: 'No llegó (o no pude leer) el código del mail en el tiempo esperado.' }; await sleep(10000); return; }
+  if (!code) {
+    // 20/11/2026: dejar anotado qué mostraba Shell, para saber si llegó a pedir el código.
+    try {
+      const t = ((await page.locator('body').innerText({ timeout: 3000 })) || '').replace(/\s+/g, ' ').slice(0, 400);
+      const ocultos = await page.evaluate(() => ['showToken', 'showMessage', 'secondsOtp', 'wrongPassword'].map(i => i + '=' + (document.getElementById(i)?.value ?? '')).join(' '));
+      console.log('[shell][SIN-CODIGO] ' + ocultos + ' | pantalla: ' + t);
+    } catch {}
+    shellState.result = { ok: false, error: 'No llegó (o no pude leer) el código del mail en el tiempo esperado.' }; await sleep(10000); return;
+  }
 
   shellState.step = 'Ingresando el código del mail...';
   // Shell pide el código en 6 casillas separadas: #otp1..#otp6, un carácter cada una.
