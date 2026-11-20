@@ -163,4 +163,6 @@ public class GaliciaTestResultDto
     public string? ChequesEmitidosB64 { get; set; }
     public string? ChequesEndosadosB64 { get; set; }
     public List<string>? ChequesErrores { get; set; }
+    // 20/11/2026: true = la cuenta no tiene cheques (el banco lo dice); es una lectura OK con 0.
+    public bool? ChequesVacios { get; set; }
 }
