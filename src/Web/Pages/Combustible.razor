@@ -29,7 +29,12 @@
     .cb-tab td { padding:0.45rem 0.4rem; border-bottom:1px solid #f0f1f3; vertical-align:top; }
     .cb-tab tr:last-child td { border-bottom:0; }
     .cb-tab .n { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
-    .cb-flota td { font-size:0.95rem; }
+    .cb-flota td { font-size:0.95rem; vertical-align:middle; }
+    .cb-chico { font-size:0.75rem; padding:0.15rem 0.5rem; }
+    .cb-pat { display:inline-block; border:1.5px solid #111827; border-top:3px solid #1d4ed8; border-radius:4px; padding:0 0.3rem; font-family:ui-monospace,Menlo,monospace; font-weight:700; font-size:0.78rem; letter-spacing:0.04em; margin-left:0.3rem; }
+    .cb-propio { display:flex; gap:0.6rem; flex-wrap:wrap; margin-top:0.6rem; padding-top:0.6rem; border-top:1px solid #f0f1f3; }
+    .cb-propio label { display:block; font-size:0.78rem; color:#374151; margin-bottom:0.15rem; }
+    .cb-propio input, .cb-propio select { padding:0.35rem 0.5rem; border:1px solid #d1d5db; border-radius:6px; font-size:0.9rem; }
     .cb-veh { cursor:pointer; }
     .cb-veh:hover td { background:#f9fafb; }
     .cb-veh.sel td { background:#f3f4f6; }
@@ -84,22 +89,77 @@ else if (leerResult is { Ok: false })
 @* 19/11/2026: vehículos con los km de su última carga, siempre arriba y sin depender del período
    (pedido del dueño: "los coches que tenemos y el km siempre al día"). Shell no tiene GPS: el km se
    sabe solo cuando cargan, por eso va al lado cuándo cargó; en rojo si hace más de 5 días. *@
-@if (datos?.Flota is { Count: > 0 } flota)
+@* 20/11/2026: + foto de cada vehículo (la ven los repartidores al elegir con cuál salen) y los autos
+   propios de los repartidores (Siena de Nacho), que no están en Shell. *@
+@if (flotaAdm is not null && (flotaAdm.Coches.Count > 0 || datos?.Flota is { Count: > 0 }))
 {
     <div class="cb-sec">Vehículos · km de la última carga</div>
     <div class="cb-card">
         <table class="cb-tab cb-flota">
-            @foreach (var f in flota)
+            @foreach (var f in flotaAdm.Coches)
             {
-                var dias = (hoyAr - f.UltimaCarga.Date).Days;
+                var placa = f.Placa;
+                var dias = f.UltimaCarga is DateTime uc ? (hoyAr - uc.Date).Days : 0;
                 <tr>
-                    <td><b>@f.Nombre</b> <span class="cb-mut">· @f.Placa</span></td>
+                    <td style="width:76px; padding-right:0">
+                        @if (f.FotoVer is long fv)
+                        {
+                            <img src="@ApiClient.FotoFlotaUrl(placa, fv)" alt="@f.Nombre" style="width:68px; height:44px; object-fit:cover; border-radius:6px; display:block;" />
+                        }
+                        else
+                        {
+                            <div style="width:68px; height:44px; border-radius:6px; background:#f3f4f6; display:flex; align-items:center; justify-content:center; font-size:1.4rem;">@(EsMoto(f.Nombre) ? "🛵" : "🚗")</div>
+                        }
+                    </td>
+                    <td>
+                        <b>@f.Nombre</b> <span class="cb-pat">@placa</span>
+                        @if (f.Propio) { <div class="cb-mut" style="font-size:0.8rem">propio de @(f.Repartidor ?? "?") · solo le aparece a él</div> }
+                        <div style="margin-top:0.25rem; display:flex; gap:0.35rem; flex-wrap:wrap;">
+                            <label class="cb-btn cb-chico" style="@(subiendo == placa ? "opacity:0.6" : "")">
+                                @(subiendo == placa ? "Subiendo…" : f.FotoVer is null ? "📷 Poner foto" : "📷 Cambiar foto")
+                                <InputFile OnChange="e => SubirFoto(placa, e)" accept="image/*" style="display:none" disabled="@(subiendo != null)" />
+                            </label>
+                            @if (f.FotoVer is not null)
+                            {
+                                <button class="cb-btn cb-chico" @onclick="() => QuitarFoto(placa)">Quitar foto</button>
+                            }
+                            @if (f.Propio)
+                            {
+                                <button class="cb-btn cb-chico" @onclick="() => BorrarPropio(f)">Borrar</button>
+                            }
+                        </div>
+                    </td>
                     <td class="n"><b>@(f.Km is int k ? k.ToString("#,0", Ar) + " km" : "—")</b></td>
-                    <td class="n @(dias > DiasSinCargarRojo ? "cb-red" : "cb-mut")" style="width:7.5rem">@CuandoCargo(f.UltimaCarga, dias)</td>
+                    <td class="n @(f.UltimaCarga is not null && dias > DiasSinCargarRojo ? "cb-red" : "cb-mut")" style="width:7.5rem">
+                        @(f.UltimaCarga is DateTime u ? CuandoCargo(u, dias) : "no usa Shell")
+                    </td>
                 </tr>
             }
         </table>
-        <div class="cb-nota">Se actualiza solo cada vez que el robot lee Shell. En rojo: más de @DiasSinCargarRojo días sin cargar.</div>
+        <div class="cb-nota">Se actualiza solo cada vez que el robot lee Shell. En rojo: más de @DiasSinCargarRojo días sin cargar. Los repartidores ven estos vehículos (con su foto) cuando eligen con cuál salen.</div>
+        @if (!agregandoPropio)
+        {
+            <button class="cb-btn" style="margin-top:0.6rem" @onclick="() => { agregandoPropio = true; propioError = null; }">＋ Vehículo propio de un repartidor</button>
+        }
+        else
+        {
+            <div class="cb-propio">
+                <div><label>Qué vehículo es</label><input type="text" placeholder="Siena" @bind="propioNombre" maxlength="60" /></div>
+                <div><label>Patente</label><input type="text" placeholder="AB123CD" @bind="propioPlaca" maxlength="20" style="text-transform:uppercase" /></div>
+                <div>
+                    <label>De quién</label>
+                    <select @bind="propioRep">
+                        <option value="">Elegí…</option>
+                        @foreach (var r in flotaAdm.Repartidores) { <option value="@r.Id">@r.Nombre</option> }
+                    </select>
+                </div>
+                <div style="align-self:flex-end; display:flex; gap:0.35rem;">
+                    <button class="cb-btn on" disabled="@guardandoPropio" @onclick="GuardarPropio">Guardar</button>
+                    <button class="cb-btn" @onclick="() => agregandoPropio = false">Cancelar</button>
+                </div>
+            </div>
+            @if (propioError is not null) { <div class="cb-red" style="font-size:0.85rem; margin-top:0.3rem">⚠ @propioError</div> }
+        }
     </div>
 }
 
@@ -330,7 +390,66 @@ else if (datos != null)
     private string periodo = "30";
     private string? filtro;
 
-    protected override Task OnInitializedAsync() => Task.WhenAll(Cargar(), CargarCuenta());
+    protected override Task OnInitializedAsync() => Task.WhenAll(Cargar(), CargarCuenta(), CargarFlota());
+
+    // ─── 20/11/2026: fotos de los vehículos + autos propios de repartidores ───
+    private ApiClient.FlotaAdminDto? flotaAdm;
+    private string? subiendo;
+    private bool agregandoPropio, guardandoPropio;
+    private string propioNombre = "", propioPlaca = "", propioRep = "";   // select con string (int no anda en Blazor)
+    private string? propioError;
+
+    private async Task CargarFlota()
+    {
+        try { flotaAdm = await Api.GetFlotaAsync(); } catch { flotaAdm = null; }
+    }
+
+    private static bool EsMoto(string n) => n.Contains("zanella", StringComparison.OrdinalIgnoreCase) || n.Contains("moto", StringComparison.OrdinalIgnoreCase);
+
+    private async Task SubirFoto(string placa, InputFileChangeEventArgs e)
+    {
+        if (subiendo != null) return;
+        subiendo = placa;
+        try
+        {
+            using var st = e.File.OpenReadStream(20_000_000);
+            using var ms = new MemoryStream();
+            await st.CopyToAsync(ms); ms.Position = 0;
+            await Api.SubirFotoFlotaAsync(placa, ms, e.File.Name, e.File.ContentType);
+            ToastService.Success("Foto guardada");
+            await CargarFlota();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message.Contains("exceeds") ? "La foto es muy pesada (máximo 20 MB)." : ex.Message); }
+        finally { subiendo = null; }
+    }
+
+    private async Task QuitarFoto(string placa)
+    {
+        try { await Api.QuitarFotoFlotaAsync(placa); await CargarFlota(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task GuardarPropio()
+    {
+        propioError = null;
+        if (!int.TryParse(propioRep, out var repId)) { propioError = "Elegí de qué repartidor es."; return; }
+        guardandoPropio = true;
+        try
+        {
+            await Api.GuardarCochePropioAsync(propioPlaca, propioNombre, repId);
+            agregandoPropio = false; propioNombre = propioPlaca = propioRep = "";
+            ToastService.Success("Vehículo agregado");
+            await CargarFlota();
+        }
+        catch (Exception ex) { propioError = ex.Message; }
+        finally { guardandoPropio = false; }
+    }
+
+    private async Task BorrarPropio(ApiClient.FlotaCocheDto f)
+    {
+        try { await Api.BorrarCochePropioAsync(f.Placa); await CargarFlota(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
 
     private static string Plata(decimal v) => v.ToString("$#,0", Ar);
 

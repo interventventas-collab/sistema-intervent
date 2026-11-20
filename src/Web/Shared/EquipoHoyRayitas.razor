@@ -60,6 +60,8 @@
     .eqt-nm { display:flex; align-items:center; gap:0.35rem; font-weight:700; }
     .eqt-est { font-size:0.76rem; color:#6b7280; font-weight:400; margin-top:1px; white-space:nowrap; }
     .eqt-est.naranja { color:#9a3412; }
+    .eqt-coche { font-size:0.74rem; color:#374151; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:170px; }
+    .eqt-coche.falta { color:#b45309; }
     .eqt-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px; vertical-align:1px; background:#d1d5db; }
     .eqt-dot.trabajando { background:#22c55e; } .eqt-dot.salio { background:#9ca3af; } .eqt-dot.activo { background:#f59e0b; } .eqt-dot.vacaciones { background:#38bdf8; }
     .eqt-ic { display:inline-grid; place-items:center; width:19px; height:19px; border-radius:50%; font-size:0.68rem; cursor:pointer; border:1px solid #e5e7eb; background:#f3f4f6; color:#6b7280; font-weight:400; }
@@ -154,6 +156,15 @@
                         <div class="eqt-est @(est == "activo" ? "naranja" : "")" title="@HorasTitulo(e)">
                             <span class="eqt-dot @est"></span>@EstadoTexto(e, est)
                         </div>
+                        @* 20/11/2026: con qué vehículo salió (lo elige él en el celu). *@
+                        @if (!string.IsNullOrEmpty(e.Coche))
+                        {
+                            <div class="eqt-coche" title="Vehículo con el que salió hoy">@(e.Coche.StartsWith("Otro") ? "🚙" : "🚗") @e.Coche</div>
+                        }
+                        else if (e.TieneRepartidor && (e.RutaEntregadas + e.RutaFaltan + e.RutaNoEntregadas) > 0 && e.Estado is "trabajando")
+                        {
+                            <div class="eqt-coche falta" title="Todavía no eligió en su celu con qué vehículo sale">sin vehículo elegido</div>
+                        }
                     </div>
                 </div>
             </td>

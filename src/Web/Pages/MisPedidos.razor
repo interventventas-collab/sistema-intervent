@@ -434,6 +434,34 @@
     .ofi-fechas input { padding:0.3rem 0.4rem; border:1.5px solid #d1d5db; border-radius:8px; font-size:0.82rem; margin-left:0.2rem; }
     .ofi-lab { font-size:0.7rem; font-weight:800; color:#6b7280; margin:0.1rem 0.15rem 0.3rem; }
     .ofi-total { font-size:0.85rem; color:#374151; margin:0.2rem 0.15rem 0.3rem; }
+    /* 20/11/2026: vehículo con el que sale */
+    .mp-coche { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.1rem; background:rgba(255,255,255,0.16); color:#fff;
+        border:1.5px solid rgba(255,255,255,0.35); border-radius:10px; padding:0.35rem 0.55rem; cursor:pointer; font-family:inherit; min-width:84px; max-width:120px; flex-shrink:0; margin-left:auto; }
+    .mp-coche.falta { border:1.5px dashed #fff; }
+    .mp-coche-t { font-size:0.7rem; opacity:0.9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+    .mp-coche-v { font-size:0.95rem; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+    .mp-coche-img { width:56px; height:34px; object-fit:cover; border-radius:6px; }
+    .mp-cpanel { background:#fff; border-radius:14px; padding:0.8rem; margin:-0.3rem 0 0.8rem; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+    .mp-cfondo { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:2000; display:flex; align-items:flex-end; justify-content:center; }
+    .mp-choja { background:#fff; width:100%; max-width:720px; max-height:88vh; overflow:auto; border-radius:16px 16px 0 0; padding:1rem 0.9rem 1.4rem; }
+    .mp-ctit { font-size:1.05rem; font-weight:800; color:#111827; }
+    .mp-csub { font-size:0.8rem; color:#6b7280; margin:0.1rem 0 0.6rem; }
+    .mp-cgrid { display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; }
+    .mp-ccard { display:flex; flex-direction:column; align-items:stretch; gap:0.25rem; background:#fff; border:1.5px solid #e5e7eb; border-radius:12px;
+        padding:0.45rem; cursor:pointer; font-family:inherit; text-align:left; color:#111827; }
+    .mp-ccard.on { border:2.5px solid #0e7490; background:#ecfeff; }
+    .mp-ccard:disabled { opacity:0.6; }
+    .mp-cfoto { width:100%; aspect-ratio:16/10; object-fit:cover; border-radius:8px; background:#f3f4f6; }
+    .mp-cfoto-no { width:100%; aspect-ratio:16/10; border-radius:8px; background:#f3f4f6; display:flex; align-items:center; justify-content:center; font-size:2.2rem; }
+    .mp-cnom { font-size:0.95rem; font-weight:800; }
+    .mp-cfila { display:flex; align-items:center; justify-content:space-between; gap:0.3rem; flex-wrap:wrap; }
+    .mp-ckm { font-size:0.78rem; color:#4b5563; }
+    .mp-pat { display:inline-block; background:#fff; border:1.5px solid #111827; border-top:4px solid #1d4ed8; border-radius:4px; padding:0 0.3rem;
+        font-family:ui-monospace,Menlo,monospace; font-weight:800; font-size:0.78rem; letter-spacing:0.04em; color:#111827; line-height:1.35; }
+    .mp-cotro textarea { width:100%; box-sizing:border-box; border:1.5px solid #d1d5db; border-radius:10px; padding:0.5rem; font-family:inherit; font-size:0.95rem; min-height:60px; }
+    .mp-cbtn { display:block; width:100%; margin-top:0.5rem; padding:0.7rem; border:none; border-radius:10px; background:#0e7490; color:#fff; font-weight:800; font-size:0.95rem; cursor:pointer; }
+    .mp-cerr { color:#b91c1c; font-size:0.82rem; margin-top:0.4rem; }
+    .mp-ccerrar { display:block; width:100%; margin-top:0.6rem; padding:0.55rem; background:transparent; border:1px solid #d1d5db; border-radius:10px; color:#374151; font-weight:700; cursor:pointer; }
     .mpc-mas { display:block; width:100%; margin-top:0.5rem; padding:0.6rem; background:white; border:1px solid #d1d5db; border-radius:10px; font-weight:700; color:#374151; cursor:pointer; }
 </style>
 
@@ -460,6 +488,27 @@
                     <div class="mp-name">@nombre</div>
                     <div class="mp-hd-fecha">@FechaLabel</div>
                 </div>
+                @* 20/11/2026: con qué vehículo sale. Entre su nombre y Shell; tocándolo se abren las tarjetas. *@
+                @if (miCoche is not null)
+                {
+                    var ce = miCoche.Elegido;
+                    <button type="button" class="mp-coche @(ce is null ? "falta" : "")" @onclick="() => AbrirCoches(null)">
+                        @if (ce is null)
+                        {
+                            <span class="mp-coche-t">🚗 Coche</span>
+                            <span class="mp-coche-v">Elegir ▾</span>
+                        }
+                        else
+                        {
+                            @if (ce.FotoVer is long fv && ce.Placa is not null)
+                            {
+                                <img class="mp-coche-img" src="@ApiClient.FotoMiCocheUrl(Token, ce.Placa, fv)" alt="" />
+                            }
+                            <span class="mp-coche-v">@(ce.Placa is null ? "Otro" : ce.Nombre)</span>
+                            <span class="mp-coche-t">@(ce.Km is int k ? k.ToString("N0", EsAr) + " km" : ce.Placa is null ? Corto(ce.Comentario, 16) : ce.Placa)</span>
+                        }
+                    </button>
+                }
                 @* 28/10/2026: CALCUPRECIOS y CALCU ALQUILER, uno arriba del otro como en la barra de la
                    compu. Solo con su tilde en la ficha (muestran costos). *@
                 @if (VeCalcuPrecios || VeCalcuAlquiler)
@@ -494,6 +543,17 @@
                 }
             </div>
         </div>
+
+        @if (cocheAbierto && cocheDespues is null)
+        {
+            <div class="mp-cpanel">@CochePanel</div>
+        }
+        @if (cocheAbierto && cocheDespues is not null)
+        {
+            <div class="mp-cfondo" @onclick="CerrarCoches">
+                <div class="mp-choja" @onclick:stopPropagation="true">@CochePanel</div>
+            </div>
+        }
 
         @* 18/11/2026: acá iban las "Tareas pendientes" del depósito (+ Alquileres próximos 10 días).
            El dueño: "eso era para la pantalla de depósito, no para la individual de repartidores".
@@ -2794,6 +2854,7 @@
     /// <summary>Tilde SOLO VISUAL: hace avanzar la lista. No entrega, no cobra, no toca MercadoLibre.</summary>
     private async Task MarcarParadaVista(MisPedidosMapeoDto st, bool visto)
     {
+        if (visto && FaltaCoche(() => MarcarParadaVista(st, visto))) return;
         if (marcandoVisto != 0) return;
         marcandoVisto = st.Id;
         try
@@ -3093,6 +3154,8 @@
                 }
             }
             catch { if (!silencioso) mapeoRuta = new(); }
+            // 20/11/2026: el vehículo del día (si quedó abierto de un día para otro, vuelve a "Elegir").
+            if (!cocheAbierto) await CargarCoche();
             // 2026-09-04: cuánto lleva ganado hoy, si cobra por entrega. Si falla, no se muestra
             // nada — es informativo y no tiene que romperle la lista de reparto.
             try
@@ -3130,6 +3193,7 @@
 
     private void AbrirAlqModal(AlqReservaItem a)
     {
+        if (FaltaCoche(() => { AbrirAlqModal(a); return Task.CompletedTask; })) return;
         alqModal = a;
         // Si la entrega ya está hecha, arrancamos en retiro; si no, en entrega.
         alqMomento = a.Entregado && !a.Retirado ? "retiro" : "entrega";
@@ -3287,6 +3351,7 @@
 
     private void AbrirEntregar(PedidoDto p)
     {
+        if (FaltaCoche(() => { AbrirEntregar(p); return Task.CompletedTask; })) return;
         modal = new ModalState("entregar", p);
         pin = ""; errorModal = null;
         comentarioEntrega = "";   // 2026-06-08: reset cada vez que se abre el modal
@@ -3368,6 +3433,7 @@
     }
     private void AbrirCobrar(PedidoDto p)
     {
+        if (FaltaCoche(() => { AbrirCobrar(p); return Task.CompletedTask; })) return;
         modal = new ModalState("cobrar", p);
         pin = ""; errorModal = null;
         // Si la venta YA está cobrada, no precargamos importe (el repartidor pone el monto a mano)
@@ -3921,6 +3987,122 @@
             ? comprobantesAplica
             : oficina?.Permisos.Contains(t.Clave) == true).ToList();
 
+    // ─── 20/11/2026: con qué vehículo sale a repartir ───
+    // Lo elige tocando el botón de arriba. Si no eligió y aprieta para marcar una entrega, primero le
+    // salen las tarjetas y, al elegir, la entrega sigue sola (cocheDespues).
+    private ApiClient.MiCocheDto? miCoche;
+    private bool cocheAbierto;
+    private Func<Task>? cocheDespues;
+    private bool cocheOtro;
+    private string cocheComentario = "";
+    private string? cocheError;
+    private bool cocheGuardando;
+    private static readonly System.Globalization.CultureInfo EsAr = new("es-AR");
+
+    private async Task CargarCoche()
+    {
+        try { miCoche = await Http.GetFromJsonAsync<ApiClient.MiCocheDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/coche"); }
+        catch { miCoche = null; }   // si falla, no se le traba la entrega
+    }
+
+    /// <summary>true = no eligió vehículo hoy: le abrimos las tarjetas y la entrega sigue después.</summary>
+    private bool FaltaCoche(Func<Task> seguir)
+    {
+        if (miCoche is null || miCoche.Elegido is not null) return false;
+        AbrirCoches(seguir);
+        return true;
+    }
+
+    private void AbrirCoches(Func<Task>? seguir)
+    {
+        if (cocheAbierto && seguir is null) { CerrarCoches(); return; }
+        cocheDespues = seguir;
+        cocheAbierto = true;
+        cocheError = null;
+        cocheOtro = miCoche?.Elegido is { Placa: null };
+        cocheComentario = miCoche?.Elegido?.Placa is null ? miCoche?.Elegido?.Comentario ?? "" : "";
+    }
+
+    private void CerrarCoches() { cocheAbierto = false; cocheDespues = null; cocheOtro = false; cocheError = null; }
+
+    private async Task ElegirCoche(string? placa)
+    {
+        if (cocheGuardando) return;
+        if (placa is null && string.IsNullOrWhiteSpace(cocheComentario)) { cocheError = "Escribí con qué vehículo salís."; return; }
+        cocheGuardando = true; cocheError = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/coche",
+                new { Placa = placa, Comentario = placa is null ? cocheComentario : null });
+            if (!resp.IsSuccessStatusCode)
+            {
+                try { cocheError = (await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>())?.GetValueOrDefault("error"); } catch { }
+                cocheError ??= "No se pudo guardar. Probá de nuevo.";
+                return;
+            }
+            var elegido = await resp.Content.ReadFromJsonAsync<ApiClient.FlotaElegidoDto>();
+            if (miCoche is not null) miCoche = miCoche with { Elegido = elegido };
+            var seguir = cocheDespues;
+            CerrarCoches();
+            if (seguir is not null) await seguir();
+        }
+        catch { cocheError = "Sin conexión. Probá de nuevo."; }
+        finally { cocheGuardando = false; }
+    }
+
+    private static bool EsMoto(string nombre) =>
+        nombre.Contains("zanella", StringComparison.OrdinalIgnoreCase) || nombre.Contains("moto", StringComparison.OrdinalIgnoreCase);
+
+    private static string Corto(string? t, int n) => string.IsNullOrEmpty(t) ? "" : t.Length <= n ? t : t[..(n - 1)] + "…";
+
+    private RenderFragment CochePanel => @<div>
+        @if (cocheDespues is not null)
+        {
+            <div class="mp-ctit">¿Con qué vehículo estás repartiendo?</div>
+            <div class="mp-csub">Elegilo y la entrega sigue sola. Es una vez por día.</div>
+        }
+        else
+        {
+            <div class="mp-ctit">¿Con qué vehículo salís hoy?</div>
+            <div class="mp-csub">Si después cambiás de vehículo, tocá arriba y elegí el otro.</div>
+        }
+        <div class="mp-cgrid">
+            @foreach (var c in miCoche?.Opciones ?? new())
+            {
+                var on = miCoche?.Elegido?.Placa == c.Placa;
+                <button type="button" class="mp-ccard @(on ? "on" : "")" disabled="@cocheGuardando" @onclick="() => ElegirCoche(c.Placa)">
+                    @if (c.FotoVer is long fv)
+                    {
+                        <img class="mp-cfoto" src="@ApiClient.FotoMiCocheUrl(Token, c.Placa, fv)" alt="@c.Nombre" loading="lazy" />
+                    }
+                    else
+                    {
+                        <span class="mp-cfoto-no">@(EsMoto(c.Nombre) ? "🛵" : "🚗")</span>
+                    }
+                    <span class="mp-cnom">@c.Nombre@(c.Propio ? " (tuyo)" : "")@(on ? " ✓" : "")</span>
+                    <span class="mp-cfila">
+                        <span class="mp-pat">@c.Placa</span>
+                        @if (c.Km is int km) { <span class="mp-ckm">@km.ToString("N0", EsAr) km</span> }
+                    </span>
+                </button>
+            }
+            <button type="button" class="mp-ccard @(cocheOtro ? "on" : "")" @onclick="() => { cocheOtro = true; cocheError = null; }">
+                <span class="mp-cfoto-no">✍️</span>
+                <span class="mp-cnom">Otro…</span>
+                <span class="mp-ckm">Escribís cuál</span>
+            </button>
+        </div>
+        @if (cocheOtro)
+        {
+            <div class="mp-cotro" style="margin-top:0.6rem;">
+                <textarea placeholder="¿Con qué vehículo salís? Ej: camioneta de mi hermano" @bind="cocheComentario" @bind:event="oninput" maxlength="200"></textarea>
+                <button type="button" class="mp-cbtn" disabled="@cocheGuardando" @onclick="() => ElegirCoche(null)">@(cocheGuardando ? "Guardando…" : "Listo, salgo con este")</button>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(cocheError)) { <div class="mp-cerr">⚠ @cocheError</div> }
+        <button type="button" class="mp-ccerrar" @onclick="CerrarCoches">Cerrar</button>
+    </div>;
+
     private async Task CargarOficina()
     {
         try { oficina = await Http.GetFromJsonAsync<OficinaDto>($"api/cafe/repartidor-public/mis-pedidos/{Token}/oficina"); }
@@ -4369,6 +4551,7 @@
     // 2026-06-17: ME1 — abrir modal de doble confirmacion para marcar entregado.
     private void AbrirEntregarMe1(Me1PedidoDto m)
     {
+        if (FaltaCoche(() => { AbrirEntregarMe1(m); return Task.CompletedTask; })) return;
         me1ConfirmEntrega = m;
         me1EntregaError = null;
     }

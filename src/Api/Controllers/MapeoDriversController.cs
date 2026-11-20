@@ -15,7 +15,8 @@ public class MapeoDriversController : ControllerBase
     private readonly AppDbContext _db;
     public MapeoDriversController(AppDbContext db) { _db = db; }
 
-    public record DriverDto(int Id, string Nombre, string? Telefono, string Color, bool IsActive, string? ShareToken, int? CafeRepartidorId, string? PublicToken);
+    public record DriverDto(int Id, string Nombre, string? Telefono, string Color, bool IsActive, string? ShareToken, int? CafeRepartidorId, string? PublicToken,
+        string? Coche = null);   // 20/11/2026: con qué vehículo salió hoy
     public record CreateDriverRequest(string Nombre, string? Telefono, string? Color, int? CafeRepartidorId);
     public record UpdateDriverRequest(string? Nombre, string? Telefono, string? Color, bool? IsActive, int? CafeRepartidorId);
 
@@ -78,9 +79,11 @@ public class MapeoDriversController : ControllerBase
         if (changed) await _db.SaveChangesAsync();
 
         var tokenPorRep = reales.ToDictionary(r => r.Id, r => r.PublicToken);
+        var cochesHoy = await HttpContext.RequestServices.GetRequiredService<Services.FlotaService>().CochesHoyAsync();
         return Ok(result.OrderBy(d => d.Nombre)
             .Select(d => new DriverDto(d.Id, d.Nombre, d.Telefono, d.Color, d.IsActive, d.ShareToken, d.CafeRepartidorId,
-                d.CafeRepartidorId.HasValue && tokenPorRep.TryGetValue(d.CafeRepartidorId.Value, out var pt) ? pt : null)));
+                d.CafeRepartidorId.HasValue && tokenPorRep.TryGetValue(d.CafeRepartidorId.Value, out var pt) ? pt : null,
+                d.CafeRepartidorId.HasValue && cochesHoy.TryGetValue(d.CafeRepartidorId.Value, out var co) ? co : null)));
     }
 
     [HttpPost("drivers")]

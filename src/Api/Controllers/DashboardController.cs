@@ -354,7 +354,9 @@ public class DashboardController : ControllerBase
         // Último día (antes de hoy, últimos 7) que fichó la entrada y no la salida.
         DateTime? SalidaSinFichar = null,
         // Paradas de hoy por tipo: así se ve que los Flex también cuentan.
-        int RutaFlex = 0, int RutaMe1 = 0, int RutaVentas = 0, int RutaAlquiler = 0, int RutaOtras = 0);
+        int RutaFlex = 0, int RutaMe1 = 0, int RutaVentas = 0, int RutaAlquiler = 0, int RutaOtras = 0,
+        // 2026-11-20: con qué vehículo salió hoy (lo elige el repartidor en su celu). null = no eligió.
+        string? Coche = null);
 
     // 2026-06-25: orden fijo pedido por Osmar — repartidores primero (alexis, walter,
     // benjamin, gonzalo, rodrigo), después oficina (osmar, german, gabriel, miguel).
@@ -536,6 +538,7 @@ public class DashboardController : ControllerBase
         var pagosDelMes = await _db.NomPagos.Where(p => liqIds.Contains(p.LiquidacionId)).ToListAsync();
 
         var fichaByEmp = fichas.ToDictionary(f => f.NomEmpleadoId!.Value, f => f);
+        var cochesHoy = await HttpContext.RequestServices.GetRequiredService<FlotaService>().CochesHoyAsync();
         var repByEmp = repartidores.GroupBy(r => r.NomEmpleadoId!.Value).ToDictionary(g => g.Key, g => g.First());
         // Ventas y alquiler separados, para mandar al admin a la pantalla de aprobación correcta.
         var pendVentasByRep = pendientesRepartidor.ToDictionary(p => p.RepartidorId, p => p.Total);
@@ -696,7 +699,8 @@ public class DashboardController : ControllerBase
                 rep is not null && cobrosCntByRep.TryGetValue(rep.Id, out var cc) ? cc : 0,
                 rep is not null && rendirDesdeByRep.TryGetValue(rep.Id, out var rd) ? rd : null,
                 ficha is not null && sinSalidaByFicha.TryGetValue(ficha.Id, out var ss) ? ss : null,
-                rt.Flex, rt.Me1, rt.Ventas, rt.Alq, rt.Otras);
+                rt.Flex, rt.Me1, rt.Ventas, rt.Alq, rt.Otras,
+                rep is not null && cochesHoy.TryGetValue(rep.Id, out var coche) ? coche : null);
         })
         .OrderBy(x => OrdenPersonalizado(x.Nombre))
         .ThenBy(x => x.Nombre)
