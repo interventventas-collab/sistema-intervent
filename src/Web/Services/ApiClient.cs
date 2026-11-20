@@ -9257,8 +9257,12 @@ public partial class ApiClient
         => await PostAsync<MapeoTraerResult>("/api/mapeo/stops/pendientes/sumar" + FechaQs(fecha, "?"), new { ventas, alquileres });
 
     /// <summary>20/11/2026: lo que va entrando (Flex, ME1, ventas, alquileres) para la isla del Mapeo.</summary>
-    public async Task<MapeoNovedadesResp?> GetMapeoNovedadesAsync(DateTime? fecha = null)
-        => await GetAsync<MapeoNovedadesResp>("/api/mapeo/stops/novedades" + FechaQs(fecha, "?"));
+    public async Task<MapeoNovedadesResp?> GetMapeoNovedadesAsync(DateTime? fecha = null, string? buscar = null)
+    {
+        var url = "/api/mapeo/stops/novedades" + FechaQs(fecha, "?");
+        if (!string.IsNullOrWhiteSpace(buscar)) url += (url.Contains('?') ? "&" : "?") + "q=" + Uri.EscapeDataString(buscar.Trim());
+        return await GetAsync<MapeoNovedadesResp>(url);
+    }
     public async Task<MapeoTraerResult?> TraerNovedadesAlMapaAsync(List<long> envios, List<int> ventas, List<int> alquileres, DateTime? fecha = null)
         => await PostAsync<MapeoTraerResult>("/api/mapeo/stops/novedades/traer" + FechaQs(fecha, "?"), new { envios, ventas, alquileres });
 
