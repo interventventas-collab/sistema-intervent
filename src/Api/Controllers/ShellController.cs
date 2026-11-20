@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -54,6 +55,58 @@ public class ShellController : ControllerBase
         if (d > h) (d, h) = (h, d);
         return Ok(await cargas.ConsultarAsync(d, h));
     }
+
+    // ─── 20/11/2026: vehículos (foto de cada uno + autos propios de repartidores). Solo admin. ───
+    public record PropioRequest(string Placa, string Nombre, int RepartidorId);
+
+    [HttpGet("flota")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> Flota([FromServices] FlotaService flota, [FromServices] Api.Data.AppDbContext db)
+    {
+        var reps = await db.CafeRepartidores.Where(r => r.IsActive).OrderBy(r => r.Nombre)
+            .Select(r => new { r.Id, r.Nombre }).ToListAsync();
+        return Ok(new { Coches = await flota.CochesAsync(null, todosLosPropios: true), Repartidores = reps, Hoy = await flota.CochesHoyAsync() });
+    }
+
+    [HttpGet("flota/{placa}/foto")]
+    public async Task<IActionResult> FotoFlota(string placa, [FromServices] FlotaService flota)
+    {
+        var foto = await flota.FotoAsync(placa);
+        if (foto is null) return NotFound();
+        Response.Headers.CacheControl = "private, max-age=604800";
+        return File(foto, "image/jpeg");
+    }
+
+    [HttpPost("flota/{placa}/foto")]
+    [Authorize(Roles = "admin")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<IActionResult> SubirFoto(string placa, IFormFile? file, [FromServices] FlotaService flota)
+    {
+        if (file is null || file.Length == 0) return BadRequest(new { error = "Elegí una foto." });
+        using var st = file.OpenReadStream();
+        using var ms = new MemoryStream();
+        await st.CopyToAsync(ms); ms.Position = 0;
+        var (ok, error) = await flota.GuardarFotoAsync(placa, ms);
+        return ok ? Ok() : BadRequest(new { error });
+    }
+
+    [HttpDelete("flota/{placa}/foto")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> QuitarFoto(string placa, [FromServices] FlotaService flota)
+    { await flota.QuitarFotoAsync(placa); return Ok(); }
+
+    [HttpPost("flota/propio")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> GuardarPropio([FromBody] PropioRequest req, [FromServices] FlotaService flota)
+    {
+        var (ok, error) = await flota.GuardarPropioAsync(req.Placa, req.Nombre, req.RepartidorId);
+        return ok ? Ok() : BadRequest(new { error });
+    }
+
+    [HttpDelete("flota/propio/{placa}")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> BorrarPropio(string placa, [FromServices] FlotaService flota)
+    { await flota.BorrarPropioAsync(placa); return Ok(); }
 }
 
 [ApiController]

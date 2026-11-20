@@ -316,6 +316,8 @@ public class AppDbContext : DbContext
     public DbSet<GastoWhatsApp> GastosWhatsApp => Set<GastoWhatsApp>();
     public DbSet<GastoWhatsAppComentario> GastosWhatsAppComentarios => Set<GastoWhatsAppComentario>();
     public DbSet<ShellCarga> ShellCargas => Set<ShellCarga>();
+    public DbSet<FlotaVehiculo> FlotaVehiculos => Set<FlotaVehiculo>();
+    public DbSet<RepCocheDia> RepCocheDias => Set<RepCocheDia>();
     public DbSet<WhatsAppSonido> WhatsAppSonidos => Set<WhatsAppSonido>();
     public DbSet<WhatsAppSector> WhatsAppSectores => Set<WhatsAppSector>();
     public DbSet<WhatsAppSectorOperario> WhatsAppSectorOperarios => Set<WhatsAppSectorOperario>();

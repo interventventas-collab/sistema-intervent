@@ -4590,7 +4590,8 @@ public partial class ApiClient
         int TareasPendientes = 0, string? TareasDetalle = null,
         int CobrosARendir = 0, DateTime? RendirDesde = null,
         DateTime? SalidaSinFichar = null,
-        int RutaFlex = 0, int RutaMe1 = 0, int RutaVentas = 0, int RutaAlquiler = 0, int RutaOtras = 0);
+        int RutaFlex = 0, int RutaMe1 = 0, int RutaVentas = 0, int RutaAlquiler = 0, int RutaOtras = 0,
+        string? Coche = null);   // 20/11/2026: con qué vehículo salió hoy
     public record DashboardEquipoResumen(int Trabajando, int Salio, int SinFichar, int NoFicha);
     public record DashboardEquipoResponse(List<DashboardEquipoItem> Items, DashboardEquipoResumen Resumen, DateTime Fecha);
 
@@ -7261,6 +7262,65 @@ public partial class ApiClient
     /// <summary>18/11/2026: cargas de combustible de Shell (pantalla /combustible).</summary>
     public async Task<CombustibleDto?> GetCombustibleAsync(DateTime desde, DateTime hasta)
         => await GetAsync<CombustibleDto>($"/api/shell/cargas?desde={desde:yyyy-MM-dd}&hasta={hasta:yyyy-MM-dd}");
+
+    // ─── 20/11/2026: vehículos. El repartidor elige con cuál sale (celu); la oficina sube fotos y autos propios. ───
+    public record FlotaCocheDto(string Placa, string Nombre, int? Km, DateTime? UltimaCarga, bool Propio,
+        int? RepartidorId, string? Repartidor, long? FotoVer);
+    public record FlotaElegidoDto(string? Placa, string Nombre, string? Comentario, int? Km, long? FotoVer, DateTime ElegidoAt);
+    public record MiCocheDto(FlotaElegidoDto? Elegido, List<FlotaCocheDto> Opciones);
+    public record FlotaRepDto(int Id, string Nombre);
+    public record FlotaAdminDto(List<FlotaCocheDto> Coches, List<FlotaRepDto> Repartidores, Dictionary<int, string>? Hoy);
+
+    public async Task<MiCocheDto?> GetMiCocheAsync(string tokenRepartidor)
+        => await GetAsync<MiCocheDto>($"/api/cafe/repartidor-public/mis-pedidos/{Uri.EscapeDataString(tokenRepartidor)}/coche");
+
+    /// <summary>placa null = "Otro" con comentario. Tira HttpRequestException con el motivo si no se pudo.</summary>
+    public async Task<FlotaElegidoDto?> ElegirMiCocheAsync(string tokenRepartidor, string? placa, string? comentario)
+    {
+        var resp = await _http.PostAsJsonAsync($"/api/cafe/repartidor-public/mis-pedidos/{Uri.EscapeDataString(tokenRepartidor)}/coche",
+            new { Placa = placa, Comentario = comentario });
+        await ThrowIfErrorAsync(resp);
+        return await resp.Content.ReadFromJsonAsync<FlotaElegidoDto>();
+    }
+
+    public static string FotoMiCocheUrl(string tokenRepartidor, string placa, long? ver)
+        => $"/api/cafe/repartidor-public/mis-pedidos/{Uri.EscapeDataString(tokenRepartidor)}/coche/foto/{Uri.EscapeDataString(placa)}?v={ver}";
+    public static string FotoFlotaUrl(string placa, long? ver)
+        => $"/api/shell/flota/{Uri.EscapeDataString(placa)}/foto?v={ver}";
+
+    public async Task<FlotaAdminDto?> GetFlotaAsync() => await GetAsync<FlotaAdminDto>("/api/shell/flota");
+
+    public async Task SubirFotoFlotaAsync(string placa, Stream foto, string fileName, string contentType)
+    {
+        await SetAuthHeaderAsync();
+        using var content = new MultipartFormDataContent();
+        var sc = new StreamContent(foto);
+        sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(contentType) ? "image/jpeg" : contentType);
+        content.Add(sc, "file", fileName);
+        var resp = await _http.PostAsync($"/api/shell/flota/{Uri.EscapeDataString(placa)}/foto", content);
+        await ThrowIfErrorAsync(resp);
+    }
+
+    public async Task QuitarFotoFlotaAsync(string placa)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.DeleteAsync($"/api/shell/flota/{Uri.EscapeDataString(placa)}/foto");
+        await ThrowIfErrorAsync(resp);
+    }
+
+    public async Task GuardarCochePropioAsync(string placa, string nombre, int repartidorId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PostAsJsonAsync("/api/shell/flota/propio", new { Placa = placa, Nombre = nombre, RepartidorId = repartidorId });
+        await ThrowIfErrorAsync(resp);
+    }
+
+    public async Task BorrarCochePropioAsync(string placa)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.DeleteAsync($"/api/shell/flota/propio/{Uri.EscapeDataString(placa)}");
+        await ThrowIfErrorAsync(resp);
+    }
 
     // --- Mercado Pago (API oficial — saldo) ---
     public async Task<Web.Models.MpAccountDto?> GetMpAccountAsync()

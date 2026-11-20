@@ -9071,3 +9071,35 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='Favorito' AND Object_ID=Object_ID('Cafe_Proveedores'))
     ALTER TABLE Cafe_Proveedores ADD Favorito BIT NOT NULL CONSTRAINT DF_CafeProveedores_Favorito DEFAULT 0;
 GO
+
+-- 2026-11-20: Vehículos — foto de cada uno + autos propios de repartidores (Siena de Nacho),
+-- y con qué vehículo sale cada repartidor cada día (lo elige en /mis-pedidos).
+-- ⚠ PROD: correr a mano ANTES de publicar la API.
+IF OBJECT_ID('Flota_Vehiculos','U') IS NULL
+BEGIN
+    CREATE TABLE Flota_Vehiculos (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        Placa NVARCHAR(20) NOT NULL,
+        Nombre NVARCHAR(60) NULL,
+        RepartidorId INT NULL,
+        Foto VARBINARY(MAX) NULL,
+        FotoAt DATETIME2 NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE UNIQUE INDEX IX_Flota_Vehiculos_Placa ON Flota_Vehiculos(Placa);
+END
+GO
+IF OBJECT_ID('Rep_CocheDia','U') IS NULL
+BEGIN
+    CREATE TABLE Rep_CocheDia (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        RepartidorId INT NOT NULL,
+        FechaAr DATE NOT NULL,
+        Placa NVARCHAR(20) NULL,
+        Nombre NVARCHAR(80) NOT NULL,
+        Comentario NVARCHAR(200) NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_Rep_CocheDia_Fecha ON Rep_CocheDia(FechaAr, RepartidorId);
+END
+GO

@@ -1781,6 +1781,12 @@
                                       title="@($"Zona de {z.DriverName} · {z.StopIds.Count} envío(s) — tocá para hacer foco en esta zona")">
                                     🧑 @zNombreCorto
                                 </span>
+                                @* 20/11/2026: con qué vehículo salió hoy (lo elige él en su celu). *@
+                                @{ var zCoche = drivers?.FirstOrDefault(d => d.Id == z.DriverId)?.Coche; }
+                                @if (!string.IsNullOrEmpty(zCoche))
+                                {
+                                    <span style="font-size:0.72rem; color:#fff; opacity:0.95; white-space:nowrap; max-width:170px; overflow:hidden; text-overflow:ellipsis;" title="Vehículo con el que salió hoy">🚗 @zCoche</span>
+                                }
                                 @* Abajo: 👁 ver/ocultar · 👤 chofer · 〰 línea de la ruta · 🧹 vaciar · cantidad de envíos. *@
                                 <div style="display:flex; align-items:center; justify-content:center; gap:9px;">
                                     <span class="mapeo-zona-act" @onclick="() => ToggleZonaVisible(z)"

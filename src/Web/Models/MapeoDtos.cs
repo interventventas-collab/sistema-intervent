@@ -61,6 +61,8 @@ public class MapeoDriverDto
     public int? CafeRepartidorId { get; set; }
     // Token del link fijo del repartidor (/mis-pedidos/{PublicToken}) — para "Ver como repartidores".
     public string? PublicToken { get; set; }
+    // 20/11/2026: con qué vehículo salió hoy (lo elige él en su celu). null = todavía no eligió.
+    public string? Coche { get; set; }
 }
 
 // Parada del Mapeo en solo-lectura para la pantalla del repartidor (Mis Pedidos).

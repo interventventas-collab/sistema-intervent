@@ -848,6 +848,37 @@ public class CafeRepartidorPublicController : ControllerBase
 
     /// <summary>Devuelve la lista de pedidos cargados por el repartidor. URL publica con
     /// token fijo del repartidor — sin PIN. El PIN solo se pide al CONFIRMAR entrega/cobro.</summary>
+    // ─── 20/11/2026: con qué vehículo sale a repartir (lo elige arriba, entre su nombre y Shell) ───
+    public record CocheElegirRequest(string? Placa, string? Comentario);
+
+    [HttpGet("mis-pedidos/{tokenRepartidor}/coche")]
+    public async Task<IActionResult> MiCoche(string tokenRepartidor, [FromServices] FlotaService flota)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound();
+        return Ok(new { Elegido = await flota.ElegidoHoyAsync(r.Id), Opciones = await flota.CochesAsync(r.Id) });
+    }
+
+    [HttpPost("mis-pedidos/{tokenRepartidor}/coche")]
+    public async Task<IActionResult> ElegirCoche(string tokenRepartidor, [FromBody] CocheElegirRequest req, [FromServices] FlotaService flota)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound();
+        var (ok, error) = await flota.ElegirAsync(r.Id, req.Placa, req.Comentario);
+        if (!ok) return BadRequest(new { error });
+        return Ok(await flota.ElegidoHoyAsync(r.Id));
+    }
+
+    [HttpGet("mis-pedidos/{tokenRepartidor}/coche/foto/{placa}")]
+    public async Task<IActionResult> FotoCoche(string tokenRepartidor, string placa, [FromServices] FlotaService flota)
+    {
+        if (!await _db.CafeRepartidores.AnyAsync(x => x.PublicToken == tokenRepartidor && x.IsActive)) return NotFound();
+        var foto = await flota.FotoAsync(placa);
+        if (foto is null) return NotFound();
+        Response.Headers.CacheControl = "private, max-age=604800";
+        return File(foto, "image/jpeg");
+    }
+
     [HttpGet("mis-pedidos/{tokenRepartidor}")]
     public async Task<IActionResult> MisPedidos(string tokenRepartidor, [FromQuery] int dias = 14)
     {

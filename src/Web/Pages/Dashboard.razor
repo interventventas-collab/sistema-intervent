@@ -292,6 +292,7 @@ else
                             <div class="dash-emp-status">
                                 <span class="dash-dot" style="background:@EstadoColor(emp.Estado);"></span>@EstadoTexto(emp)
                             </div>
+                            @if (!string.IsNullOrEmpty(emp.Coche)) { <div style="font-size:0.74rem; color:#374151;">🚗 @emp.Coche</div> }
                         </div>
                     </div>
                     @* 2026-07-04: bloque "carga" — solo si es repartidor y tiene algo hoy.
