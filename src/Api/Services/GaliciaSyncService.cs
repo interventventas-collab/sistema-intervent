@@ -126,6 +126,8 @@ public class GaliciaSyncService
             return new ChequesSyncResult(false, 0, 0, 0, "El banco está muy lento: el robot esperó varios minutos y no terminó. Probá de nuevo más tarde.", null);
 
         var algo = result.ChequesRecibidosB64 ?? result.ChequesEmitidosB64 ?? result.ChequesEndosadosB64;
+        if (result.Ok && result.ChequesVacios == true && result.NeedsToken != true)
+            return new ChequesSyncResult(true, 0, 0, 0, null, null);
         if (!result.Ok || string.IsNullOrEmpty(algo))
         {
             var msg = result.NeedsToken == true

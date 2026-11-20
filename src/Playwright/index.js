@@ -2908,7 +2908,14 @@ async function runGaliciaMovimientos({ usuario, password }) {
 // Baja el listado de cheques de un tipo (recibidos/emitidos/endosados) en .XLS.
 // Navega a /cheques/{tipo}, abre el menú de descarga (flechita ⬇ arriba del "Listado")
 // y elige "Detalle de cheques en .XLS". Devuelve base64 o null (y empuja el motivo a errores[]).
-async function galiciaBajarChequesXls(page, tipo, errores) {
+// 20/11/2026: si la cuenta nunca tuvo cheques de ese tipo, el banco muestra "Todavía no
+// recibiste/emitiste/endosaste cheques" y deja el botón de descarga gris. Eso NO es un error:
+// lo anotamos en `vacios` y devolvemos null sin quejarnos.
+async function galiciaChequesListadoVacio(page) {
+  return await page.getByText(/Todav[ií]a no (recibiste|emitiste|endosaste) cheques/i).first().isVisible().catch(() => false);
+}
+
+async function galiciaBajarChequesXls(page, tipo, errores, vacios = []) {
   galiciaState.step = `Abriendo cheques ${tipo}...`;
   await page.goto(`https://empresas.bancogalicia.com.ar/cheques/${tipo}`, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
   // Esperar a que el listado (micro-frontend Backbase) termine de cargar.
@@ -2917,6 +2924,12 @@ async function galiciaBajarChequesXls(page, tipo, errores) {
   // Esperar a que aparezca el texto "Listado" (o la tabla) antes de buscar el botón.
   await page.getByText('Listado', { exact: false }).first().waitFor({ state: 'visible', timeout: 45000 }).catch(() => {});
   await sleep(1500);
+
+  if (await galiciaChequesListadoVacio(page)) {
+    console.log(`[galicia][CHEQUES] ${tipo}: el banco dice que no hay cheques (botón gris) → nada que bajar`);
+    vacios.push(tipo);
+    return null;
+  }
 
   // La opción del menú es un texto "Detalle de cheques en .XLS".
   const xlsOption = page.locator('text=/Detalle de cheques en \\.XLS/i').first();
@@ -2962,6 +2975,11 @@ async function galiciaBajarChequesXls(page, tipo, errores) {
         console.log(`[galicia][CHEQUES][FOTO] ${foto}`);
       } catch {}
     }
+  }
+  if (!menuOpen && await galiciaChequesListadoVacio(page)) {
+    console.log(`[galicia][CHEQUES] ${tipo}: sin cheques (lo vi después de reintentar) → nada que bajar`);
+    vacios.push(tipo);
+    return null;
   }
   if (!menuOpen) {
     // Diagnóstico shadow-DOM + iframe aware: recorre shadow roots e iframes accesibles
@@ -3135,11 +3153,19 @@ async function runGaliciaCheques({ usuario, password }) {
   }
 
   const errores = [];
-  const recibidosB64 = await galiciaBajarChequesXls(page, 'recibidos', errores);
-  const emitidosB64 = await galiciaBajarChequesXls(page, 'emitidos', errores);
-  const endosadosB64 = await galiciaBajarChequesXls(page, 'endosados', errores);
+  const vacios = [];
+  const recibidosB64 = await galiciaBajarChequesXls(page, 'recibidos', errores, vacios);
+  const emitidosB64 = await galiciaBajarChequesXls(page, 'emitidos', errores, vacios);
+  const endosadosB64 = await galiciaBajarChequesXls(page, 'endosados', errores, vacios);
 
   const algo = recibidosB64 || emitidosB64 || endosadosB64;
+  if (!algo && errores.length === 0 && vacios.length > 0) {
+    // La cuenta no tiene cheques de ningún tipo: lectura OK con 0 cheques.
+    galiciaState.step = 'Esta cuenta no tiene cheques';
+    galiciaState.result = { ok: true, loggedIn: true, chequesVacios: true, chequesErrores: [], url: page.url() };
+    await sleep(4000);
+    return;
+  }
   if (!algo) {
     galiciaState.result = {
       ok: false, loggedIn: true,
