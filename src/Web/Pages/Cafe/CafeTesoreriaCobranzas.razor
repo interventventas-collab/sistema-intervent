@@ -149,6 +149,21 @@
                             @onclick="() => filtroQue = vSel">@txt</button>
                 }
             </div>
+            @* 20/11/2026: quién la cobró en la calle (el repartidor del QR). *@
+            <div style="display:flex; flex-wrap:wrap; gap:0.35rem; align-items:center;">
+                <span style="font-size: 0.7rem; color: #6b7280; font-weight: 600; min-width: 70px;">Repartidor</span>
+                <button class="btn @(filtroRep == "" ? "btn-primary" : "btn-secondary")" style="padding:.2rem .6rem; font-size:.8rem;"
+                        @onclick="() => filtroRep = string.Empty">Todos</button>
+                @foreach (var (rn, cant) in RepartidoresPresentes())
+                {
+                    var rSel = rn;
+                    <button class="btn @(filtroRep == rSel ? "btn-primary" : "btn-secondary")" style="padding:.2rem .6rem; font-size:.8rem;"
+                            @onclick="() => filtroRep = rSel">🚚 @rSel <span style="opacity:.7;">@cant</span></button>
+                }
+                <button class="btn @(filtroRep == SinRepartidor ? "btn-primary" : "btn-secondary")" style="padding:.2rem .6rem; font-size:.8rem;"
+                        title="Las que no cobró ningún repartidor (banco, oficina, etc.)"
+                        @onclick="() => filtroRep = SinRepartidor">Sin repartidor</button>
+            </div>
             @if (filtroTipo == TipoRedirigido)
             {
                 <div style="display:flex; flex-wrap:wrap; gap:0.35rem; align-items:center;">
@@ -1718,6 +1733,13 @@
     private string filtroRedirA = "";
     // 2026-10-06: "" = todo; si no MERCADERIA | ALQUILER | MAQUINA (CobranzaListDto.QueSeCobro).
     private string filtroQue = "";
+    // 20/11/2026: "" = todos; SinRepartidor = las que no cobró ninguno; si no, el nombre del repartidor.
+    private string filtroRep = "";
+    private const string SinRepartidor = "\u0001sin";
+    private List<(string Nombre, int Cant)> RepartidoresPresentes() =>
+        (cobranzas ?? new()).Where(c => c.Estado != "ANULADA" && !string.IsNullOrWhiteSpace(c.RepartidorNombre))
+            .GroupBy(c => c.RepartidorNombre!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Key, g.Count())).OrderByDescending(x => x.Item2).ThenBy(x => x.Key).ToList();
     private static readonly (string, string)[] OpcionesQueSeCobro =
         { ("", "Todo"), ("MERCADERIA", "Mercadería"), ("ALQUILER", "Alquileres"), ("MAQUINA", "Máquinas") };
     private static bool CobroDe(CobranzaListDto c, string que) =>
@@ -1764,7 +1786,7 @@
         || filtroEstado != "VIGENTE"
         || filtroRetenciones != "TODOS"
         || filtroMontoMin.HasValue || filtroMontoMax.HasValue
-        || filtroTipo != "" || filtroQue != "";
+        || filtroTipo != "" || filtroQue != "" || filtroRep != "";
 
     private async Task LimpiarFiltros()
     {
@@ -1781,6 +1803,7 @@
         filtroTipo = "";
         filtroRedirA = "";
         filtroQue = "";
+        filtroRep = "";
         if (habiaBusqueda) await Load();
     }
 
@@ -1833,6 +1856,9 @@
 
         if (filtroQue != "") q = q.Where(c => CobroDe(c, filtroQue));
 
+        if (filtroRep == SinRepartidor) q = q.Where(c => string.IsNullOrWhiteSpace(c.RepartidorNombre));
+        else if (filtroRep != "") q = q.Where(c => string.Equals(c.RepartidorNombre?.Trim(), filtroRep, StringComparison.OrdinalIgnoreCase));
+
         return q.ToList();
     }
 
@@ -1858,6 +1884,7 @@
             p.Add($"Fechas: {filtroFechaDesde?.ToString("dd/MM/yyyy") ?? "…"} al {filtroFechaHasta?.ToString("dd/MM/yyyy") ?? "…"}");
         if (filtroTipo != "") p.Add("Tipo: " + (filtroTipo == "MIXTO" ? "Mixto" : filtroTipo));
         if (filtroRedirA != "") p.Add("A quién fue: " + filtroRedirA);
+        if (filtroRep != "") p.Add(filtroRep == SinRepartidor ? "Sin repartidor" : "Cobró " + filtroRep);
         if (filtroQue != "") p.Add("Qué se cobró: " + OpcionesQueSeCobro.First(o => o.Item1 == filtroQue).Item2);
         if (!string.IsNullOrWhiteSpace(filtroBuscar)) p.Add($"Buscar: \"{filtroBuscar.Trim()}\"");
         if (filtroEstado != "VIGENTE") p.Add("Estado: " + (filtroEstado == "ANULADA" ? "Anuladas" : "Todas"));
