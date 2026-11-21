@@ -11,7 +11,8 @@ namespace Api.Services;
 ///
 ///   - Al imprimir la etiqueta se pregunta "¿Sale hoy?": Sí → "En camino" en el acto; otro día → se guarda
 ///     Me1SaleFecha y ese día a la mañana (desde las 7 AR) el job lo avisa.
-///   - Envío en el mapeo de HOY → "En camino"; si además tiene chofer → "Salió a distribución".
+///   - En el mapa de HOY también se pregunta "¿Sale hoy?" (2026-11-20: a conciencia, el mapa solo no avisa).
+///     Ya confirmado y con chofer asignado → "Salió a distribución".
 ///   - Repartidor con ME1 sin marcar → se los mostramos al fichar la salida (Pendientes).
 /// </summary>
 public class Me1AvisosService
@@ -68,6 +69,8 @@ public class Me1AvisosService
             if (ok) avisados++;
             else errores.Add($"{s.ReceiverName ?? s.MeliShipmentId.ToString()}: {err}");
         }
+        // Si ya tiene repartidor en el mapa de hoy, que el "Salió a distribución" salga enseguida.
+        if (avisados > 0) Me1AvisosBackgroundService.Despertar();
         return (avisados, programados, errores);
     }
 
@@ -92,7 +95,7 @@ public class Me1AvisosService
             }
         }
 
-        // 2) En el mapeo de HOY → "En camino"; con chofer → "Salió a distribución".
+        // 2) En el mapeo de HOY, ya confirmado ("Sí, sale hoy") y con chofer → "Salió a distribución".
         var paradas = await _db.MapeoStops.AsNoTracking()
             .Where(p => p.Origin == "me1" && p.FechaReparto == hoy && p.OriginRefId != null)
             .Select(p => new { p.OriginRefId, p.AssignedDriverId })
@@ -123,13 +126,10 @@ public class Me1AvisosService
             {
                 _log.LogInformation("[ME1 avisos] mapeo de hoy: envío {Sid} estado {St}/{Sub}, chofer {Ch}, salió a distr. {Sd:yyyy-MM-dd}",
                     s.MeliShipmentId, s.Status, s.Substatus ?? "-", conChofer[s.MeliShipmentId], s.Me1SalioDistribucionFecha);
-                if (MeliShipmentService.Me1SinDespachar(s.Status))
-                {
-                    var (ok, err) = await _ship.SetMe1StatusAsync(s.Id, "shipped", null, null, null, "Despachado");
-                    if (ok) { n++; _log.LogInformation("[ME1 avisos] En camino OK envío {Sid}", s.MeliShipmentId); }
-                    else { _log.LogWarning("[ME1 avisos] En camino (mapeo) envío {Id}: {Err}", s.Id, err); continue; }
-                    await Task.Delay(1500, ct);
-                }
+                // 2026-11-20: "a conciencia" (pedido del usuario): estar en el mapa NO avisa "En camino". Ese
+                // aviso sale solo cuando alguien contesta "Sí, sale hoy" (al imprimir o en el mapa). Si nadie
+                // confirmó todavía, tampoco se manda "Salió a distribución".
+                if (MeliShipmentService.Me1SinDespachar(s.Status)) continue;
                 bool fallidaHoy = s.Me1VisitaFallidaAt.HasValue && s.Me1VisitaFallidaAt.Value.AddHours(-3).Date == hoy;
                 if (conChofer[s.MeliShipmentId] && s.Me1SalioDistribucionFecha != hoy && !fallidaHoy)
                 {

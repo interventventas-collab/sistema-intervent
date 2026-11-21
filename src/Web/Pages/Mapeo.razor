@@ -4,6 +4,7 @@
 @inject ToastService ToastService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject Me1SaleHoySignal Me1SaleHoy
 @implements IAsyncDisposable
 
 <style>
@@ -7253,7 +7254,26 @@
         }
         catch (Exception ex) { ToastService.Error("Error: " + ex.Message); }
     }
-    private async Task LoadStops() { try { stops = await Api.GetMapeoStopsAsync(fecha: FechaMapa) ?? new(); } catch { stops = new(); } }
+    private async Task LoadStops()
+    {
+        try { stops = await Api.GetMapeoStopsAsync(fecha: FechaMapa) ?? new(); } catch { stops = new(); }
+        PreguntarMe1SaleHoy();
+    }
+
+    // 2026-11-20: "a conciencia" — estar en el mapa NO avisa nada a MeLi. Cada me1 nuevo en el mapa de HOY
+    // (sumado a mano, escaneado o armado solo) dispara el "¿Sale hoy?"; recién con el "Sí" sale el En camino.
+    // El cartel solo muestra los que todavía no se confirmaron (ni día de salida elegido). Se pregunta una vez
+    // por envío mientras la pantalla está abierta: si tocan "Después", vuelve a aparecer al reabrir el mapa.
+    private readonly HashSet<long> _me1Preguntados = new();
+    private void PreguntarMe1SaleHoy()
+    {
+        if (!EsDiaDeHoy || stops is null) return;
+        var nuevos = stops.Where(x => x.Origin == "me1" && long.TryParse(x.OriginRefId, out _))
+            .Select(x => long.Parse(x.OriginRefId!)).Where(id => !_me1Preguntados.Contains(id)).Distinct().ToList();
+        if (nuevos.Count == 0) return;
+        foreach (var id in nuevos) _me1Preguntados.Add(id);
+        Me1SaleHoy.Preguntar(nuevos);
+    }
 
     // ===== Agregar parada (manual o desde favorito) =====
     private void OpenAddStopModal()
