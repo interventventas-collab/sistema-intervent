@@ -5,12 +5,12 @@
 
 @* 2026-11-18: después de imprimir etiquetas ME1 pregunta "¿Sale hoy?".
    Sí → MeLi le avisa al comprador "En camino" en el acto.
-   Otro día → se guarda el día y esa mañana el sistema lo avisa solo (o antes, si lo ponen en el mapeo de hoy).
-   Vive en MainLayout: lo disparan todas las pantallas que imprimen etiquetas. *@
+   Otro día → se guarda el día y esa mañana el sistema lo avisa solo.
+   Vive en MainLayout: lo disparan las pantallas que imprimen etiquetas y el mapa de hoy (2026-11-20). *@
 
 @if (envios.Count > 0)
 {
-    <div style="position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:3000; display:flex; align-items:center; justify-content:center; padding:1rem;">
+    <div style="position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:20000; display:flex; align-items:center; justify-content:center; padding:1rem;">
         <div style="background:#fff; border-radius:10px; padding:1.1rem 1.2rem; width:100%; max-width:460px; box-shadow:0 6px 20px rgba(0,0,0,.2); color:#222;">
             <div style="font-size:1.15rem; font-weight:700; margin-bottom:.25rem;">¿@(envios.Count == 1 ? "Sale" : "Salen") hoy?</div>
             <div style="color:#666; font-size:.88rem; max-height:7.5rem; overflow:auto;">
@@ -41,7 +41,7 @@
 
             <div style="font-size:.8rem; color:#666; margin-top:.8rem; line-height:1.35;">
                 "Sí, sale hoy" → MercadoLibre le avisa al comprador que su compra está <b>En camino</b>.<br />
-                Otro día → se avisa solo ese día a la mañana (o antes, si lo ponen en el mapeo de hoy).
+                Otro día → se avisa solo ese día a la mañana. "Después" → no se avisa nada todavía.
             </div>
             <div style="text-align:right; margin-top:.6rem;">
                 <button type="button" style="background:none; border:none; color:#666; font-size:.85rem; cursor:pointer;" disabled="@guardando" @onclick="Cerrar">Después</button>
@@ -69,8 +69,9 @@
             await Task.Delay(800);
             var lista = await Api.GetMe1SinDiaSalidaAsync(ids);
             if (lista.Count == 0) return;
-            envios = lista;
-            verOtroDia = false;
+            // Si el cartel ya estaba abierto (ej: mapa + impresión), se suman en vez de pisarse.
+            if (envios.Count == 0) verOtroDia = false;
+            envios = envios.Concat(lista).DistinctBy(x => x.ShipmentId).ToList();
             await InvokeAsync(StateHasChanged);
         }
         catch { }
