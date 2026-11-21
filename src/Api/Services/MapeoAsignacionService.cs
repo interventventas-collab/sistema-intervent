@@ -87,6 +87,9 @@ public class MapeoAsignacionService
         }
 
         if (cambios > 0) await _db.SaveChangesAsync();
+        // 2026-11-20: le cambiaron el chofer a un ME1 de hoy → el robot de avisos ME1 avisa ya mismo a MeLi
+        // "Salió a distribución" (muchas asignaciones van con ExecuteUpdate y no pasan por SaveChanges).
+        if (stops.Any(s => s.Origin == "me1" && s.FechaReparto.Date == hoyAr)) Me1AvisosBackgroundService.Despertar();
         return cambios;
     }
 

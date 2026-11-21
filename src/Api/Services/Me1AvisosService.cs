@@ -110,19 +110,32 @@ public class Me1AvisosService
                             && s.Status != null && !Finales.Contains(s.Status) && s.Status != "pending")
                 .Select(s => new { s.Id, s.MeliShipmentId, s.Status, s.Substatus, s.Me1SalioDistribucionFecha, s.Me1VisitaFallidaAt })
                 .ToListAsync(ct);
+            // 2026-11-20: registro de cada decisión (el 20/11 en prod no salió ningún aviso y no se pudo saber por qué).
+            var faltan = ids.Except(envios.Select(e => e.MeliShipmentId)).ToList();
+            if (faltan.Count > 0)
+            {
+                var info = await _db.MeliShipments.AsNoTracking().Where(x => faltan.Contains(x.MeliShipmentId))
+                    .Select(x => x.MeliShipmentId + "=" + (x.Mode ?? "?") + "/" + (x.Status ?? "?")).ToListAsync(ct);
+                _log.LogInformation("[ME1 avisos] mapeo de hoy: {N} envío(s) no se avisan: {Info} (sin fila: {Sin})",
+                    faltan.Count, string.Join(", ", info), faltan.Count - info.Count);
+            }
             foreach (var s in envios)
             {
+                _log.LogInformation("[ME1 avisos] mapeo de hoy: envío {Sid} estado {St}/{Sub}, chofer {Ch}, salió a distr. {Sd:yyyy-MM-dd}",
+                    s.MeliShipmentId, s.Status, s.Substatus ?? "-", conChofer[s.MeliShipmentId], s.Me1SalioDistribucionFecha);
                 if (MeliShipmentService.Me1SinDespachar(s.Status))
                 {
                     var (ok, err) = await _ship.SetMe1StatusAsync(s.Id, "shipped", null, null, null, "Despachado");
-                    if (ok) n++; else { _log.LogWarning("[ME1 avisos] En camino (mapeo) envío {Id}: {Err}", s.Id, err); continue; }
+                    if (ok) { n++; _log.LogInformation("[ME1 avisos] En camino OK envío {Sid}", s.MeliShipmentId); }
+                    else { _log.LogWarning("[ME1 avisos] En camino (mapeo) envío {Id}: {Err}", s.Id, err); continue; }
                     await Task.Delay(1500, ct);
                 }
                 bool fallidaHoy = s.Me1VisitaFallidaAt.HasValue && s.Me1VisitaFallidaAt.Value.AddHours(-3).Date == hoy;
                 if (conChofer[s.MeliShipmentId] && s.Me1SalioDistribucionFecha != hoy && !fallidaHoy)
                 {
                     var (ok, err) = await _ship.SetMe1StatusAsync(s.Id, "shipped", "out_for_delivery", null, null, "Salio a distribucion");
-                    if (ok) n++; else _log.LogWarning("[ME1 avisos] Salió a distribución envío {Id}: {Err}", s.Id, err);
+                    if (ok) { n++; _log.LogInformation("[ME1 avisos] Salió a distribución OK envío {Sid}", s.MeliShipmentId); }
+                    else _log.LogWarning("[ME1 avisos] Salió a distribución envío {Id}: {Err}", s.Id, err);
                 }
             }
         }
@@ -157,6 +170,13 @@ public class Me1AvisosBackgroundService : BackgroundService
     private readonly ILogger<Me1AvisosBackgroundService> _logger;
     private static readonly TimeSpan Period = TimeSpan.FromMinutes(10);
 
+    // 2026-11-20: se suma un ME1 al mapeo → despierta el robot ya (ver AppDbContext.HayParadaMe1Tocada).
+    private static readonly SemaphoreSlim _despertar = new(0, 1);
+    public static void Despertar()
+    {
+        try { if (_despertar.CurrentCount == 0) _despertar.Release(); } catch (SemaphoreFullException) { }
+    }
+
     public Me1AvisosBackgroundService(IServiceScopeFactory scopeFactory, ILogger<Me1AvisosBackgroundService> logger)
     {
         _scopeFactory = scopeFactory; _logger = logger;
@@ -179,7 +199,13 @@ public class Me1AvisosBackgroundService : BackgroundService
             catch (OperationCanceledException) { break; }
             catch (Exception ex) { _logger.LogError(ex, "[ME1 avisos] Error en el job"); }
 
-            try { await Task.Delay(Period, stoppingToken); }
+            try
+            {
+                // Espera la vuelta de 10 minutos, o menos si alguien sumó un ME1 al mapeo. En ese caso deja
+                // pasar unos segundos para que terminen de asignarle el chofer (y no avisar dos veces).
+                if (await _despertar.WaitAsync(Period, stoppingToken))
+                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+            }
             catch (OperationCanceledException) { break; }
         }
     }

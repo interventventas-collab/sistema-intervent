@@ -21,13 +21,34 @@ public class AppDbContext : DbContext
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         VentaHistorialRecorder.Capturar(this, _http);
-        return base.SaveChanges(acceptAllChangesOnSuccess);
+        bool me1 = HayParadaMe1Tocada();
+        var r = base.SaveChanges(acceptAllChangesOnSuccess);
+        if (me1) Me1AvisosBackgroundService.Despertar();
+        return r;
     }
 
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         VentaHistorialRecorder.Capturar(this, _http);
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        if (!HayParadaMe1Tocada()) return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        return GuardarYDespertarMe1Async(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private async Task<int> GuardarYDespertarMe1Async(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken)
+    {
+        var r = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        Me1AvisosBackgroundService.Despertar();
+        return r;
+    }
+
+    /// <summary>2026-11-20: si se suma (o se le cambia el chofer) una parada ME1 al mapeo, el robot de avisos
+    /// ME1 se despierta en el acto y le avisa a MeLi "En camino" sin esperar su vuelta de 10 minutos.</summary>
+    private bool HayParadaMe1Tocada()
+    {
+        foreach (var e in ChangeTracker.Entries<MapeoStop>())
+            if ((e.State == EntityState.Added || e.State == EntityState.Modified) && e.Entity.Origin == "me1")
+                return true;
+        return false;
     }
 
     public DbSet<User> Users => Set<User>();
