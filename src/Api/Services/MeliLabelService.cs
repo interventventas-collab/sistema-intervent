@@ -92,11 +92,14 @@ public class MeliLabelService
             // 2026-09-24: MeLi ya la marco impresa; anotamos la hora de la PRIMERA impresion.
             await AnotarImpresionAsync(ids);
 
-            if (esTermica) { zpl.Append(System.Text.Encoding.UTF8.GetString(bytes)).Append('\n'); continue; }
+            // 2026-11-20: cada etiqueta sale con el nombre corto de la cuenta (GROVAS / FRIKAF) en un
+            // recuadro a la derecha del remitente, para separar los paquetes de cada cuenta.
+            var cuentaCorta = NombreCorto(account.Nickname);
+            if (esTermica) { zpl.Append(ZplConCuenta(System.Text.Encoding.UTF8.GetString(bytes), cuentaCorta)).Append('\n'); continue; }
 
             try
             {
-                piezas.AddRange(Recortar(bytes, ids.Length));
+                piezas.AddRange(Recortar(bytes, ids.Length, cuentaCorta));
             }
             catch (Exception ex)
             {
@@ -220,10 +223,69 @@ public class MeliLabelService
     private static readonly double[] ColX = { 29, 294, 558 };
     private const double ColY = 26, ColAncho = 260, ColAlto = 538;
 
-    private record Pieza(byte[] Pdf, int Pagina, double X, double Y, double W, double H);
+    /// <summary>Cuenta = nombre corto a estampar (null = nada). EsA4 = recorte de la hoja A4 de MeLi
+    /// (la única grilla medida; en otras medidas no se estampa para no pisar nada).</summary>
+    private record Pieza(byte[] Pdf, int Pagina, double X, double Y, double W, double H, string? Cuenta = null, bool EsA4 = false);
+
+    // ───── 2026-11-20: nombre de la cuenta en la etiqueta ─────
+    // Lugar: a la derecha del bloque del remitente. Medido sobre etiquetas reales (Flex y Colecta) de
+    // MeLi: esa zona está vacía en las dos, y el remitente es fijo por cuenta, así que no se pisa.
+    // No toca QR, código de barras ni dirección. La parte de arriba (troquel) NO: se recorta.
+
+    /// <summary>"TIENDA FRIKAF" → "FRIKAF", "GROVAS" → "GROVAS" (cortito para que entre grande).</summary>
+    public static string? NombreCorto(string? nickname)
+    {
+        if (string.IsNullOrWhiteSpace(nickname)) return null;
+        var n = nickname.Trim().ToUpperInvariant();
+        if (n.StartsWith("TIENDA ")) n = n[7..].Trim();
+        return n.Length > 12 ? n[..12] : n;
+    }
+
+    // Recuadro dentro de la pieza A4 (260 x 538 pt), en puntos relativos a su esquina.
+    private const double CtaX = 190, CtaY = 125, CtaW = 62, CtaH = 32;
+
+    /// <summary>Dibuja el recuadro con el nombre, ya escalado a donde quedó la etiqueta.</summary>
+    private static void EstamparCuenta(XGraphics gfx, Pieza p, double x, double y, double escala)
+    {
+        if (string.IsNullOrWhiteSpace(p.Cuenta) || !p.EsA4) return;
+        var r = new XRect(x + CtaX * escala, y + CtaY * escala, CtaW * escala, CtaH * escala);
+        gfx.DrawRectangle(XBrushes.White, r);
+        gfx.DrawRectangle(new XPen(XColors.Black, 1.6 * escala), r);
+        // Letra lo más grande que entre (máx. 15 pt), centrada.
+        double tam = 15 * escala;
+        XFont font;
+        while (true)
+        {
+            font = new XFont("DejaVu Sans", tam, XFontStyle.Bold);
+            if (gfx.MeasureString(p.Cuenta, font).Width <= r.Width - 6 * escala || tam <= 6) break;
+            tam -= 0.5;
+        }
+        gfx.DrawString(p.Cuenta, font, XBrushes.Black, r, XStringFormats.Center);
+    }
+
+    /// <summary>Térmica directa (Zebra): agrega el recuadro con el nombre antes de cada ^XZ.
+    /// Coordenadas absolutas (^LH0,0) en la zona libre a la derecha del remitente.</summary>
+    private static string ZplConCuenta(string zpl, string? cuenta)
+    {
+        if (string.IsNullOrWhiteSpace(cuenta)) return zpl;
+        var txt = cuenta.Replace("^", "").Replace("~", "");
+        var sello = $"^LH0,0^FO670,466^GB128,70,4^FS^FO670,484^A0N,38,30^FB128,1,0,C^FD{txt}^FS";
+        // MeLi manda, además de cada etiqueta, bloques de configuración sueltos (ej. "^XA^MCY^XZ").
+        // El sello va SOLO en los bloques que imprimen algo (tienen ^FD); si no, saldría una etiqueta
+        // en blanco con el recuadro.
+        var partes = zpl.Split("^XZ");
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < partes.Length; i++)
+        {
+            sb.Append(partes[i]);
+            if (i < partes.Length - 1)
+                sb.Append(partes[i].Contains("^FD") ? sello + "^XZ" : "^XZ");
+        }
+        return sb.ToString();
+    }
 
     /// <summary>Parte el PDF de MeLi en etiquetas sueltas. "esperadas" = cuantos envios se pidieron.</summary>
-    private static List<Pieza> Recortar(byte[] pdf, int esperadas)
+    private static List<Pieza> Recortar(byte[] pdf, int esperadas, string? cuenta = null)
     {
         var res = new List<Pieza>();
         using var ms = new MemoryStream(pdf);
@@ -239,7 +301,7 @@ public class MeliLabelService
                 // Hasta 3 por hoja; la ultima hoja puede venir con 1 o 2 (el resto en blanco).
                 int enEsta = Math.Clamp(quedan, 1, 3);
                 for (int c = 0; c < enEsta; c++)
-                    res.Add(new Pieza(pdf, i + 1, ColX[c], ColY, ColAncho, ColAlto));
+                    res.Add(new Pieza(pdf, i + 1, ColX[c], ColY, ColAncho, ColAlto, cuenta, true));
                 quedan -= enEsta;
             }
             else
@@ -268,6 +330,7 @@ public class MeliLabelService
         gfx.IntersectClip(new XRect(x, y, w, h));
         // La pagina entera se corre para que el rectangulo de la pieza caiga justo en (x, y).
         gfx.DrawImage(form, x - p.X * escala, y - p.Y * escala, form.PointWidth * escala, form.PointHeight * escala);
+        EstamparCuenta(gfx, p, x, y, escala);
         gfx.Restore(estado);
     }
 
