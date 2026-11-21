@@ -120,6 +120,15 @@
     .dp-fila.f-entregado { background:#f0fdf4; }
     .dp-fila.f-cancelada { background:#f9fafb; color:#9ca3af; }
     .dp-fila.nu { background:#fff7ed; }
+    /* 2026-11-20: de qué cuenta es la venta, de un vistazo. GROVAS = azul (franja + celeste + pastilla),
+       la principal (TIENDA FRIKAF) = franja naranja. Mismos colores que el cartel de colecta de arriba.
+       La franja va con box-shadow para no correr las columnas. El celeste solo donde la fila no tiene
+       ya un color de estado (armado/en camino/entregado/cancelada/nuevo). */
+    .dp-fila.cta-g { box-shadow: inset 5px 0 0 #2563eb; }
+    .dp-fila.cta-p { box-shadow: inset 5px 0 0 #f59e0b; }
+    .dp-fila.cta-g:not(.f-armado):not(.f-camino):not(.f-entregado):not(.f-cancelada):not(.nu) { background:#eff6ff; }
+    .dp-cta-g { display:block; width:fit-content; margin-top:2px; background:#2563eb; color:#fff; border-radius:999px; padding:1px 9px; font-size:0.72rem; font-weight:600; letter-spacing:0.3px; }
+    .dp-cta-p { display:block; color:#b45309; font-size:0.76rem; }
     .dp-fase { font-size:0.8rem; line-height:1.3; }
     .dp-fase b { display:block; font-size:0.84rem; }
     .dp-fase .dp-est { margin-top:0.25rem; }
@@ -431,7 +440,7 @@
                 var sel = env.HasValue && tildadas.Contains(env.Value);
                 var foto = o.Productos.FirstOrDefault(p => !string.IsNullOrEmpty(p.Foto))?.Foto;
                 var fase = Fase(o);
-                <div class="dp-fila f-@fase @(recienLlegados.Contains(o.Numero) ? "nu" : "")" @key="o.Numero">
+                <div class="dp-fila f-@fase @(recienLlegados.Contains(o.Numero) ? "nu" : "") @(string.IsNullOrEmpty(o.Cuenta) ? "" : EsGrovas(o.Cuenta) ? "cta-g" : "cta-p")" @key="o.Numero">
                     <div>
                         @if (env.HasValue)
                         {
@@ -465,7 +474,11 @@
                                 }
                             </select>
                         }
-                        else if (!string.IsNullOrEmpty(o.Cuenta)) { <span class="sub">cuenta @o.Cuenta</span> }
+                        else if (!string.IsNullOrEmpty(o.Cuenta))
+                        {
+                            if (EsGrovas(o.Cuenta)) { <span class="dp-cta-g">@o.Cuenta</span> }
+                            else { <span class="dp-cta-p">@o.Cuenta</span> }
+                        }
                     </div>
                     <div class="dp-fase">
                         <b>@TituloFase(o, fase)</b>
@@ -615,6 +628,9 @@
 }
 
 @code {
+    /// <summary>2026-11-20: ¿la venta es de la cuenta GROVAS? (se pinta de azul en la lista).</summary>
+    private static bool EsGrovas(string? cuenta) => cuenta?.Contains("GROVAS", StringComparison.OrdinalIgnoreCase) == true;
+
     [Parameter] public DepTareasResumenDto? Tareas { get; set; }
     [Parameter] public EventCallback OnAbrirTareas { get; set; }
     [Parameter] public EventCallback OnEscaner { get; set; }

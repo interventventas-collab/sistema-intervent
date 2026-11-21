@@ -6935,6 +6935,7 @@ CREATE TABLE Meli_CodigoColecta (
 GO
 IF EXISTS (SELECT 1 FROM sys.tables WHERE name='Meli_CodigoColecta')
    AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_MeliCodigoColecta_Fecha')
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_MeliCodigoColecta_FechaCuenta')
     CREATE UNIQUE INDEX UX_MeliCodigoColecta_Fecha ON Meli_CodigoColecta (FechaCodigo);
 GO
 -- 2026-07-17: horario (franja) de la colecta del día + si quedó cancelada. Sale de los mails de MeLi.
@@ -6949,6 +6950,17 @@ IF COL_LENGTH('Meli_CodigoColecta','HorarioMailAt') IS NULL
 GO
 IF COL_LENGTH('Meli_CodigoColecta','HorarioAvisado') IS NULL
     ALTER TABLE Meli_CodigoColecta ADD HorarioAvisado NVARCHAR(80) NULL;
+GO
+-- 2026-11-20: dos cuentas con colecta (TIENDA FRIKAF + GROVAS), cada una con su casilla y su código.
+-- Una fila por día Y por cuenta: el índice único pasa de (FechaCodigo) a (FechaCodigo, Cuenta).
+IF COL_LENGTH('Meli_CodigoColecta','Cuenta') IS NULL
+    ALTER TABLE Meli_CodigoColecta ADD Cuenta NVARCHAR(40) NOT NULL CONSTRAINT DF_MeliCodigoColecta_Cuenta DEFAULT 'principal';
+GO
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_MeliCodigoColecta_Fecha')
+    DROP INDEX UX_MeliCodigoColecta_Fecha ON Meli_CodigoColecta;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name='UX_MeliCodigoColecta_FechaCuenta')
+    CREATE UNIQUE INDEX UX_MeliCodigoColecta_FechaCuenta ON Meli_CodigoColecta (FechaCodigo, Cuenta);
 GO
 
 -- 2026-07-16: VARIAS PERSONAS por bot de Telegram (pedido de Osmar: ir dándole acceso a las

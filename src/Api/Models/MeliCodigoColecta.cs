@@ -18,6 +18,12 @@ public class MeliCodigoColecta
 {
     public int Id { get; set; }
 
+    /// <summary>2026-11-20: de qué cuenta MeLi es el código. "principal" = la casilla de siempre
+    /// (TIENDA FRIKAF); "cuenta2" = la segunda casilla (GROVAS, config colecta.cuenta2.*).
+    /// Una fila por día y por cuenta.</summary>
+    [Required, MaxLength(40)]
+    public string Cuenta { get; set; } = "principal";
+
     /// <summary>El código en sí (ej: "DF54B074"). Alfanumérico, 6-12 caracteres.</summary>
     [Required, MaxLength(20)]
     public string Codigo { get; set; } = "";

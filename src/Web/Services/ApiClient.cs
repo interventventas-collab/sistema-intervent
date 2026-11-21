@@ -2223,6 +2223,12 @@ public partial class ApiClient
     public async Task<MeliCodigoColectaDto?> GetMeliCodigoColectaAsync()
         => await GetAsync<MeliCodigoColectaDto>("/api/dashboard/meli-codigo-colecta");
 
+    // 2026-11-20: una fila por cuenta con colecta (TIENDA FRIKAF primero, GROVAS después).
+    public record MeliCodigoColectaCuentaDto(string Cuenta, string Nombre, string? Codigo, string? Horario, bool Cancelada);
+
+    public async Task<List<MeliCodigoColectaCuentaDto>> GetMeliCodigosColectaAsync()
+        => await GetAsync<List<MeliCodigoColectaCuentaDto>>("/api/dashboard/meli-codigos-colecta") ?? new();
+
     public record HistorialAlertaDto(int Id, string Tipo, string Mensaje, string? Detalle,
         string? RemitenteEmail, string? GmailLink, bool PorTelegram, bool EnviadoTelegram, DateTime CreatedAt);
 

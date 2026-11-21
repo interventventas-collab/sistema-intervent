@@ -1803,47 +1803,44 @@
         </div>
         }
         @* 2026-07-17: código de autorización del día para colectas/devoluciones de MeLi.
-           Chip clickeable: un clic copia el código. Si todavía no llegó el mail de hoy,
-           muestra "esperando…" en gris (no muestra uno viejo como si fuera el de hoy). *@
-        @{
-            var _cc = _codigoColecta;
-            var _ccCod = _cc is not null && !string.IsNullOrWhiteSpace(_cc.Codigo);
-            var _ccLabel = _cc is null ? "Colecta hoy"
-                : _cc.Cancelada ? "Colecta CANCELADA"
-                : !string.IsNullOrWhiteSpace(_cc.Horario) ? $"Colecta {_cc.Horario}"
-                : "Colecta hoy";
-        }
-        @if (_ccCod)
-        {
-            <div class="topchip-colecta topchip" title="Código del día para colectas/devoluciones. Clic para copiar." style="cursor:pointer; border-color:#f59e0b; background:#fffbeb;" @onclick="CopiarCodigoColecta">
-                <span class="topchip-ico" style="background:#fef3c7; color:#92400e;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></svg>
-                </span>
-                <span>
-                    <span class="topchip-label" style="display:block; color:@(_cc!.Cancelada ? "#b91c1c" : "#b45309");">@_ccLabel</span>
-                    <span class="topchip-value" style="display:inline-flex; align-items:center; gap:6px; font-family:ui-monospace,Menlo,monospace; letter-spacing:1px; color:#92400e;">
-                        @_cc.Codigo
-                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                    </span>
-                </span>
-            </div>
-        }
-        else
-        {
-            <div class="topchip-colecta topchip topchip-secondary" title="Código del día para colectas/devoluciones de MercadoLibre. Todavía no llegó el código de hoy.">
-                <span class="topchip-ico" style="background:#f3f4f6; color:#9ca3af;">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/></svg>
-                </span>
-                <span>
-                    <span class="topchip-label" style="display:block;">@_ccLabel</span>
-                    <span class="topchip-value" style="color:#9ca3af;">
-                        @(_cc is not null && _cc.Cancelada ? "cancelada"
-                          : _cc is not null && !string.IsNullOrWhiteSpace(_cc.Horario) ? "esperando cód."
-                          : "esperando…")
-                    </span>
-                </span>
-            </div>
-        }
+           2026-11-20: DOS cuentas con colecta → un solo cartel con un renglón por cuenta:
+           TIENDA FRIKAF arriba en naranja, GROVAS abajo en azul (bien distintos para no confundir).
+           Clic en un renglón = copia ESE código. Si a una cuenta todavía no le llegó el código de hoy,
+           su renglón queda gris "esperando…" (nunca muestra uno viejo como si fuera el de hoy). *@
+        <div class="topchip-colecta" title="Código del día para colectas/devoluciones de MercadoLibre. Clic en un renglón para copiar ese código."
+             style="display:flex; flex-direction:column; gap:3px; justify-content:center;">
+            @foreach (var _cc in (_codigosColecta.Count > 0 ? _codigosColecta
+                                  : new List<ApiClient.MeliCodigoColectaCuentaDto> { new("principal", "TIENDA FRIKAF", null, null, false) }))
+            {
+                var _azul = _cc.Cuenta != "principal";
+                var _tiene = !string.IsNullOrWhiteSpace(_cc.Codigo);
+                var _borde = !_tiene ? "#d1d5db" : _azul ? "#2563eb" : "#f59e0b";
+                var _fondo = !_tiene ? "#f9fafb" : _azul ? "#eff6ff" : "#fffbeb";
+                var _txt = !_tiene ? "#9ca3af" : _azul ? "#1e3a8a" : "#92400e";
+                var _txt2 = !_tiene ? "#9ca3af" : _azul ? "#1d4ed8" : "#b45309";
+                var _hor = _cc.Cancelada ? "CANCELADA"
+                    : !string.IsNullOrWhiteSpace(_cc.Horario) ? _cc.Horario
+                    : "hoy";
+                var _item = _cc;
+                <div @onclick="() => CopiarCodigoColecta(_item)"
+                     style="display:flex; align-items:center; gap:8px; border:1.5px solid @_borde; background:@_fondo; border-radius:8px; padding:2px 9px; line-height:1.25; white-space:nowrap; cursor:@(_tiene ? "pointer" : "default");">
+                    <span style="width:8px; height:8px; border-radius:50%; background:@_borde; flex-shrink:0;"></span>
+                    <span style="font-size:11px; font-weight:600; color:@_txt; min-width:86px;">@_cc.Nombre</span>
+                    <span style="font-size:11px; color:@(_cc.Cancelada ? "#b91c1c" : _txt2); min-width:78px;">@_hor</span>
+                    @if (_tiene)
+                    {
+                        <span style="display:inline-flex; align-items:center; gap:5px; font-family:ui-monospace,Menlo,monospace; font-size:13px; letter-spacing:1px; color:@_txt;">
+                            @_cc.Codigo
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="@_txt2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                        </span>
+                    }
+                    else
+                    {
+                        <span style="font-size:12px; color:#9ca3af;">@(_cc.Cancelada ? "cancelada" : "esperando…")</span>
+                    }
+                </div>
+            }
+        </div>
         @* 2026-07-22: publicaciones MeLi esperando revisión de PRECIO — antes era un cartelón
            rojo que ocupaba toda una barra; ahora es este chip (pedido Osmar). Solo aparece si
            hay pendientes. Click → /cafe/cambios-meli. *@
@@ -2834,19 +2831,19 @@
     // El dólar refresca cada 5 min; el disco cambia 1x/día (lo deja el robot de las 2 AM).
     private DolarBnaDto? _dolar;
     private DiskUsageDto? _disk;
-    private ApiClient.MeliCodigoColectaDto? _codigoColecta;
+    private List<ApiClient.MeliCodigoColectaCuentaDto> _codigosColecta = new();
     private System.Threading.Timer? _topChipsTimer;
 
-    /// <summary>Click en el chip del código de colecta: lo copia al portapapeles.</summary>
-    private async Task CopiarCodigoColecta()
+    /// <summary>Click en un renglón del cartel de colecta: copia el código de ESA cuenta.</summary>
+    private async Task CopiarCodigoColecta(ApiClient.MeliCodigoColectaCuentaDto cc)
     {
-        if (_codigoColecta is null || string.IsNullOrWhiteSpace(_codigoColecta.Codigo)) return;
+        if (string.IsNullOrWhiteSpace(cc.Codigo)) return;
         try
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _codigoColecta.Codigo);
-            ToastService.Success($"Código copiado: {_codigoColecta.Codigo}");
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", cc.Codigo);
+            ToastService.Success($"Código {cc.Nombre} copiado: {cc.Codigo}");
         }
-        catch { ToastService.Info($"Código: {_codigoColecta.Codigo}"); }
+        catch { ToastService.Info($"Código {cc.Nombre}: {cc.Codigo}"); }
     }
 
     /// <summary>Click en el chip Empresa/Usuario: si hay operador, ofrece cambiarlo (pide PIN).</summary>
@@ -2859,7 +2856,7 @@
     {
         try { _dolar = await Api.GetDolarBnaAsync(); } catch { /* deja el valor previo */ }
         try { _disk = await Api.GetDiskUsageAsync(); } catch { /* deja el valor previo */ }
-        try { _codigoColecta = await Api.GetMeliCodigoColectaAsync(); } catch { /* deja el valor previo */ }
+        try { _codigosColecta = await Api.GetMeliCodigosColectaAsync(); } catch { /* deja el valor previo */ }
         // 2026-07-16: publicaciones MeLi esperando revisión de precio → cartelón rojo.
         // Solo lo cargan los roles que lo pueden atender (admin/oficina).
         if (puedeVerPublisRevisar)
