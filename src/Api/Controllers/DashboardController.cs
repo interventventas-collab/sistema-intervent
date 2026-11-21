@@ -768,7 +768,7 @@ public class DashboardController : ControllerBase
     public async Task<IActionResult> GetMeliCodigoColecta()
     {
         var hoyArg = DateTime.UtcNow.AddHours(-3).Date;
-        var fila = await _db.MeliCodigosColecta.FirstOrDefaultAsync(x => x.FechaCodigo == hoyArg);
+        var fila = await _db.MeliCodigosColecta.FirstOrDefaultAsync(x => x.FechaCodigo == hoyArg && x.Cuenta == "principal");
 
         if (fila is null)
             return Ok(new MeliCodigoColectaDto(null, null, false));
@@ -778,7 +778,37 @@ public class DashboardController : ControllerBase
             fila.HorarioColecta,
             fila.ColectaCancelada));
     }
+
+    /// <summary>
+    /// 2026-11-20: códigos de colecta de HOY de todas las cuentas (TIENDA FRIKAF y, si está
+    /// configurada su casilla, GROVAS). La principal va siempre primero, aunque no haya llegado nada.
+    /// </summary>
+    [HttpGet("meli-codigos-colecta")]
+    public async Task<IActionResult> GetMeliCodigosColecta()
+    {
+        var hoyArg = DateTime.UtcNow.AddHours(-3).Date;
+        var cfg = await _db.AppSettings.Where(s => s.Key.StartsWith("colecta."))
+            .ToDictionaryAsync(s => s.Key, s => s.Value);
+        string Cfg(string k, string def) => cfg.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : def;
+
+        var cuentas = new List<(string cuenta, string nombre)> { ("principal", Cfg("colecta.principal.nombre", "TIENDA FRIKAF")) };
+        if (Cfg("colecta.cuenta2.user", "") != "")
+            cuentas.Add(("cuenta2", Cfg("colecta.cuenta2.nombre", "CUENTA 2")));
+
+        var filas = await _db.MeliCodigosColecta.Where(x => x.FechaCodigo == hoyArg).ToListAsync();
+        var res = cuentas.Select(c =>
+        {
+            var f = filas.FirstOrDefault(x => x.Cuenta == c.cuenta);
+            return new MeliCodigoColectaCuentaDto(c.cuenta, c.nombre,
+                f is null || string.IsNullOrWhiteSpace(f.Codigo) ? null : f.Codigo,
+                f?.HorarioColecta, f?.ColectaCancelada ?? false);
+        }).ToList();
+        return Ok(res);
+    }
 }
 
 /// <summary>Código + horario de la colecta de hoy. Todo en null/false si todavía no llegó nada.</summary>
 public record MeliCodigoColectaDto(string? Codigo, string? Horario, bool Cancelada);
+
+/// <summary>2026-11-20: una fila por cuenta con colecta (principal primero). Cuenta = "principal" / "cuenta2".</summary>
+public record MeliCodigoColectaCuentaDto(string Cuenta, string Nombre, string? Codigo, string? Horario, bool Cancelada);

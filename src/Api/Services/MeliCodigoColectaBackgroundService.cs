@@ -67,10 +67,26 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var (host, port, user, pass) = await ResolverCredsCorreoAsync(db);
-        if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass))
-            return; // sin casilla conectada, no hay de dónde leerlo
+        // 2026-11-20: hay DOS cuentas MeLi con colecta, cada una con su propio correo:
+        //   - "principal" (TIENDA FRIKAF): la casilla de siempre (alertas.imap.* o integración email-smtp).
+        //   - "cuenta2"   (GROVAS): config colecta.cuenta2.user / .pass / .nombre (Gmail + clave de app).
+        // Se leen por separado y cada una guarda su propia fila por día.
+        var casillas = await ResolverCasillasAsync(db);
+        var variasCuentas = casillas.Count > 1;
+        foreach (var c in casillas)
+        {
+            if (ct.IsCancellationRequested) break;
+            try { await ProcesarCasillaAsync(scope, db, c.cuenta, variasCuentas ? c.nombre : null, c.host, c.port, c.user, c.pass, ct); }
+            catch (Exception ex) { _logger.LogWarning(ex, "[CodigoColecta] error con la casilla {Cuenta}", c.cuenta); }
+        }
+    }
 
+    /// <summary>Lee UNA casilla y guarda código + horarios de esa cuenta. <paramref name="nombre"/>
+    /// va adelante de los avisos de Telegram cuando hay más de una cuenta (null = sin prefijo).</summary>
+    private async Task ProcesarCasillaAsync(IServiceScope scope, AppDbContext db, string cuenta, string? nombre,
+        string? host, int port, string? user, string? pass, CancellationToken ct)
+    {
+        var pre = string.IsNullOrWhiteSpace(nombre) ? "" : $"[{nombre}] ";
         // ── Leer la casilla una sola vez y juntar dos cosas ──
         //   1) El código de autorización más reciente (mail "Código de autorización del día…").
         //   2) El horario de la colecta por día (sale de varios mails: "Detalle de la colecta…",
@@ -137,7 +153,7 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
                 }
             }
         }
-        catch (Exception ex) { _logger.LogWarning(ex, "[CodigoColecta] no pude leer la casilla"); return; }
+        catch (Exception ex) { _logger.LogWarning(ex, "[CodigoColecta] no pude leer la casilla {Cuenta}", cuenta); return; }
         finally { if (client is not null) { try { await client.DisconnectAsync(true, ct); } catch { } client.Dispose(); } }
 
         // ── Guardar el CÓDIGO (una fila por día, upsert) ──
@@ -146,7 +162,7 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
         if (!string.IsNullOrWhiteSpace(codigo))
         {
             var argDia = ((fechaMail ?? DateTime.UtcNow).AddHours(ARG_OFFSET_HOURS)).Date;
-            filaCodigo = await UpsertFilaAsync(db, argDia, ct);
+            filaCodigo = await UpsertFilaAsync(db, argDia, cuenta, ct);
             if (string.IsNullOrWhiteSpace(filaCodigo.Codigo)) esNuevo = true;
             else if (!string.Equals(filaCodigo.Codigo, codigo, StringComparison.OrdinalIgnoreCase)) cambio = true;
             if (esNuevo || cambio)
@@ -159,7 +175,7 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
         // ── Guardar los HORARIOS por día (el mail más reciente pisa al anterior) ──
         foreach (var h in horarios)
         {
-            var fila = await UpsertFilaAsync(db, h.dia, ct);
+            var fila = await UpsertFilaAsync(db, h.dia, cuenta, ct);
             if (fila.HorarioMailAt is not null && fila.HorarioMailAt >= h.mailAt) continue; // ya tengo uno más nuevo
             fila.HorarioColecta = h.horario;
             fila.ColectaCancelada = h.cancelada;
@@ -173,8 +189,8 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
         var hoyArg = DateTime.UtcNow.AddHours(ARG_OFFSET_HOURS).Date;
         var filaHoy = filaCodigo is not null && filaCodigo.FechaCodigo == hoyArg
             ? filaCodigo
-            : (db.MeliCodigosColecta.Local.FirstOrDefault(x => x.FechaCodigo == hoyArg)
-               ?? await db.MeliCodigosColecta.FirstOrDefaultAsync(x => x.FechaCodigo == hoyArg, ct));
+            : (db.MeliCodigosColecta.Local.FirstOrDefault(x => x.FechaCodigo == hoyArg && x.Cuenta == cuenta)
+               ?? await db.MeliCodigosColecta.FirstOrDefaultAsync(x => x.FechaCodigo == hoyArg && x.Cuenta == cuenta, ct));
 
         // 1) Código del día (una sola vez, cuando llega o cambia). Incluye el horario si ya se conoce.
         if (filaCodigo is not null && (esNuevo || cambio) && !filaCodigo.EnviadoTelegram)
@@ -184,7 +200,7 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
                 ? "\n🕒 Atención: la colecta de hoy figura CANCELADA."
                 : (!string.IsNullOrWhiteSpace(filaCodigo.HorarioColecta) ? $"\n🕒 Horario de hoy: {filaCodigo.HorarioColecta}." : "");
             var texto =
-                $"🔑 Código de colecta/devolución de hoy ({filaCodigo.FechaCodigo:dd/MM}):\n\n" +
+                pre + $"🔑 Código de colecta/devolución de hoy ({filaCodigo.FechaCodigo:dd/MM}):\n\n" +
                 $"👉 {filaCodigo.Codigo}" + horarioLinea + "\n\n" +
                 "Usalo cuando venga el transporte a buscar los paquetes o a traerte una devolución.";
             if (await NotificarTelegramAsync(scope, db, texto, ct))
@@ -202,10 +218,10 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
             var sig = FirmaHorario(filaHoy);
             if (sig is not null && !string.Equals(sig, filaHoy.HorarioAvisado, StringComparison.OrdinalIgnoreCase))
             {
-                var texto = filaHoy.ColectaCancelada
+                var texto = pre + (filaHoy.ColectaCancelada
                     ? "⚠️ La colecta de hoy fue CANCELADA por MercadoLibre."
                     : $"🕒 Colecta de hoy: {filaHoy.HorarioColecta}"
-                      + (!string.IsNullOrWhiteSpace(filaHoy.Codigo) ? $" (código {filaHoy.Codigo})" : "");
+                      + (!string.IsNullOrWhiteSpace(filaHoy.Codigo) ? $" (código {filaHoy.Codigo})" : ""));
                 if (await NotificarTelegramAsync(scope, db, texto, ct))
                 {
                     filaHoy.HorarioAvisado = sig;
@@ -234,13 +250,13 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
     }
 
     /// <summary>Trae (o crea) la fila del día indicado y la deja trackeada por EF.</summary>
-    private static async Task<MeliCodigoColecta> UpsertFilaAsync(AppDbContext db, DateTime dia, CancellationToken ct)
+    private static async Task<MeliCodigoColecta> UpsertFilaAsync(AppDbContext db, DateTime dia, string cuenta, CancellationToken ct)
     {
-        var fila = db.MeliCodigosColecta.Local.FirstOrDefault(x => x.FechaCodigo == dia)
-                   ?? await db.MeliCodigosColecta.FirstOrDefaultAsync(x => x.FechaCodigo == dia, ct);
+        var fila = db.MeliCodigosColecta.Local.FirstOrDefault(x => x.FechaCodigo == dia && x.Cuenta == cuenta)
+                   ?? await db.MeliCodigosColecta.FirstOrDefaultAsync(x => x.FechaCodigo == dia && x.Cuenta == cuenta, ct);
         if (fila is null)
         {
-            fila = new MeliCodigoColecta { Codigo = "", FechaCodigo = dia, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+            fila = new MeliCodigoColecta { Codigo = "", Cuenta = cuenta, FechaCodigo = dia, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
             db.MeliCodigosColecta.Add(fila);
         }
         return fila;
@@ -320,6 +336,27 @@ public class MeliCodigoColectaBackgroundService : BackgroundService
     // ─────────────────────────── Casilla de correo ───────────────────────────
     // Misma resolución que MisAlertasBackgroundService: 1) config propia alertas.imap.*; si está
     // completa la usa. 2) si no, reutiliza la casilla ya conectada (integración email-smtp).
+
+    /// <summary>2026-11-20: casillas a leer, en orden (la principal primero). La principal sale de
+    /// ResolverCredsCorreoAsync; la segunda (GROVAS) de colecta.cuenta2.user/.pass/.nombre.
+    /// También lo usa el Dashboard para saber qué cuentas mostrar.</summary>
+    public static async Task<List<(string cuenta, string nombre, string? host, int port, string? user, string? pass)>> ResolverCasillasAsync(AppDbContext db)
+    {
+        var lista = new List<(string cuenta, string nombre, string? host, int port, string? user, string? pass)>();
+        var cfg = await db.AppSettings
+            .Where(s => s.Key.StartsWith("colecta."))
+            .ToDictionaryAsync(s => s.Key, s => s.Value);
+        string Cfg(string k, string def) => cfg.TryGetValue(k, out var v) && !string.IsNullOrWhiteSpace(v) ? v.Trim() : def;
+
+        var (host, port, user, pass) = await ResolverCredsCorreoAsync(db);
+        if (!string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(pass))
+            lista.Add(("principal", Cfg("colecta.principal.nombre", "TIENDA FRIKAF"), host, port, user, pass));
+
+        var u2 = Cfg("colecta.cuenta2.user", ""); var p2 = Cfg("colecta.cuenta2.pass", "").Replace(" ", "");
+        if (u2 != "" && p2 != "")
+            lista.Add(("cuenta2", Cfg("colecta.cuenta2.nombre", "CUENTA 2"), Cfg("colecta.cuenta2.host", "imap.gmail.com"), 993, u2, p2));
+        return lista;
+    }
 
     private static async Task<(string? host, int port, string? user, string? pass)> ResolverCredsCorreoAsync(AppDbContext db)
     {
