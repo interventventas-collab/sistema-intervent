@@ -61,6 +61,12 @@
     .op-tabs { display:flex; flex-wrap:wrap; gap:0.3rem; padding:0.5rem 1rem; border-bottom:1px solid #eef0f3; flex-shrink:0; }
     .op-tab { border:1px solid #e5e7eb; background:#fff; border-radius:999px; padding:0.25rem 0.75rem; font:inherit; font-size:0.82rem; cursor:pointer; }
     .op-tab.on { background:#111827; border-color:#111827; color:#fff; }
+    .op-tab-cta { display:flex; flex-direction:column; align-items:flex-start; line-height:1.25; border-radius:10px; padding:0.25rem 0.8rem; font-size:0.8rem; }
+    .op-cta-nom { font-weight:700; }
+    .op-cta-ult { font-size:0.7rem; font-weight:400; color:#6b7280; }
+    .op-tab.on .op-cta-ult { color:#d1d5db; }
+    .op-cta-ult.err, .op-tab.on .op-cta-ult.err { color:#dc2626; }
+    .op-tab.on .op-cta-ult.err { color:#fca5a5; }
     .op-tabla { width:100%; border-collapse:collapse; font-size:0.86rem; }
     .op-tabla th { text-align:left; font-size:0.7rem; text-transform:uppercase; letter-spacing:0.04em; color:#6b7280; padding:0.45rem 0.6rem; border-bottom:1px solid #e5e7eb; position:sticky; top:0; background:#fff; }
     .op-tabla td { padding:0.45rem 0.6rem; border-bottom:1px solid #f1f2f4; vertical-align:top; }
@@ -320,7 +326,16 @@
                     {
                         var cta = bc;
                         var on = cta.EsPrincipal ? bancoCuentaId is null : bancoCuentaId == cta.Id;
-                        <button class="op-tab @(on ? "on" : "")" style="font-size:0.8rem;" @onclick="() => bancoCuentaId = cta.EsPrincipal ? null : cta.Id">@cta.Nombre</button>
+                        @* 23/11/2026: debajo del nombre, la última vez que el robot miró ESE banco
+                           (aunque no haya traído nada nuevo); en rojo si no pudo entrar. *@
+                        <button class="op-tab op-tab-cta @(on ? "on" : "")" @onclick="() => bancoCuentaId = cta.EsPrincipal ? null : cta.Id"
+                                title="@(cta.UltimaLecturaError ?? "")">
+                            <span class="op-cta-nom">@cta.Nombre</span>
+                            @if (cta.UltimaLecturaAt is DateTime ul)
+                            {
+                                <span class="op-cta-ult @(cta.UltimaLecturaError is null ? "" : "err")">última vez @CuandoDia(ul)@(cta.UltimaLecturaError is null ? "" : " · no pudo entrar")</span>
+                            }
+                        </button>
                     }
                 </span>
             }
@@ -337,12 +352,12 @@
            apagado a pedido de él desde el 29/10 (los robots entran solo cuando aprieta Traer). *@
         @if (bancoCuentaId is int otraCta)
         {
-            <OfiBancoOtraCuenta @key="otraCta" CuentaId="otraCta" VerSaldo="verSaldo" OnToggleSaldo="ToggleSaldo" />
+            <OfiBancoOtraCuenta @key="otraCta" CuentaId="otraCta" VerSaldo="verSaldo" OnToggleSaldo="ToggleSaldo" OnTraido="CargarBancoCuentas" />
         }
         else
         {
         <div class="op-banco-estado">
-            <span>@(saldoBanco?.UltimoImportadoAt is DateTime u2 ? $"Se trajo del banco {CuandoDia(u2)}" : "Todavía no se trajo nada del banco")</span>
+            <span>@TextoNovedadesBanco(saldoBanco?.UltimoImportadoAt, bancoCuentas?.FirstOrDefault(c => c.EsPrincipal)?.UltimaLecturaAt)</span>
             <span class="gris">·</span>
             @if (galicia?.AutoSyncEnabled == true)
             {
@@ -972,6 +987,20 @@
         finally { emiGuardando = false; }
     }
 
+    /// <summary>23/11/2026: renglón de estado. Si el robot ya miró el banco DESPUÉS del último movimiento
+    /// nuevo, se aclara "sin movimientos nuevos desde..." (antes decía "Se trajo del banco 21/11" y
+    /// parecía que no entraba hace días). Compartido con OfiBancoOtraCuenta.</summary>
+    public static string TextoNovedadesBanco(DateTime? ultimoNuevoUtc, DateTime? ultimaLecturaUtc)
+    {
+        if (ultimoNuevoUtc is not DateTime u) return "Todavía no entró nada del banco";
+        var ar = u.ToArTime();
+        var hoy = DateTime.UtcNow.ToArTime().Date;
+        if (ultimaLecturaUtc is DateTime l && l > u.AddMinutes(5))
+            return ar.Date == hoy ? $"Lo último nuevo entró hoy {ar:HH:mm}" : $"Sin movimientos nuevos desde el {ar:dd/MM}";
+        var dia = ar.Date == hoy ? "hoy" : ar.Date == hoy.AddDays(-1) ? "ayer" : "el " + ar.ToString("dd/MM");
+        return $"Se trajo del banco {dia} {ar:HH:mm}";
+    }
+
     /// <summary>"hoy 15:48" / "ayer 08:46" / "14/11 08:46".</summary>
     private string CuandoDia(DateTime utc)
     {
@@ -988,6 +1017,7 @@
             if (!Traer.Corriendo && Traer.TerminoAt is not null)
             {
                 await CargarBanco();
+                await CargarBancoCuentas();
                 if (emitidos is not null) await CargarEmitidos();
             }
             StateHasChanged();

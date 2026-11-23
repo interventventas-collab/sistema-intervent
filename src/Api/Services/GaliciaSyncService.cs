@@ -44,17 +44,37 @@ public class GaliciaSyncService
     /// "cuenta" se importa (null = Palanica, si no el Id de la otra sociedad).</summary>
     private async Task<(string? usuario, string? password, int? cuentaImport, string? error)> CredencialesAsync(int? accountId)
     {
+        var r = await CredencialesConIdAsync(accountId);
+        return (r.usuario, r.password, r.cuentaImport, r.error);
+    }
+
+    private async Task<(string? usuario, string? password, int? cuentaImport, string? error, int? accId)> CredencialesConIdAsync(int? accountId)
+    {
         var principalId = await _accounts.PrincipalIdAsync();
         var acc = accountId is null
             ? await _accounts.GetEntityAsync()
             : await _accounts.GetEntityAsync(accountId.Value);
         if (acc is null || string.IsNullOrEmpty(acc.Password))
-            return (null, null, null, "No hay usuario/clave cargados");
+            return (null, null, null, "No hay usuario/clave cargados", acc?.Id);
         int? cuentaImport = acc.Id == principalId ? null : acc.Id;
-        return (acc.Usuario, acc.Password, cuentaImport, null);
+        return (acc.Usuario, acc.Password, cuentaImport, null, acc.Id);
     }
 
+    /// <summary>Trae los movimientos y anota en la cuenta cuándo miró el banco (y si falló),
+    /// para mostrar "última vez" debajo de cada empresa aunque no haya nada nuevo.</summary>
     public async Task<SyncResult> SincronizarAsync(int? accountId = null)
+    {
+        var r = await SincronizarMovimientosAsync(accountId);
+        try
+        {
+            var accId = (await CredencialesConIdAsync(accountId)).accId;
+            if (accId is int id) await _accounts.MarcarLecturaAsync(id, r.Ok ? null : (r.Error ?? "No se pudo traer"));
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Galicia] no pude anotar la última lectura"); }
+        return r;
+    }
+
+    private async Task<SyncResult> SincronizarMovimientosAsync(int? accountId)
     {
         var (usuario, password, cuentaImport, credErr) = await CredencialesAsync(accountId);
         if (credErr is not null || usuario is null || password is null)

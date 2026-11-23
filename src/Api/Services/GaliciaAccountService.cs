@@ -17,7 +17,7 @@ public class GaliciaAccountService
 
     public record GaliciaAccountDto(int Id, string Usuario, string? Alias, bool HasPassword,
         bool IsActive, bool AutoSyncEnabled, string? AutoSyncTimes, DateTime? LastAutoSyncAt,
-        DateTime CreatedAt, DateTime? UpdatedAt);
+        DateTime CreatedAt, DateTime? UpdatedAt, DateTime? UltimaLecturaAt = null, string? UltimaLecturaError = null);
 
     public record SaveGaliciaAccountRequest(string Usuario, string? Password, string? Alias, bool IsActive,
         bool AutoSyncEnabled = false, string? AutoSyncTimes = null);
@@ -25,7 +25,7 @@ public class GaliciaAccountService
     private static GaliciaAccountDto Map(GaliciaAccount a) => new(
         a.Id, a.Usuario, string.IsNullOrEmpty(a.Alias) ? null : a.Alias,
         !string.IsNullOrEmpty(a.Password), a.IsActive, a.AutoSyncEnabled, a.AutoSyncTimes, a.LastAutoSyncAt,
-        a.CreatedAt, a.UpdatedAt);
+        a.CreatedAt, a.UpdatedAt, a.UltimaLecturaAt, a.UltimaLecturaError);
 
     /// <summary>Devuelve la cuenta principal (la primera), o null si no hay ninguna cargada.</summary>
     public async Task<GaliciaAccountDto?> GetAsync()
@@ -118,6 +118,16 @@ public class GaliciaAccountService
         var a = await _db.GaliciaAccounts.FirstOrDefaultAsync(x => x.Id == id);
         if (a is null) return;
         a.LastAutoSyncAt = whenUtc;
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>23/11/2026: anota que el robot miró el banco (error = null si salió bien).</summary>
+    public async Task MarcarLecturaAsync(int id, string? error)
+    {
+        var a = await _db.GaliciaAccounts.FirstOrDefaultAsync(x => x.Id == id);
+        if (a is null) return;
+        a.UltimaLecturaAt = DateTime.UtcNow;
+        a.UltimaLecturaError = error is null ? null : (error.Length > 500 ? error[..500] : error);
         await _db.SaveChangesAsync();
     }
 

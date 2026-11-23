@@ -13,7 +13,7 @@
             Saldo @(r.Saldo is null ? "$ —" : VerSaldo ? "$" + Plata(r.Saldo.Value) : "$ ••••••") @(VerSaldo ? "👁" : "🙈")
         </span>
         <span class="gris">·</span>
-        <span>@(r.UltimoImportadoAt is DateTime u ? $"Se trajo del banco {Cuando(u)}" : "Todavía no se trajo nada del banco")</span>
+        <span>@OficinaPastillas.TextoNovedadesBanco(r.UltimoImportadoAt, cuenta?.UltimaLecturaAt)</span>
         @if (cuenta is not null)
         {
             <span class="gris">·</span>
@@ -87,6 +87,8 @@
     [Parameter] public int CuentaId { get; set; }
     [Parameter] public bool VerSaldo { get; set; }
     [Parameter] public EventCallback OnToggleSaldo { get; set; }
+    /// <summary>23/11/2026: avisa al padre que se trajo, para refrescar "última vez" en los botones.</summary>
+    [Parameter] public EventCallback OnTraido { get; set; }
 
     private const int Dias = 30;
     private ApiClient.GaliciaResumenDto? r;
@@ -112,15 +114,6 @@
         catch (Exception ex) { resultado = "No se pudo leer: " + ex.Message; }
     }
 
-    private static string Cuando(DateTime utc)
-    {
-        var ar = utc.ToArTime();
-        var hoy = DateTime.UtcNow.ToArTime().Date;
-        if (ar.Date == hoy) return $"hoy {ar:HH:mm}";
-        if (ar.Date == hoy.AddDays(-1)) return $"ayer {ar:HH:mm}";
-        return ar.ToString("dd/MM HH:mm");
-    }
-
     private async Task Traer()
     {
         trayendo = true; resultado = null;
@@ -134,6 +127,7 @@
             var c = await Api.TraerGaliciaCuentaAsync(CuentaId, "cheques");
             resultado = (m?.Ok == true && c?.Ok == true) ? "listo" : $"movimientos: {m?.Texto} · cheques: {c?.Texto}";
             await Cargar();
+            await OnTraido.InvokeAsync();
         }
         catch (Exception ex) { resultado = "no se pudo: " + ex.Message; }
         finally { trayendo = false; }

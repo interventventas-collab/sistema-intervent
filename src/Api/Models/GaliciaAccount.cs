@@ -41,6 +41,15 @@ public class GaliciaAccount
     /// <summary>Última corrida automática exitosa (UTC), para no repetir en el mismo horario.</summary>
     public DateTime? LastAutoSyncAt { get; set; }
 
+    /// <summary>23/11/2026: última vez que el robot miró el banco para esta cuenta (UTC), haya o no
+    /// movimientos nuevos, automático o con "Traer ahora". Es lo que se ve debajo del nombre de
+    /// cada empresa en la ventana Banco Galicia.</summary>
+    public DateTime? UltimaLecturaAt { get; set; }
+
+    /// <summary>Si esa última vez no pudo entrar/bajar: el motivo. NULL = salió bien.</summary>
+    [MaxLength(500)]
+    public string? UltimaLecturaError { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 }
