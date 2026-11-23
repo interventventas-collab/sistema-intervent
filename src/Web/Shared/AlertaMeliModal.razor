@@ -1,0 +1,219 @@
+@* 2026-11-23: ventana al CENTRO de la pantalla (solo admin) cuando entró stock a una publicación de MeLi
+   y quedó pausada porque deja menos del 10% / da pérdida (NO_ACTIVADA). Sale de a una ("1 de 3"),
+   no se cierra con la cruz: hay que elegir Activar, Dejar pausada o Después (vuelve en 1 hora).
+   Las que se activaron solas dejando menos del 40% (ACTIVADA_POCO) no saltan solas: se abren desde
+   la tarjeta MercadoLibre de Inicio. Revisa cada 60 s. *@
+@using System.Globalization
+@implements IDisposable
+@inject ApiClient Api
+@inject AuthService Auth
+@inject AlertasMeliService Alertas
+@inject ToastService Toast
+
+@if (actual is not null)
+{
+    var a = actual;
+    var grave = a.Tipo == "NO_ACTIVADA";
+    <div class="am-velo">
+        <div class="am-modal" role="dialog" aria-modal="true">
+            <div class="am-top @(grave ? "" : "poco")">
+                <span class="am-tag">@(grave ? "🔴 MERCADOLIBRE · NO SE ACTIVÓ" : "🟢 MERCADOLIBRE · SE ACTIVÓ CON POCA GANANCIA")</span>
+                <span class="am-cont">@(idx + 1) de @cola.Count@(cola.Count - idx - 1 > 0 ? $" · sigue{(cola.Count - idx - 1 == 1 ? "" : "n")} {cola.Count - idx - 1}" : "")</span>
+            </div>
+            <div class="am-body">
+                <div class="am-tit">@(a.Titulo ?? a.MeliItemId)</div>
+                <div class="am-cod">@(string.IsNullOrEmpty(a.Sku) ? "" : a.Sku + " · ")@a.MeliItemId · stock @a.Stock · @Hace(a.UpdatedAt)</div>
+                <div class="am-que">
+                    @if (grave)
+                    {
+                        <text>Entró stock pero la publicación sigue <b>pausada</b>. </text>
+                    }
+                    <span class="@(a.MargenPct is null || a.MargenPct < 10 ? "am-rojo" : "")">@a.Motivo</span>
+                </div>
+                <div class="am-precios">
+                    @if (a.Precio40 is decimal p40)
+                    {
+                        <button class="am-pr @(elegido == p40 ? "on" : "")" @onclick="() => { elegido = p40; otro = false; }">Para 40%<b>@P(p40)</b></button>
+                    }
+                    @if (a.Precio50 is decimal p50 && p50 != a.Precio40)
+                    {
+                        <button class="am-pr @(elegido == p50 ? "on" : "")" @onclick="() => { elegido = p50; otro = false; }">Para 50%<b>@P(p50)</b></button>
+                    }
+                    <div class="am-pr am-pr-act">Como está<b>@(a.PrecioActual is decimal pa ? P(pa) : "—")</b></div>
+                </div>
+                @if (otro)
+                {
+                    <div class="am-otro">
+                        <span>Precio nuevo $</span>
+                        <input type="number" min="1" step="1" @bind="otroPrecio" @bind:event="oninput" placeholder="ej. 32999" />
+                    </div>
+                }
+                @if (error is not null) { <div class="am-err">⚠ @error</div> }
+            </div>
+            <div class="am-btn">
+                @if (trabajando)
+                {
+                    <span class="am-trab">Haciendo el cambio en MeLi…</span>
+                }
+                else
+                {
+                    var precioBoton = otro ? (otroPrecio is > 0 ? otroPrecio : null) : elegido;
+                    @if (precioBoton is decimal pb)
+                    {
+                        <button class="am-b p" @onclick="() => Activar(pb)">@(grave ? "Activar a " : "Subir a ")@P(pb)</button>
+                    }
+                    @if (!otro) { <button class="am-b" @onclick="() => { otro = true; otroPrecio = null; }">Otro precio…</button> }
+                    @if (grave) { <button class="am-b" @onclick="() => Activar(null)">Activar así</button> }
+                    <button class="am-b g" @onclick="Dejar">@(grave ? "Dejar pausada" : "Dejar así")</button>
+                    <button class="am-b g" @onclick="Despues">Después (1 h)</button>
+                }
+            </div>
+            <div class="am-pie">
+                <span>@(grave ? "No se cierra con la cruz: elegí una opción" : "Ya está activa y vendiendo; esto es para que lo sepas")</span>
+                @if (!string.IsNullOrEmpty(a.Permalink)) { <a href="@a.Permalink" target="_blank">Ver en MeLi ↗</a> }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .am-velo { position: fixed; inset: 0; background: rgba(17,24,39,.58); z-index: 5000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .am-modal { width: 540px; max-width: 100%; background: #fff; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,.4); overflow: hidden; }
+    .am-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 11px 18px; background: #fdecec; border-bottom: 1px solid #f6caca; }
+    .am-top.poco { background: #ecfdf3; border-bottom-color: #bbf7d0; }
+    .am-tag { color: #c81e1e; font-weight: 800; font-size: 0.82rem; letter-spacing: .03em; }
+    .am-top.poco .am-tag { color: #166534; }
+    .am-cont { font-size: 0.8rem; color: #6b7280; white-space: nowrap; }
+    .am-body { padding: 14px 18px 4px; }
+    .am-tit { font-size: 1.12rem; font-weight: 700; color: #111827; }
+    .am-cod { font-size: 0.8rem; color: #6b7280; margin: 2px 0 10px; }
+    .am-que { font-size: 0.9rem; line-height: 1.5; color: #111827; }
+    .am-rojo { color: #c81e1e; font-weight: 700; }
+    .am-precios { display: flex; gap: 10px; margin: 10px 0 2px; }
+    .am-pr { flex: 1; border: 1px solid #e5e7eb; border-radius: 9px; padding: 7px 10px; font-size: 0.8rem; color: #6b7280; background: #fff; text-align: left; cursor: pointer; font-family: inherit; }
+    .am-pr b { display: block; font-size: 1rem; color: #111827; }
+    .am-pr.on { border-color: #111827; box-shadow: 0 0 0 1px #111827; }
+    .am-pr-act { cursor: default; }
+    .am-otro { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 0.85rem; }
+    .am-otro input { width: 130px; border: 1px solid #d1d5db; border-radius: 7px; padding: 5px 8px; font: inherit; }
+    .am-err { margin-top: 8px; color: #b91c1c; font-size: 0.82rem; }
+    .am-btn { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 18px 14px; }
+    .am-b { font-size: 0.85rem; border-radius: 8px; padding: 8px 13px; border: 1px solid #d6d9de; background: #fff; cursor: pointer; font-family: inherit; color: #111827; }
+    .am-b:hover { border-color: #9ca3af; }
+    .am-b.p { background: #111827; color: #fff; border-color: #111827; }
+    .am-b.g { color: #6b7280; }
+    .am-trab { font-size: 0.85rem; color: #6b7280; padding: 8px 0; }
+    .am-pie { border-top: 1px solid #f0f0f0; padding: 8px 18px; font-size: 0.75rem; color: #9ca3af; display: flex; justify-content: space-between; gap: 8px; }
+    .am-pie a { color: #6b7280; }
+</style>
+
+@code {
+    private System.Threading.Timer? timer;
+    private bool esAdmin, trabajando, otro;
+    private List<ApiClient.AlertaPausadaDto> cola = new();
+    private int idx;
+    private ApiClient.AlertaPausadaDto? actual => idx >= 0 && idx < cola.Count ? cola[idx] : null;
+    private decimal? elegido, otroPrecio;
+    private string? error;
+
+    private static string P(decimal v) => "$" + v.ToString("N0", CultureInfo.GetCultureInfo("es-AR"));
+    private static string Hace(DateTime utc)
+    {
+        var min = (int)(DateTime.UtcNow - DateTime.SpecifyKind(utc, DateTimeKind.Utc)).TotalMinutes;
+        return min < 1 ? "recién" : min < 60 ? $"hace {min} min" : min < 1440 ? $"hace {min / 60} h" : $"hace {min / 1440} días";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var u = await Auth.GetUserAsync();
+            esAdmin = string.Equals(u?.Role, "admin", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { }
+        if (!esAdmin) return;
+        Alertas.OnAbrir += AbrirDesdeTarjeta;
+        await Cargar();
+        timer = new System.Threading.Timer(async _ => await InvokeAsync(Cargar), null, 60_000, 60_000);
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            var lista = await Api.GetAlertasPausadasAsync();
+            Alertas.Poner(lista);
+            if (actual is not null || trabajando) { StateHasChanged(); return; }
+            // Saltan solas solo las graves que no están pospuestas.
+            var ahora = DateTime.UtcNow;
+            var due = lista.Where(a => a.Tipo == "NO_ACTIVADA" && a.Estado == "ABIERTA"
+                && (a.PospuestaHasta is null || DateTime.SpecifyKind(a.PospuestaHasta.Value, DateTimeKind.Utc) <= ahora)).ToList();
+            if (due.Count > 0) Mostrar(due);
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private void AbrirDesdeTarjeta(string tipo)
+    {
+        _ = InvokeAsync(() =>
+        {
+            var lista = Alertas.Alertas.Where(a => a.Tipo == tipo && a.Estado == "ABIERTA").ToList();
+            if (lista.Count == 0) return;
+            Mostrar(lista);
+            StateHasChanged();
+        });
+    }
+
+    private void Mostrar(List<ApiClient.AlertaPausadaDto> lista)
+    {
+        cola = lista; idx = 0; Preparar();
+    }
+
+    private void Preparar()
+    {
+        otro = false; otroPrecio = null; error = null;
+        elegido = actual?.Precio40 ?? actual?.Precio50;
+    }
+
+    private async Task Siguiente()
+    {
+        idx++;
+        if (actual is null) { cola = new(); idx = 0; await Cargar(); }
+        else Preparar();
+    }
+
+    private async Task Activar(decimal? precio)
+    {
+        if (actual is null) return;
+        trabajando = true; error = null; StateHasChanged();
+        try
+        {
+            var r = await Api.ActivarAlertaPausadaAsync(actual.Id, precio);
+            if (r is { Ok: true }) { Toast.Show(r.Mensaje, ToastType.Success); trabajando = false; await Siguiente(); }
+            else error = r?.Mensaje ?? "No se pudo";
+        }
+        catch (Exception ex) { error = ex.Message; }
+        trabajando = false;
+    }
+
+    private async Task Dejar()
+    {
+        if (actual is null) return;
+        try { await Api.DejarAlertaPausadaAsync(actual.Id); } catch { }
+        await Siguiente();
+    }
+
+    private async Task Despues()
+    {
+        if (actual is null) return;
+        try { await Api.DespuesAlertaPausadaAsync(actual.Id); } catch { }
+        await Siguiente();
+    }
+
+    public void Dispose()
+    {
+        timer?.Dispose();
+        Alertas.OnAbrir -= AbrirDesdeTarjeta;
+    }
+}

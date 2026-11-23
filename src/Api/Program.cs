@@ -280,6 +280,7 @@ builder.Services.AddSingleton<OemMassiveScrapeState>();
 builder.Services.AddScoped<MeliStockSyncService>();
 builder.Services.AddScoped<MeliCafePricePushService>();
 builder.Services.AddScoped<MeliStockPushService>();
+builder.Services.AddScoped<MeliPausadasAlertaService>(); // 2026-11-23: alertas de pausadas con stock (centro de la pantalla)
 // 2026-05-30: push event-driven de PRECIO (paralelo al de stock).
 builder.Services.AddScoped<MeliPricePushService>();
 builder.Services.AddScoped<MeliListingTypeService>();

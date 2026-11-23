@@ -12,6 +12,7 @@
 @inject AuthService Auth
 @inject ToastService Toast
 @inject OperatorService Operator
+@inject AlertasMeliService AlertasMeli
 
 @* 2026-11-13: tira ⭐ Favoritos + "✏ Arreglar botones" (ocultar con ● gris para volver, color por botón).
    Todo es de cada persona (su PIN); sin PIN = lo de Osmar. Maqueta: scratchpad/Botones_ocultar_favoritos_PROPUESTA.png *@
@@ -60,7 +61,8 @@
         var (g, items) = tarjetas[i];
         var nuevo = g.Nuevo ?? (g.Titulo == "Clientes" ? "venta" : null);
         var href = MenuNuevoCatalogo.HrefSeccion(g);
-        <div class="si-c @(sobre == i && arrastrando != i ? "sobre" : "")" style="@Color(g.Titulo)"
+        var alarmaMeli = g.Titulo == "MercadoLibre" && esAdmin && !arreglando && AlertasMeli.SinActivar > 0;
+        <div class="si-c @(sobre == i && arrastrando != i ? "sobre" : "") @(alarmaMeli ? "si-alarma" : "")" style="@Color(g.Titulo)"
              draggable="@(arreglando ? "false" : "true")" @ondragstart="() => arrastrando = i" @ondragend="() => { arrastrando = null; sobre = null; }"
              @ondragover="() => sobre = i" @ondragover:preventDefault="true" @ondragleave="() => sobre = null" @ondrop="() => SoltarAsync(i)">
             @if (nuevo != null)
@@ -121,6 +123,25 @@
                     }
                 }
             </div>
+            @if (g.Titulo == "MercadoLibre" && esAdmin && !arreglando && (AlertasMeli.SinActivar > 0 || AlertasMeli.ConPoco > 0))
+            {
+                @* 23/11/2026: entró stock y la publi no se activó (rojo, late) / se activó dejando menos del 40%.
+                   Tocar abre la ventana del centro (AlertaMeliModal) con esas, de a una. *@
+                <div class="si-meli">
+                    @if (AlertasMeli.SinActivar > 0)
+                    {
+                        <button class="si-meli-r" @onclick='() => AlertasMeli.Abrir("NO_ACTIVADA")' @onclick:stopPropagation="true">
+                            <span>⚠ @AlertasMeli.SinActivar publicaci@(AlertasMeli.SinActivar == 1 ? "ón" : "ones") sin activar</span><span>Ver ›</span>
+                        </button>
+                    }
+                    @if (AlertasMeli.ConPoco > 0)
+                    {
+                        <button class="si-meli-p" @onclick='() => AlertasMeli.Abrir("ACTIVADA_POCO")' @onclick:stopPropagation="true">
+                            <span>@AlertasMeli.ConPoco activada@(AlertasMeli.ConPoco == 1 ? "" : "s") dejando menos de 40%</span><span>›</span>
+                        </button>
+                    }
+                </div>
+            }
             @if (g.Titulo == "Impuestos" && esAdmin && !arreglando)
             {
                 @* 17/11/2026: impuestos / VEP (sin pagar · vencidos · pagado del mes) → /impuestos. Solo admin.
@@ -207,6 +228,16 @@
     .si-pago:hover { border-color: #9ca3af; }
     .si-pago.atr { border-color: #fca5a5; color: #b91c1c; }
     .si-pago.hoy { background: #fef3c7; border-color: #fde68a; }
+    /* 23/11/2026: alerta MeLi (pausadas con stock) en la tarjeta MercadoLibre */
+    .si-c.si-alarma { border: 2px solid #dc2626; animation: si-late 1.6s ease-in-out infinite; }
+    @@keyframes si-late { 0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.45); } 50% { box-shadow: 0 0 0 7px rgba(220,38,38,.12); } }
+    .si-meli { margin-top: 0.55rem; display: flex; flex-direction: column; gap: 0.3rem; }
+    .si-meli button { display: flex; justify-content: space-between; gap: 0.4rem; width: 100%; border-radius: 8px; padding: 0.35rem 0.6rem;
+                      font: inherit; font-size: 0.8rem; cursor: pointer; text-align: left; }
+    .si-meli-r { background: #c81e1e; color: #fff; border: 0; font-weight: 700; }
+    .si-meli-r:hover { background: #a91919; }
+    .si-meli-p { background: #fff; color: #374151; border: 1px dashed #d1d5db; }
+    .si-meli-p:hover { border-color: #9ca3af; }
     .si-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.28rem; }
     .si-ch { display: inline-flex; align-items: center; gap: 0.2rem; font-size: 0.72rem; border: 1px solid #d1d5db; border-radius: 12px;
              padding: 0.1rem 0.5rem; background: #fff; color: #111827; text-decoration: none; white-space: nowrap; }
@@ -247,6 +278,7 @@
         Svc.OnChange += Repintar;
         Svc.OnNumeros += Repintar;
         Operator.OnChange += Repintar;
+        AlertasMeli.OnChange += Repintar;
         await Svc.EnsureLoadedAsync();
         try { permisos = (await Auth.GetUserAsync())?.Permissions ?? new(); } catch { }
         try { if ((await Api.GetMeAsync())?.Permissions is { } p) permisos = p; } catch { }
@@ -491,5 +523,5 @@
     };
 
     private void Repintar() => InvokeAsync(() => { Armar(); StateHasChanged(); });
-    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; Operator.OnChange -= Repintar; factTimer?.Dispose(); gastoTimer?.Dispose(); }
+    public void Dispose() { Svc.OnChange -= Repintar; Svc.OnNumeros -= Repintar; Operator.OnChange -= Repintar; AlertasMeli.OnChange -= Repintar; factTimer?.Dispose(); gastoTimer?.Dispose(); }
 }
