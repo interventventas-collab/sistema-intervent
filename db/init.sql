@@ -9127,3 +9127,35 @@ GO
 IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name='MovidaTexto' AND Object_ID=Object_ID('MapeoStops'))
     ALTER TABLE MapeoStops ADD MovidaTexto NVARCHAR(120) NULL, MovidaAt DATETIME2 NULL;
 GO
+
+-- 2026-11-23: alertas de publicaciones MeLi que quedaron pausadas (o se activaron con poco %)
+-- cuando entró stock. Una fila ABIERTA por publicación; salta al centro de la pantalla del admin.
+-- ⚠ PROD: correr a mano ANTES de publicar la API.
+IF OBJECT_ID('Meli_AlertasPausadas','U') IS NULL
+BEGIN
+    CREATE TABLE Meli_AlertasPausadas (
+        Id INT PRIMARY KEY IDENTITY(1,1),
+        MeliItemId NVARCHAR(30) NOT NULL,
+        MeliAccountId INT NULL,
+        Tipo NVARCHAR(20) NOT NULL,            -- NO_ACTIVADA | ACTIVADA_POCO
+        Estado NVARCHAR(20) NOT NULL,          -- ABIERTA | AUTORIZADA | RESUELTA | DEJADA
+        Titulo NVARCHAR(300) NULL,
+        Sku NVARCHAR(100) NULL,
+        Permalink NVARCHAR(400) NULL,
+        Motivo NVARCHAR(400) NULL,
+        PrecioActual DECIMAL(18,2) NULL,
+        MargenPct DECIMAL(9,2) NULL,
+        Costo DECIMAL(18,2) NULL,
+        Precio40 DECIMAL(18,2) NULL,
+        Precio50 DECIMAL(18,2) NULL,
+        Stock INT NOT NULL DEFAULT 0,
+        PospuestaHasta DATETIME2 NULL,
+        CreatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        UpdatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        ResueltaAt DATETIME2 NULL,
+        ResueltaPor NVARCHAR(100) NULL,
+        Accion NVARCHAR(200) NULL
+    );
+    CREATE INDEX IX_Meli_AlertasPausadas_Estado ON Meli_AlertasPausadas(Estado, MeliItemId);
+END
+GO

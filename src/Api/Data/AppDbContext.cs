@@ -360,6 +360,7 @@ public class AppDbContext : DbContext
     public DbSet<Me1CpPrecio> Me1CpPrecios => Set<Me1CpPrecio>();
     public DbSet<Me1ZonaPrecio> Me1ZonaPrecios => Set<Me1ZonaPrecio>();
     public DbSet<Me1CpDistancia> Me1CpDistancias => Set<Me1CpDistancia>();
+    public DbSet<MeliAlertaPausada> MeliAlertasPausadas => Set<MeliAlertaPausada>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
