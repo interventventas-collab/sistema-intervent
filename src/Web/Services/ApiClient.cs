@@ -7516,6 +7516,20 @@ public partial class ApiClient
     public async Task<Web.Models.TelegramAccountDto?> RegenerarCodigoTelegramAsync(string proposito = "AVISOS")
         => await PostAsync<Web.Models.TelegramAccountDto>($"/api/telegram/regenerar-codigo?proposito={proposito}", new { });
 
+    // ── 2026-11-23: alertas "entró stock y la publi MeLi no se activó / se activó con poco %" (solo admin) ──
+    public record AlertaPausadaDto(int Id, string MeliItemId, string Tipo, string Estado, string? Titulo, string? Sku,
+        string? Permalink, string? Motivo, decimal? PrecioActual, decimal? MargenPct, decimal? Precio40,
+        decimal? Precio50, int Stock, DateTime? PospuestaHasta, DateTime CreatedAt, DateTime UpdatedAt);
+    public record AlertaPausadaRespuesta(bool Ok, string Mensaje);
+    public async Task<List<AlertaPausadaDto>> GetAlertasPausadasAsync()
+        => await GetAsync<List<AlertaPausadaDto>>("/api/meli/alertas-pausadas") ?? new();
+    public async Task<AlertaPausadaRespuesta?> ActivarAlertaPausadaAsync(int id, decimal? precio)
+        => await PostAsync<AlertaPausadaRespuesta>($"/api/meli/alertas-pausadas/{id}/activar", new { precio });
+    public async Task<AlertaPausadaRespuesta?> DejarAlertaPausadaAsync(int id)
+        => await PostAsync<AlertaPausadaRespuesta>($"/api/meli/alertas-pausadas/{id}/dejar", new { });
+    public async Task<AlertaPausadaRespuesta?> DespuesAlertaPausadaAsync(int id)
+        => await PostAsync<AlertaPausadaRespuesta>($"/api/meli/alertas-pausadas/{id}/despues", new { });
+
     private async Task<T?> GetAsync<T>(string url)
     {
         await SetAuthHeaderAsync();
