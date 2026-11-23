@@ -263,6 +263,13 @@ public class MeliPausadasAlertaService
         return http;
     }
 
+    /// <summary>Estado actual de la publicación en MeLi (active / paused / under_review...). Null si no respondió.</summary>
+    public async Task<string?> EstadoEnVivoAsync(HttpClient http, string meliItemId, CancellationToken ct)
+    {
+        var j = await GetJsonAsync(http, $"https://api.mercadolibre.com/items/{meliItemId}?attributes=status", ct);
+        return j is not null && j.Value.TryGetProperty("status", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
+    }
+
     /// <summary>PUT del precio en MeLi. Devuelve null si salió bien, o el mensaje de error.</summary>
     public async Task<string?> CambiarPrecioAsync(HttpClient http, string meliItemId, decimal precio, CancellationToken ct)
     {
