@@ -236,7 +236,7 @@
                                 @foreach (var c in matches)
                                 {
                                     <div style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6;" @onclick="() => ElegirCliente(new SugerenciaClienteEcheqDto { Id = c.Id, Nombre = c.Nombre, Cuit = c.Cuit, CodigoInterno = c.CodigoInterno, RazonSocial = c.RazonSocial })">
-                                        <strong>@(c.CodigoInterno?.ToString() ?? "—") · @c.Nombre</strong>
+                                        <strong>@(c.CodigoInterno?.ToString() ?? "—") · @c.Nombre</strong><ClienteRS Cliente="c" />
                                         @if (!string.IsNullOrEmpty(c.Cuit)) { <span style="font-size:0.75rem; color:#6b7280;"> · CUIT @c.Cuit</span> }
                                     </div>
                                 }

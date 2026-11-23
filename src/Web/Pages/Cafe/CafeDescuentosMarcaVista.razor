@@ -32,7 +32,7 @@
                         {
                             <button type="button" @onclick="() => ElegirCliente(c)"
                                     style="text-align: left; background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.3rem 0.55rem; cursor: pointer; font-size: 0.85rem; color: #111827;">
-                                @(string.IsNullOrWhiteSpace(c.Codigo) ? "" : c.Codigo + " · ")@c.Nombre <span style="color: #6b7280;"> · @c.Tipo</span>
+                                @(string.IsNullOrWhiteSpace(c.Codigo) ? "" : c.Codigo + " · ")@c.Nombre<ClienteRS Cliente="c" /> <span style="color: #6b7280;"> · @c.Tipo</span>
                             </button>
                         }
                     </div>
@@ -289,9 +289,7 @@ else
     private IEnumerable<CafeClienteDto> ClientesEncontrados()
     {
         var q = buscarCliente.Trim();
-        return clientesTodos.Where(c => (c.Nombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
-                                        || (c.Codigo ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
-                                        || (c.RazonSocial ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)).Take(8);
+        return ClienteSearch.Buscar(clientesTodos, q).Take(8);
     }
 
     private IEnumerable<CafeMarcaDto> MarcasEncontradas()

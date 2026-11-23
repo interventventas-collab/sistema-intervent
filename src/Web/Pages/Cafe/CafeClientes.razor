@@ -1680,10 +1680,8 @@
                 bool match(CafeClienteDto c, string q)
                 {
                     bool h(string? s) => s.MatchesSearch(q);
-                    return h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit) || h(c.Tipo)
-                        || h(c.Telefono) || h(c.Email)
-                        || h(c.Direccion) || h(c.Localidad) || h(c.Ciudad) || h(c.Cp)
-                        || h(c.DomicilioEntrega);
+                    // 2026-11-23: mismo criterio que todos los buscadores (sin tildes ni puntos: "srl" = "S.R.L.").
+                    return ClienteSearch.Coincide(c, q) || h(c.Tipo);
                 }
                 baseList = clientes.Where(c => match(c, f));
             }
@@ -3169,11 +3167,9 @@
         {
             var q = unifBuscar.Trim();
             if (clientes is null || q.Length < 2) return new();
-            bool h(string? s) => s.MatchesSearch(q);
             return clientes
                 .Where(c => c.Id != editingId)
-                .Where(c => h(c.Codigo) || h(c.Nombre) || h(c.RazonSocial) || h(c.Cuit) || h(c.Telefono)
-                            || h(c.Direccion) || h(c.DomicilioEntrega))
+                .Where(c => ClienteSearch.Coincide(c, q))
                 .OrderBy(c => c.IsActive ? 0 : 1).ThenBy(c => c.Nombre)
                 .Take(8).ToList();
         }

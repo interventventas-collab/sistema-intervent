@@ -69,7 +69,7 @@ else
                                         @foreach (var c in OpcionesCliente)
                                         {
                                             var cli = c;
-                                            <div @onclick="() => ElegirCliente(i, cli.Id)">@cli.Nombre <span class="ppv-sub">@cli.Cuit</span></div>
+                                            <div @onclick="() => ElegirCliente(i, cli.Id)">@cli.Nombre<ClienteRS Cliente="cli" /> <span class="ppv-sub">@cli.Cuit</span></div>
                                         }
                                     </div>
                                 }
@@ -139,11 +139,7 @@ else
         {
             var q = (busqCliente ?? "").Trim();
             if (q.Length < 2 || clientes is null) return new();
-            var dig = new string(q.Where(char.IsDigit).ToArray());
-            return clientes.Where(c => c.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
-                    || (dig.Length >= 4 && new string((c.Cuit ?? "").Where(char.IsDigit).ToArray()).Contains(dig)))
-                .OrderBy(c => c.Nombre.StartsWith(q, StringComparison.OrdinalIgnoreCase) ? 0 : 1).ThenBy(c => c.Nombre)
-                .Take(8).ToList();
+            return ClienteSearch.Buscar(clientes, q).Take(8).ToList();
         }
     }
 

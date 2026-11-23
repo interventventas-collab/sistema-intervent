@@ -101,7 +101,7 @@
                                                 var cc = c;
                                                 var tiene = MaquinasDe(c.Id).Count;
                                                 <div @onmousedown="() => ElegirCliente(fila, cc)" @onmousedown:preventDefault>
-                                                    <div>@NumeroCliente(c) · @c.Nombre</div>
+                                                    <div>@NumeroCliente(c) · @c.Nombre<ClienteRS Cliente="c" /></div>
                                                     <div class="cv-gris">@Domicilio(c)</div>
                                                     @if (tiene > 0) { <div style="color:#92400e; font-size:0.72rem;">ya tiene @tiene máquina@(tiene == 1 ? "" : "s") cargada@(tiene == 1 ? "" : "s")</div> }
                                                 </div>

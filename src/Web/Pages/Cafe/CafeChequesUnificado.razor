@@ -328,18 +328,13 @@
                         <input class="form-input" @bind="cobClienteSearch" @bind:event="oninput" placeholder="Buscar por nombre, código o CUIT..." />
                         @if (!string.IsNullOrWhiteSpace(cobClienteSearch) && clientes is not null)
                         {
-                            var matches = clientes.Where(c => c.IsActive &&
-                                (c.Nombre.MatchesSearch(cobClienteSearch) ||
-                                 (c.RazonSocial ?? "").MatchesSearch(cobClienteSearch) ||
-                                 (c.Cuit ?? "").Contains(cobClienteSearch, StringComparison.OrdinalIgnoreCase) ||
-                                 (c.CodigoInterno?.ToString() ?? "").Contains(cobClienteSearch)))
-                                .Take(10).ToList();
+                            var matches = ClienteSearch.Buscar(clientes, cobClienteSearch).Take(10).ToList();
                             <div style="max-height:200px; overflow-y:auto; border:1px solid #e5e7eb; border-radius:4px; margin-top:0.3rem;">
                                 @foreach (var c in matches)
                                 {
                                     var cli = c;
                                     <div style="padding:0.4rem 0.6rem; cursor:pointer; border-bottom:1px solid #f3f4f6;" @onclick="() => ElegirClienteCobranza(cli)">
-                                        <strong>@(cli.CodigoInterno?.ToString() ?? "—") · @cli.Nombre</strong>
+                                        <strong>@(cli.CodigoInterno?.ToString() ?? "—") · @cli.Nombre</strong><ClienteRS Cliente="cli" />
                                         @if (!string.IsNullOrEmpty(cli.Cuit)) { <span class="chq-sub"> · CUIT @cli.Cuit</span> }
                                     </div>
                                 }

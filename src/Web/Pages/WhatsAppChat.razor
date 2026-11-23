@@ -1586,7 +1586,7 @@
                     @foreach (var cli in saldoResultados)
                     {
                         <button class="wa-saldo-cli" @onclick="() => PonerSaldo(cli.Id)" disabled="@saldoCargando">
-                            @cli.Nombre @(string.IsNullOrWhiteSpace(cli.CodigoInterno) ? "" : $"(#{cli.CodigoInterno})")
+                            @cli.Nombre<ClienteRS Nombre="@cli.Nombre" RazonSocial="@cli.RazonSocial" /> @(string.IsNullOrWhiteSpace(cli.CodigoInterno) ? "" : $"(#{cli.CodigoInterno})")
                         </button>
                     }
                     @if (saldoCargando)
@@ -3275,7 +3275,7 @@
                             @foreach (var cli in clienteResultadosQuick)
                             {
                                 <div class="wa-cliente-opt" @onclick="() => SeleccionarClienteQuick(cli)">
-                                    <strong>@cli.Nombre</strong>
+                                    <strong>@cli.Nombre</strong><ClienteRS Nombre="@cli.Nombre" RazonSocial="@cli.RazonSocial" />
                                     @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.7rem;"> · #@cli.CodigoInterno</span> }
                                     @if (!string.IsNullOrEmpty(cli.Telefono)) { <span style="color:#9ca3af; font-size:0.7rem;"> · 📞 @cli.Telefono</span> }
                                     @if (!string.IsNullOrEmpty(cli.Localidad)) { <div style="color:#9ca3af; font-size:0.7rem;">📍 @cli.Localidad</div> }
@@ -3468,7 +3468,7 @@
                             @* Igual que la venta normal: manda el código interno (el que pone el operador)
                                y si no tiene, cae en el código viejo. El guión es el último recurso. *@
                             <span class="wa-cli-cod">#@(!string.IsNullOrEmpty(cli.CodigoInterno) ? cli.CodigoInterno : (!string.IsNullOrEmpty(cli.Codigo) ? cli.Codigo : "—"))</span>
-                            <strong class="wa-cli-nom">@cli.Nombre</strong>
+                            <strong class="wa-cli-nom">@cli.Nombre</strong><ClienteRS Nombre="@cli.Nombre" RazonSocial="@cli.RazonSocial" />
                             @if (!string.IsNullOrEmpty(cli.Tipo)) { <span class="wa-cli-dato">· @cli.Tipo</span> }
                             @if (!string.IsNullOrEmpty(cli.Cuit)) { <span class="wa-cli-dato">· @cli.Cuit</span> }
                             @if (!string.IsNullOrEmpty(cli.Telefono)) { <span class="wa-cli-dato">· 📞 @cli.Telefono</span> }
@@ -3531,7 +3531,7 @@
                 {
                     <button class="wa-vincular-opt" @onclick="() => VincularAhora(cli)" disabled="@vinculando">
                         <div>
-                            🛍️ <b>@cli.Nombre</b>
+                            🛍️ <b>@cli.Nombre</b><ClienteRS Nombre="@cli.Nombre" RazonSocial="@cli.RazonSocial" />
                             @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.75rem;"> · #@cli.CodigoInterno</span> }
                             @if (!string.IsNullOrEmpty(cli.Telefono)) { <span style="color:#9ca3af; font-size:0.72rem;"> · 📞 @cli.Telefono</span> }
                         </div>

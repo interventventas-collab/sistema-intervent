@@ -591,7 +591,7 @@
                                         {
                                             <div style="padding:0.5rem 0.7rem; cursor:pointer; border-bottom:1px solid #f3f4f6;" @onclick="() => ElegirCliente(c.Id)"
                                                  onmouseover="this.style.background='#f5f3ff'" onmouseout="this.style.background='white'">
-                                                <strong>@c.Nombre</strong>
+                                                <strong>@c.Nombre</strong><ClienteRS Cliente="c" />
                                                 <span style="font-size:0.78rem; color:#6b7280;">
                                                     @(c.CodigoInterno.HasValue ? $" · #{c.CodigoInterno}" : "") @(string.IsNullOrEmpty(c.Cuit) ? "" : $" · {c.Cuit}") @(string.IsNullOrEmpty(c.Telefono) ? "" : $" · {c.Telefono}")
                                                 </span>
@@ -1949,12 +1949,28 @@
     }
 
     // Todo el texto de una reserva donde tiene sentido buscar, ya normalizado.
-    private static string TextoBuscable(AlqReservaDto r)
+    // 2026-11-23 (pedido del dueño): buscar la reserva también por la RAZÓN SOCIAL del cliente.
+    // La reserva solo trae el nombre; la razón social sale de la lista de clientes que ya está cargada.
+    private Dictionary<int, string>? _rsPorCliente;
+    private List<CafeClienteDto>? _rsArmadoDe;
+    private string? RazonSocialDe(int clienteId)
+    {
+        if (!ReferenceEquals(_rsArmadoDe, clientes))
+        {
+            _rsArmadoDe = clientes;
+            _rsPorCliente = (clientes ?? new()).Where(c => !string.IsNullOrWhiteSpace(c.RazonSocial))
+                .GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.First().RazonSocial!);
+        }
+        return _rsPorCliente!.TryGetValue(clienteId, out var rs) ? rs : null;
+    }
+
+    private string TextoBuscable(AlqReservaDto r)
     {
         var sb = new System.Text.StringBuilder();
         void Add(string? t) { if (!string.IsNullOrWhiteSpace(t)) { sb.Append(t); sb.Append(' '); } }
         Add(r.Numero);
         Add(r.ClienteNombre);
+        Add(RazonSocialDe(r.ClienteId));
         Add(r.ClienteTelefono);
         Add(r.DireccionEvento);
         Add(r.Notas);
@@ -1971,7 +1987,7 @@
     }
 
     // Cada palabra escrita tiene que aparecer en algún lado (así "juan austria" filtra por las dos).
-    private static bool CoincideBusqueda(AlqReservaDto r, string[] palabras)
+    private bool CoincideBusqueda(AlqReservaDto r, string[] palabras)
     {
         var texto = TextoBuscable(r);
         var digitos = SoloDigitos(texto);

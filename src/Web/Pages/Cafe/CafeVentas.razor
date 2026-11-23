@@ -2166,7 +2166,7 @@
                                                     <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
                                                         @* 2026-06-30: mostrar CodigoInterno (asignado por usuario) prioritario *@
                                                         <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; font-size: 0.9rem;">#@(ci.CodigoInterno?.ToString() ?? ci.Codigo ?? "—")</span>
-                                                        <strong style="font-size: 0.95rem;">@ci.Nombre</strong>
+                                                        <strong style="font-size: 0.95rem;">@ci.Nombre</strong><ClienteRS Cliente="ci" />
                                                         <span style="color: #6b7280; font-size: 0.75rem;">· @ci.Tipo</span>
                                                         @if (!string.IsNullOrEmpty(ci.Cuit))
                                                         {

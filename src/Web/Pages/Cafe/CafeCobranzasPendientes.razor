@@ -211,7 +211,7 @@
                                              @onclick="() => ElegirClienteRedi(r, cc.Id)">
                                             <div>
                                                 <span style="color:#6b7280;">#@(!string.IsNullOrEmpty(cli.CodigoInterno) ? cli.CodigoInterno : (!string.IsNullOrEmpty(cli.Codigo) ? cli.Codigo : "—"))</span>
-                                                <strong>@cli.Nombre</strong>
+                                                <strong>@cli.Nombre</strong><ClienteRS Nombre="@cli.Nombre" RazonSocial="@cli.RazonSocial" />
                                                 @if (!string.IsNullOrEmpty(cli.Tipo)) { <span style="color:#6b7280;"> · @cli.Tipo</span> }
                                                 @if (!string.IsNullOrEmpty(cli.Cuit)) { <span style="color:#6b7280;"> · @cli.Cuit</span> }
                                                 @if (!string.IsNullOrEmpty(cli.Telefono)) { <span style="color:#6b7280;"> · 📞 @cli.Telefono</span> }

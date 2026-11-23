@@ -1,0 +1,13 @@
+@* 2026-11-23 (pedido del dueño): en TODOS los resultados de buscar cliente se ve la razón social,
+   en gris al lado del nombre. Si no tiene o es igual al nombre, no muestra nada (para no repetir).
+   Se usa con Cliente="..." (lista completa de clientes) o con Nombre + RazonSocial (buscador del servidor). *@
+@if (ClienteSearch.RazonSocialAparte(Cliente?.Nombre ?? Nombre, Cliente is not null ? Cliente.RazonSocial : RazonSocial) is string rs)
+{
+    <span style="color:#6b7280; font-size:0.78rem; font-weight:400;" title="Razón social"> · @rs</span>
+}
+
+@code {
+    [Parameter] public CafeClienteDto? Cliente { get; set; }
+    [Parameter] public string? Nombre { get; set; }
+    [Parameter] public string? RazonSocial { get; set; }
+}

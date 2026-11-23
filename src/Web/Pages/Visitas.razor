@@ -51,7 +51,7 @@
                         @foreach (var c in clienteVisibles)
                         {
                             <div class="vis-cliente-item" @onclick="() => SeleccionarCliente(c)">
-                                <strong>@c.Nombre</strong>
+                                <strong>@c.Nombre</strong><ClienteRS Cliente="c" />
                                 @if (!string.IsNullOrWhiteSpace(c.Codigo)) { <span class="vis-cod">#@c.Codigo</span> }
                                 <div class="vis-cliente-dir">@(DireccionDe(c) ?? "sin domicilio")</div>
                             </div>

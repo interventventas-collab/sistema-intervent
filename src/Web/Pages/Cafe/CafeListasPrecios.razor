@@ -69,7 +69,7 @@
                                             <div class="cli-pick-row" @onclick="() => SelectCliente(cId)"
                                                  style="padding: 0.4rem 0.6rem; cursor: pointer; border-bottom: 1px solid #f3f4f6; font-size: 0.85rem;">
                                                 <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@c.Codigo</span>
-                                                <strong>@c.Nombre</strong>
+                                                <strong>@c.Nombre</strong><ClienteRS Cliente="c" />
                                                 <span style="color: #6b7280; font-size: 0.78rem;"> · @c.Tipo</span>
                                             </div>
                                         }

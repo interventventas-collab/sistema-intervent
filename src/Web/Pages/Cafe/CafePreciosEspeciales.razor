@@ -125,7 +125,7 @@
                                     {
                                         <button type="button" disabled="@guardando" @onclick="() => AgregarCliente(l, c)"
                                                 style="text-align: left; background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.35rem 0.55rem; cursor: pointer; font-size: 0.85rem; color: #111827;">
-                                            @(string.IsNullOrWhiteSpace(c.Codigo) ? "" : c.Codigo + " · ")@c.Nombre
+                                            @(string.IsNullOrWhiteSpace(c.Codigo) ? "" : c.Codigo + " · ")@c.Nombre<ClienteRS Cliente="c" />
                                             <span style="color: #6b7280;"> · @c.Tipo</span>
                                         </button>
                                     }
@@ -559,12 +559,7 @@
     {
         var q = buscarCliente.Trim();
         var ya = l.Clientes.Select(c => c.Id).ToHashSet();
-        return clientesTodos
-            .Where(c => !ya.Contains(c.Id)
-                        && ((c.Nombre ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
-                            || (c.Codigo ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
-                            || (c.RazonSocial ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)))
-            .Take(8);
+        return ClienteSearch.Buscar(clientesTodos.Where(c => !ya.Contains(c.Id)), q).Take(8);
     }
 
     private async Task AgregarCliente(CafeListaEspecialDto l, CafeClienteDto c)
