@@ -8,7 +8,8 @@ namespace Web.Services;
 public partial class ApiClient
 {
     public record GaliciaCuentaDto(int Id, string Nombre, bool EsPrincipal, string Usuario, bool HasPassword, bool IsActive,
-        bool AutoSyncEnabled, string? AutoSyncTimes, DateTime? LastAutoSyncAt);
+        bool AutoSyncEnabled, string? AutoSyncTimes, DateTime? LastAutoSyncAt,
+        DateTime? UltimaLecturaAt = null, string? UltimaLecturaError = null);
     public record GaliciaTraerDto(bool Ok, string Texto);
     public record GaliciaMovDto(int Id, DateTime Fecha, string Nombre, string? Detalle, decimal Importe);
     public record GaliciaChequeDto(int Id, string Numero, string? Quien, DateTime? Vence, decimal Importe, string Estado);

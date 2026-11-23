@@ -185,6 +185,9 @@ BEGIN
         ALTER TABLE GaliciaAccounts ADD AutoSyncTimes NVARCHAR(200) NULL;
     IF COL_LENGTH('GaliciaAccounts','LastAutoSyncAt') IS NULL
         ALTER TABLE GaliciaAccounts ADD LastAutoSyncAt DATETIME2 NULL;
+    -- 23/11/2026: última vez que el robot miró el banco (y si falló). ⚠ PROD: correr a mano antes de publicar la API.
+    IF COL_LENGTH('GaliciaAccounts','UltimaLecturaAt') IS NULL
+        ALTER TABLE GaliciaAccounts ADD UltimaLecturaAt DATETIME2 NULL, UltimaLecturaError NVARCHAR(500) NULL;
 END
 GO
 

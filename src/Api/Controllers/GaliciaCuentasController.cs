@@ -30,7 +30,8 @@ public class GaliciaCuentasController : ControllerBase
     }
 
     public record CuentaDto(int Id, string Nombre, bool EsPrincipal, string Usuario, bool HasPassword, bool IsActive,
-        bool AutoSyncEnabled, string? AutoSyncTimes, DateTime? LastAutoSyncAt);
+        bool AutoSyncEnabled, string? AutoSyncTimes, DateTime? LastAutoSyncAt,
+        DateTime? UltimaLecturaAt = null, string? UltimaLecturaError = null);
 
     /// <summary>Todas las cuentas, la principal primero. Nombre = Alias (o "Palanica" / el usuario).</summary>
     [HttpGet]
@@ -41,7 +42,8 @@ public class GaliciaCuentasController : ControllerBase
         return Ok(lista.Select(a => new CuentaDto(a.Id,
             a.Alias ?? (a.Id == principalId ? "Palanica" : a.Usuario),
             a.Id == principalId, a.Usuario, a.HasPassword, a.IsActive,
-            a.AutoSyncEnabled, a.AutoSyncTimes, a.LastAutoSyncAt)).ToList());
+            a.AutoSyncEnabled, a.AutoSyncTimes, a.LastAutoSyncAt,
+            a.UltimaLecturaAt, a.UltimaLecturaError)).ToList());
     }
 
     /// <summary>Crea (id = 0) o actualiza una cuenta.</summary>
