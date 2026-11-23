@@ -124,31 +124,42 @@ public class MeliPausadasAlertaService
         return Math.Round((neto - costo) / costo * 100m, 1);
     }
 
-    /// <summary>Precio más bajo terminado en 99 que deja al menos <paramref name="pct"/>%. Null si no se pudo.</summary>
+    /// <summary>Precio más bajo terminado en 99 que deja al menos <paramref name="pct"/>%. Null si no se pudo.
+    /// Arranca del piso posible y sube saltando lo que falta (sirve igual para $5.000 que para $150.000);
+    /// al encontrarlo prueba bajar de a $100 por si sobra.</summary>
     public async Task<decimal?> PrecioParaMargenAsync(HttpClient http, DatosPubli d, decimal costo, decimal pct, CancellationToken ct)
     {
         if (costo <= 0) return null;
         var com = await ComisionAsync(http, d, d.PrecioActual > 0 ? d.PrecioActual : 20000m, ct);
         if (com is null) return null;
         var pf = com.Value.Pct > 0 ? com.Value.Pct / 100m : 0.14m;
-        var necesito = costo * (1 + pct / 100m) * 1.21m;
+        var netoQuiero = costo * (1 + pct / 100m);            // lo que tiene que quedar sin IVA
+        // Piso: sin cargo fijo ni envío (imposible bajar de acá). Desde ahí se sube lo que falte.
+        var p = MeliPricePushService.RedondearA99(netoQuiero * 1.21m / (1 - pf));
 
-        // 1) Abajo de $33.000 (sin envío a nuestro cargo, con cargo fijo).
-        var p = MeliPricePushService.RedondearA99((necesito + 3320m) / (1 - pf));
-        for (var i = 0; i < 8 && p < 33000m; i++, p += 100m)
+        async Task<decimal?> Neto(decimal precio)
         {
-            var m = await MargenEnVivoAsync(http, d, p, costo, ct);
-            if (m is null) return null;
-            if (m.Value >= pct) return p;
+            var c = await ComisionAsync(http, d, precio, ct);
+            var e = await EnvioAsync(http, d, precio, ct);
+            return c is null || e is null ? null : (precio - c.Value.Fee - e.Value) / 1.21m;
         }
-        // 2) Desde $33.000 (envío gratis a nuestro cargo, sin cargo fijo).
-        var env = await EnvioAsync(http, d, 33099m, ct) ?? 0m;
-        p = Math.Max(33099m, MeliPricePushService.RedondearA99((necesito + env) / (1 - pf)));
-        for (var i = 0; i < 12; i++, p += 100m)
+
+        for (var i = 0; i < 12; i++)
         {
-            var m = await MargenEnVivoAsync(http, d, p, costo, ct);
-            if (m is null) return null;
-            if (m.Value >= pct) return p;
+            var n = await Neto(p);
+            if (n is null) return null;
+            if (n.Value >= netoQuiero)
+            {
+                for (var j = 0; j < 5 && p > 199m; j++)
+                {
+                    var nb = await Neto(p - 100m);
+                    if (nb is null || nb.Value < netoQuiero) break;
+                    p -= 100m;
+                }
+                return p;
+            }
+            var falta = (netoQuiero - n.Value) * 1.21m / (1 - pf);
+            p = MeliPricePushService.RedondearA99(p + Math.Max(100m, falta));
         }
         return null;
     }
@@ -250,6 +261,13 @@ public class MeliPausadasAlertaService
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         http.Timeout = TimeSpan.FromSeconds(30);
         return http;
+    }
+
+    /// <summary>Estado actual de la publicación en MeLi (active / paused / under_review...). Null si no respondió.</summary>
+    public async Task<string?> EstadoEnVivoAsync(HttpClient http, string meliItemId, CancellationToken ct)
+    {
+        var j = await GetJsonAsync(http, $"https://api.mercadolibre.com/items/{meliItemId}?attributes=status", ct);
+        return j is not null && j.Value.TryGetProperty("status", out var st) && st.ValueKind == JsonValueKind.String ? st.GetString() : null;
     }
 
     /// <summary>PUT del precio en MeLi. Devuelve null si salió bien, o el mensaje de error.</summary>

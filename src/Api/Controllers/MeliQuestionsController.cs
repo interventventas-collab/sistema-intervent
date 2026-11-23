@@ -94,7 +94,7 @@ public class MeliQuestionsController : ControllerBase
             seenAt = x.SeenAt,
             isNew = x.SeenAt == null && x.Status == "UNANSWERED",
             logisticType = logiMap.TryGetValue(x.ItemId, out var lt) ? lt : null,
-            meliUrl = $"https://articulo.mercadolibre.com.ar/{x.ItemId}",
+            meliUrl = UrlPublicacion(x.ItemId),
             buyerIsKnown = cliMap.ContainsKey(x.FromUserId),
             buyerOrdersCount = cliMap.TryGetValue(x.FromUserId, out var c1) ? c1.OrdersCount : 0,
             buyerLastPurchaseAt = cliMap.TryGetValue(x.FromUserId, out var c2) ? c2.LastPurchaseAt : null,
@@ -130,7 +130,7 @@ public class MeliQuestionsController : ControllerBase
             status = x.Status,
             dateCreated = x.DateCreated,
             dateAnswered = x.DateAnswered,
-            meliUrl = $"https://articulo.mercadolibre.com.ar/{x.ItemId}"
+            meliUrl = UrlPublicacion(x.ItemId)
         }));
     }
 
@@ -227,7 +227,7 @@ public class MeliQuestionsController : ControllerBase
                 dateCreated = x.DateCreated,
                 dateAnswered = x.DateAnswered,
                 autoAnswered = x.AutoAnswered,
-                meliUrl = $"https://articulo.mercadolibre.com.ar/{x.ItemId}"
+                meliUrl = UrlPublicacion(x.ItemId)
             },
             item,
             buyer
@@ -366,4 +366,9 @@ public class MeliQuestionsController : ControllerBase
         await _db.SaveChangesAsync();
         return Ok(items);
     }
+
+    /// <summary>2026-11-23: MeLi abre la publicación solo con guion (MLA-123456); sin guion daba error.</summary>
+    private static string UrlPublicacion(string? itemId)
+        => string.IsNullOrEmpty(itemId) ? "https://www.mercadolibre.com.ar"
+           : "https://articulo.mercadolibre.com.ar/" + (itemId.Length > 3 && char.IsLetter(itemId[2]) && char.IsDigit(itemId[3]) ? itemId.Insert(3, "-") : itemId);
 }

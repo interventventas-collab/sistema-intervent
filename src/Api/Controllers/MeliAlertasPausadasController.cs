@@ -74,8 +74,22 @@ public class MeliAlertasPausadasController : ControllerBase
         await _db.Entry(a).ReloadAsync(ct);
         if (a.Estado == "RESUELTA")
             return Ok(new RespuestaDto(true, "Activada en MeLi"));
+
+        // 23/11: puede que ya esté activa aunque el push no la haya despertado: las "gemelas" (mismo
+        // producto en MeLi, user_product) se activan juntas al activar una. Se mira en vivo.
+        var estado = await _svc.EstadoEnVivoAsync(http, a.MeliItemId, ct);
+        if (estado == "active")
+        {
+            foreach (var row in await _db.MeliItems.Where(x => x.MeliItemId == a.MeliItemId).ToListAsync(ct)) row.Status = "active";
+            Cerrar(a, "RESUELTA", accion);
+            await _db.SaveChangesAsync(ct);
+            return Ok(new RespuestaDto(true, "Activada en MeLi"));
+        }
+        // No se activó: vuelve a quedar abierta (no queda "autorizada" colgada).
+        a.Estado = "ABIERTA"; a.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
         var detalle = string.Join(" · ", r.Mensajes.Take(2));
-        return Ok(new RespuestaDto(false, "MeLi no la activó: " + (string.IsNullOrWhiteSpace(detalle) ? "sin detalle" : detalle)));
+        return Ok(new RespuestaDto(false, $"MeLi no la activó (está {estado ?? "?"}): " + (string.IsNullOrWhiteSpace(detalle) ? "sin detalle" : detalle)));
     }
 
     /// <summary>"Dejar pausada" (no vuelve a avisar hasta que cambie el stock o el costo) o "Dejar así".</summary>

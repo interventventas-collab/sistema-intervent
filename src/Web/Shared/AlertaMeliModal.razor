@@ -21,7 +21,7 @@
                 <span class="am-cont">@(idx + 1) de @cola.Count@(cola.Count - idx - 1 > 0 ? $" · sigue{(cola.Count - idx - 1 == 1 ? "" : "n")} {cola.Count - idx - 1}" : "")</span>
             </div>
             <div class="am-body">
-                <div class="am-tit">@(a.Titulo ?? a.MeliItemId)</div>
+                <div class="am-tit"><span>@(a.Titulo ?? a.MeliItemId)</span><a class="am-ver" href="@UrlPubli(a)" target="_blank" title="Abrir la publicación en MercadoLibre">Ver publicación ↗</a></div>
                 <div class="am-cod">@(string.IsNullOrEmpty(a.Sku) ? "" : a.Sku + " · ")@a.MeliItemId · stock @a.Stock · @Hace(a.UpdatedAt)</div>
                 <div class="am-que">
                     @if (grave)
@@ -66,11 +66,12 @@
                     @if (grave) { <button class="am-b" @onclick="() => Activar(null)">Activar así</button> }
                     <button class="am-b g" @onclick="Dejar">@(grave ? "Dejar pausada" : "Dejar así")</button>
                     <button class="am-b g" @onclick="Despues">Después (1 h)</button>
+                    <button class="am-b am-sig" @onclick="Saltar" title="Pasar a la siguiente sin hacer nada con esta (vuelve a aparecer en 15 min)">@(idx + 1 < cola.Count ? "Siguiente ›" : "Terminar por ahora")</button>
                 }
             </div>
             <div class="am-pie">
                 <span>@(grave ? "No se cierra con la cruz: elegí una opción" : "Ya está activa y vendiendo; esto es para que lo sepas")</span>
-                @if (!string.IsNullOrEmpty(a.Permalink)) { <a href="@a.Permalink" target="_blank">Ver en MeLi ↗</a> }
+                <a href="@UrlPubli(a)" target="_blank">Ver en MeLi ↗</a>
             </div>
         </div>
     </div>
@@ -85,7 +86,10 @@
     .am-top.poco .am-tag { color: #166534; }
     .am-cont { font-size: 0.8rem; color: #6b7280; white-space: nowrap; }
     .am-body { padding: 14px 18px 4px; }
-    .am-tit { font-size: 1.12rem; font-weight: 700; color: #111827; }
+    .am-tit { font-size: 1.12rem; font-weight: 700; color: #111827; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+    .am-ver { font-size: 0.8rem; font-weight: 600; color: #2563eb; white-space: nowrap; text-decoration: none; }
+    .am-ver:hover { text-decoration: underline; }
+    .am-sig { margin-left: auto; }
     .am-cod { font-size: 0.8rem; color: #6b7280; margin: 2px 0 10px; }
     .am-que { font-size: 0.9rem; line-height: 1.5; color: #111827; }
     .am-rojo { color: #c81e1e; font-weight: 700; }
@@ -116,6 +120,11 @@
     private decimal? elegido, otroPrecio;
     private string? error;
 
+    // 23/11: "Siguiente ›" = saltar esta sin tocarla; no vuelve a saltar sola por 15 minutos.
+    private static readonly Dictionary<int, DateTime> saltadas = new();
+    private static string UrlPubli(ApiClient.AlertaPausadaDto a)
+        => !string.IsNullOrEmpty(a.Permalink) ? a.Permalink
+           : "https://articulo.mercadolibre.com.ar/" + (a.MeliItemId.Length > 3 ? a.MeliItemId.Insert(3, "-") : a.MeliItemId);
     private static string P(decimal v) => "$" + v.ToString("N0", CultureInfo.GetCultureInfo("es-AR"));
     private static string Hace(DateTime utc)
     {
@@ -147,7 +156,8 @@
             // Saltan solas solo las graves que no están pospuestas.
             var ahora = DateTime.UtcNow;
             var due = lista.Where(a => a.Tipo == "NO_ACTIVADA" && a.Estado == "ABIERTA"
-                && (a.PospuestaHasta is null || DateTime.SpecifyKind(a.PospuestaHasta.Value, DateTimeKind.Utc) <= ahora)).ToList();
+                && (a.PospuestaHasta is null || DateTime.SpecifyKind(a.PospuestaHasta.Value, DateTimeKind.Utc) <= ahora)
+                && !(saltadas.TryGetValue(a.Id, out var hasta) && hasta > ahora)).ToList();
             if (due.Count > 0) Mostrar(due);
             StateHasChanged();
         }
@@ -201,6 +211,13 @@
     {
         if (actual is null) return;
         try { await Api.DejarAlertaPausadaAsync(actual.Id); } catch { }
+        await Siguiente();
+    }
+
+    private async Task Saltar()
+    {
+        if (actual is null) return;
+        saltadas[actual.Id] = DateTime.UtcNow.AddMinutes(15);
         await Siguiente();
     }
 
