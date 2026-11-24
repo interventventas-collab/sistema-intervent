@@ -153,6 +153,7 @@ public class OperatorService
     {
         _current = nombre;
         _validatedAtUtc = DateTime.UtcNow;
+        _antesDelCambioUtc = null;
         try
         {
             await _js.InvokeVoidAsync("localStorage.setItem", StorageKey, _current);
@@ -177,13 +178,40 @@ public class OperatorService
     public async Task LockAsync()
     {
         _validatedAtUtc = null;
+        _antesDelCambioUtc = null;
         try { await _js.InvokeVoidAsync("localStorage.removeItem", ValidatedAtKey); }
+        catch { }
+        OnChange?.Invoke();
+    }
+
+    // 24/11/2026: "Cambiar operador" deja volver con la ✕ al que estaba (sin PIN), mientras
+    // su sesión no hubiera vencido. Solo en memoria: si se recarga la página, no hay vuelta atrás.
+    // El bloqueo por inactividad o el candado NO lo permiten.
+    private DateTime? _antesDelCambioUtc;
+    public bool PuedeVolver => _antesDelCambioUtc is { } t && HasOperator
+        && (DateTime.UtcNow - t).TotalMinutes < InactivityMinutes;
+
+    public async Task PedirCambioAsync()
+    {
+        var previo = IsValidated ? _validatedAtUtc : null;
+        await LockAsync();
+        _antesDelCambioUtc = previo;
+        OnChange?.Invoke();
+    }
+
+    public async Task VolverAsync()
+    {
+        if (!PuedeVolver) return;
+        _validatedAtUtc = _antesDelCambioUtc;
+        _antesDelCambioUtc = null;
+        try { await _js.InvokeVoidAsync("localStorage.setItem", ValidatedAtKey, _validatedAtUtc!.Value.ToString("o")); }
         catch { }
         OnChange?.Invoke();
     }
 
     public async Task ClearAsync()
     {
+        _antesDelCambioUtc = null;
         _current = null;
         _validatedAtUtc = null;
         try
