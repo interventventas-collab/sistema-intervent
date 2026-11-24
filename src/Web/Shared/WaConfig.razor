@@ -151,7 +151,7 @@
                                                 @foreach (var cli in clienteResultados)
                                                 {
                                                     <div class="wa-cliente-opt" @onclick="() => SeleccionarCliente(c.Id, cli)">
-                                                        <strong>@cli.Nombre</strong>
+                                                        <strong>@cli.Nombre</strong><ClienteRS Nombre="@cli.Nombre" RazonSocial="@cli.RazonSocial" />
                                                         @if (!string.IsNullOrEmpty(cli.CodigoInterno)) { <span style="color:#6b7280; font-size:0.7rem;"> · #@cli.CodigoInterno</span> }
                                                     </div>
                                                 }

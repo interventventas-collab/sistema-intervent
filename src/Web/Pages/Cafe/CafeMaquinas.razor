@@ -202,7 +202,7 @@
                                         <div style="padding:0.3rem 0.5rem; border-bottom:1px solid #f3f4f6; cursor:pointer;"
                                              @onclick="() => SelectCliente(cc)">
                                             @if (c.CodigoInterno.HasValue) { <span style="font-size:0.7rem; padding:0 0.3rem; background:#e0e7ff; color:#1e40af; border-radius:3px; margin-right:0.3rem;">#@c.CodigoInterno</span> }
-                                            <strong>@c.Nombre</strong>
+                                            <strong>@c.Nombre</strong><ClienteRS Cliente="c" />
                                             @if (!string.IsNullOrEmpty(c.Cuit)) { <span style="font-family:monospace; font-size:0.72rem; color:#6b7280; margin-left:0.4rem;">@c.Cuit</span> }
                                         </div>
                                     }

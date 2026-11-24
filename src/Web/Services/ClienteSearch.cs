@@ -81,33 +81,89 @@ public static class ClienteSearch
     private static string[] Palabras(string frase)
         => frase.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
+    /// <summary>True si el cliente coincide con lo tipeado (mismo criterio que <see cref="Buscar"/>).
+    /// Para las pantallas que filtran por su cuenta y quieren el criterio común.</summary>
+    public static bool Coincide(CafeClienteDto c, string? query)
+    {
+        var frase = (query ?? "").Trim();
+        return frase.Length == 0 || Coincide(c, Palabras(frase));
+    }
+
+    /// <summary>2026-11-23: la razón social para mostrar al lado del nombre en los resultados, o null si
+    /// no tiene o es igual al nombre (para no repetirla). Pedido del dueño: que se vea SIEMPRE.</summary>
+    public static string? RazonSocialAparte(CafeClienteDto? c) => RazonSocialAparte(c?.Nombre, c?.RazonSocial);
+
+    public static string? RazonSocialAparte(string? nombre, string? razonSocial)
+    {
+        var rs = razonSocial?.Trim();
+        if (string.IsNullOrEmpty(rs)) return null;
+        return Normalizar(rs).Trim() == Normalizar(nombre).Trim() ? null : rs;
+    }
+
     /// <summary>True si TODAS las palabras tipeadas aparecen en algún campo del cliente
-    /// (sin importar el orden ni en qué campo caiga cada una).</summary>
+    /// (sin importar el orden ni en qué campo caiga cada una).
+    /// 2026-11-23: compara SIN tildes y SIN puntos/guiones/apóstrofes, así "srl" encuentra "S.R.L.",
+    /// "gastronomia" encuentra "GASTRONOMÍA" y "20123456789" encuentra "20-12345678-9". Para que no se
+    /// trabe con 9.000 clientes, el texto normalizado de cada cliente se arma UNA sola vez y queda
+    /// guardado pegado al objeto (<see cref="Clave"/>); por tecla solo se normaliza lo tipeado.</summary>
     private static bool Coincide(CafeClienteDto c, string[] palabras)
     {
+        var clave = Clave(c);
         foreach (var p in palabras)
-            if (!AlgunCampo(c, p)) return false;
+        {
+            var n = Normalizar(p).Trim();
+            if (n.Length == 0) continue;
+            if (!clave.Contains(n, StringComparison.Ordinal)
+                && !(c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(p, StringComparison.Ordinal)))
+                return false;
+        }
         return true;
     }
 
-    private static bool AlgunCampo(CafeClienteDto c, string t)
-        => Tiene(c.Nombre, t)
-        || Tiene(c.RazonSocial, t)
-        || Tiene(c.Codigo, t)
-        || Tiene(c.Cuit, t)
-        || Tiene(c.Telefono, t)
-        || Tiene(c.Telefono2, t)
-        || Tiene(c.Email, t)
-        || Tiene(c.Direccion, t)
-        || Tiene(c.DomicilioEntrega, t)
-        || Tiene(c.EntreCalles, t)
-        || Tiene(c.Localidad, t)
-        || Tiene(c.Ciudad, t)
-        || Tiene(c.Cp, t)
-        || (c.CodigoInterno.HasValue && c.CodigoInterno.Value.ToString().Contains(t, StringComparison.Ordinal));
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CafeClienteDto, ClaveCache> _claves = new();
+    private sealed class ClaveCache { public string Firma = ""; public string Clave = ""; }
 
-    private static bool Tiene(string? s, string t)
-        => !string.IsNullOrEmpty(s) && s.Contains(t, StringComparison.OrdinalIgnoreCase);
+    /// <summary>Todos los campos buscables del cliente, normalizados y separados por '|'.
+    /// Se recalcula solo si cambió algún campo (la firma es la concatenación cruda).</summary>
+    private static string Clave(CafeClienteDto c)
+    {
+        var firma = string.Join("|", c.Nombre, c.RazonSocial, c.Codigo, c.Cuit, c.Telefono, c.Telefono2, c.Email,
+            c.Direccion, c.DomicilioEntrega, c.EntreCalles, c.Localidad, c.Ciudad, c.Cp);
+        var cache = _claves.GetOrCreateValue(c);
+        if (!ReferenceEquals(cache.Firma, firma) && cache.Firma != firma)
+        {
+            cache.Clave = Normalizar(firma);
+            cache.Firma = firma;
+        }
+        return cache.Clave;
+    }
+
+    /// <summary>Minúsculas, sin tildes, sin . , ' ´ ` - y con espacios simples ('/' '(' ')' pasan a espacio).</summary>
+    private static string Normalizar(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var sb = new System.Text.StringBuilder(s.Length);
+        var espacio = false;
+        foreach (var ch in s)
+        {
+            var c = char.ToLowerInvariant(ch);
+            switch (c)
+            {
+                case '.': case ',': case '\'': case '´': case '`': case '’': case '-': continue;
+                case '/': case '(': case ')': case ' ': case '\t': c = ' '; break;
+                case 'á': case 'à': case 'ä': case 'â': case 'ã': c = 'a'; break;
+                case 'é': case 'è': case 'ë': case 'ê': c = 'e'; break;
+                case 'í': case 'ì': case 'ï': case 'î': c = 'i'; break;
+                case 'ó': case 'ò': case 'ö': case 'ô': case 'õ': c = 'o'; break;
+                case 'ú': case 'ù': case 'ü': case 'û': c = 'u'; break;
+                case 'ñ': c = 'n'; break;
+                case 'ç': c = 'c'; break;
+            }
+            if (c == ' ') { if (espacio) continue; espacio = true; } else espacio = false;
+            sb.Append(c);
+        }
+        return sb.ToString();
+    }
 
     /// <summary>Puntaje: cuanto más alto, más arriba sale. El nombre pesa más que la razón social
     /// y que el código; un código interno EXACTO se lleva el primer puesto.</summary>

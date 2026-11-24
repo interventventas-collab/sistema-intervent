@@ -419,7 +419,7 @@
                         <div style="display: flex; gap: 0.3rem; align-items: center;">
                             <div class="form-input" style="flex: 1; background: #ecfdf5; border-color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
                                 <span style="font-family: monospace; font-weight: 700; color: #1d4ed8;">@(ciSel?.Codigo ?? "—")</span>
-                                <strong>@(ciSel?.Nombre ?? "?")</strong>
+                                <strong>@(ciSel?.Nombre ?? "?")</strong><ClienteRS Cliente="ciSel" />
                                 @if (ciSel is not null && !string.IsNullOrEmpty(ciSel.Cuit))
                                 {
                                     <span style="font-size: 0.72rem; color: #6b7280;">· @ciSel.Cuit</span>
@@ -432,7 +432,7 @@
                     {
                         <input class="form-input" @bind="clienteSearch" @bind:event="oninput" @bind:after="RecargarSiNoHayClientes"
                                @onfocus="() => clienteSearchOpen = true"
-                               placeholder="🔍 Buscar por código, nombre, CUIT, tel, email, dirección…" />
+                               placeholder="🔍 Buscar por código, nombre, razón social, CUIT, tel, email, dirección…" />
                         @* 16/11/2026 (pedido del dueño): al abrir, ya se ven los que DEBEN (mayor deuda primero), con
                            botones Ventas / Alquileres. "Ver todos" muestra todos los clientes como antes. Escribiendo,
                            primero salen los que deben y abajo, en gris, los que no deben nada. *@
@@ -2797,6 +2797,10 @@
             <div style="flex:1; min-width:0;">
                 <span style="font-family: monospace; color: #1d4ed8; font-weight: 700; margin-right: 0.5rem;">@ci.Codigo</span>
                 <strong>@nombreMostrar</strong>
+                @if (!string.IsNullOrWhiteSpace(ci.Nombre))
+                {
+                    <ClienteRS Cliente="ci" />
+                }
                 @if (!string.IsNullOrEmpty(ci.Cuit))
                 {
                     <span style="color: #6b7280; font-size: 0.78rem;"> · @ci.Cuit</span>

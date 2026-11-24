@@ -1179,12 +1179,15 @@ public class WhatsAppTwilioController : ControllerBase
                 {
                     var t = palabra;                      // captura segura por iteración
                     var pat = "%" + CafePreventasController.EscaparLike(t) + "%";
+                    var patSinPuntos = "%" + CafePreventasController.EscaparLike(t.Replace(".", "")) + "%";
                     var tDigits = new string(t.Where(char.IsDigit).ToArray());   // "15-5667788" -> "155667788"
                     int.TryParse(t, out var tNum);
                     query = query.Where(c =>              // cada .Where suma un AND: todas las palabras deben estar
                            idsDir.Contains(c.Id)
                         || EF.Functions.Like(EF.Functions.Collate(c.Nombre, COLLATE_SIN_TILDES), pat)
                         || (c.RazonSocial != null && EF.Functions.Like(EF.Functions.Collate(c.RazonSocial, COLLATE_SIN_TILDES), pat))
+                        // 2026-11-23: razón social sin puntos ("srl" encuentra "S.R.L.", "sa" encuentra "S.A.")
+                        || (c.RazonSocial != null && patSinPuntos != "%%" && EF.Functions.Like(EF.Functions.Collate(c.RazonSocial.Replace(".", ""), COLLATE_SIN_TILDES), patSinPuntos))
                         || (c.Direccion != null && EF.Functions.Like(EF.Functions.Collate(c.Direccion, COLLATE_SIN_TILDES), pat))
                         || (c.DomicilioEntrega != null && EF.Functions.Like(EF.Functions.Collate(c.DomicilioEntrega, COLLATE_SIN_TILDES), pat))
                         || (c.EntreCalles != null && EF.Functions.Like(EF.Functions.Collate(c.EntreCalles, COLLATE_SIN_TILDES), pat))
@@ -1207,10 +1210,12 @@ public class WhatsAppTwilioController : ControllerBase
                 var qDigits = new string(q.Where(char.IsDigit).ToArray());
                 bool hasDigits = qDigits.Length >= 3;
                 var patQ = "%" + CafePreventasController.EscaparLike(q) + "%";
+                var patQSinPuntos = "%" + CafePreventasController.EscaparLike(q.Replace(".", "")) + "%";
                 query = query.Where(c =>
                        idsDir.Contains(c.Id)
                     || EF.Functions.Like(EF.Functions.Collate(c.Nombre, COLLATE_SIN_TILDES), patQ)
                     || (c.RazonSocial != null && EF.Functions.Like(EF.Functions.Collate(c.RazonSocial, COLLATE_SIN_TILDES), patQ))
+                    || (c.RazonSocial != null && patQSinPuntos != "%%" && EF.Functions.Like(EF.Functions.Collate(c.RazonSocial.Replace(".", ""), COLLATE_SIN_TILDES), patQSinPuntos))
                     || (qNum > 0 && c.CodigoInterno == qNum)
                     || (c.Cuit != null && (c.Cuit.Contains(q) || (hasDigits && c.Cuit.Replace("-", "").Replace(".", "").Replace(" ", "").Contains(qDigits))))
                     || (c.Telefono != null && (c.Telefono.Contains(q) || (hasDigits && c.Telefono.Replace("-", "").Replace(" ", "").Replace("+", "").Contains(qDigits))))
@@ -1248,13 +1253,14 @@ public class WhatsAppTwilioController : ControllerBase
             .Select(c => new { c.Id, c.Nombre, CodigoInterno = c.CodigoInterno.HasValue ? c.CodigoInterno.ToString() : null,
                                c.Codigo,
                                c.Telefono, c.Direccion, c.Localidad, c.Tipo, c.Cuit,
-                               c.DomicilioEntrega, c.LocalidadEntrega, c.Ciudad, c.Cp })
+                               c.DomicilioEntrega, c.LocalidadEntrega, c.Ciudad, c.Cp, c.RazonSocial })
             .ToListAsync();
         // La dirección de entrega que matcheó viaja aparte para poder mostrarla debajo del nombre.
         var result = list.Select(c => new
         {
             c.Id, c.Nombre, c.CodigoInterno, c.Codigo, c.Telefono, c.Direccion, c.Localidad,
             c.Tipo, c.Cuit, c.DomicilioEntrega, c.LocalidadEntrega, c.Ciudad, c.Cp,
+            c.RazonSocial,   // 2026-11-23: para mostrarla en cada resultado (pedido del dueño)
             DireccionEntrega = dirPorCliente.TryGetValue(c.Id, out var dtxt) ? dtxt : null
         }).ToList();
         return Ok(result);
