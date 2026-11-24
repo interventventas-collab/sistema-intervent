@@ -1104,7 +1104,8 @@ public class AlqReservasController : ControllerBase
         // Nota de credito (2026-08-27)
         r.NcEstado, r.NcCae, r.NcPtoVta, r.NcCbteNro, r.NcCbteTipoNum,
         r.NcImpTotal, r.NcFecha, r.NcMotivo, r.NcError,
-        r.Dias);
+        r.Dias,
+        r.ClienteNav?.RazonSocial);
 
     /// <summary>Texto del renglón resumen de una factura resumida. Si la reserva tiene ResumenDescripcion
     /// cargado a mano se usa ese; sino se arma juntando los equipos: "180 SILLAS + 38 MESA...".</summary>

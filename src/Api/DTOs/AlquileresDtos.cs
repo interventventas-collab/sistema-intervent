@@ -199,7 +199,9 @@ public record AlqReservaDto(
     string? NcMotivo = null,
     string? NcError = null,
     // 2026-09-10: dias cobrados. 1 = un solo dia (todo lo anterior a esta fecha).
-    int Dias = 1);
+    int Dias = 1,
+    // 2026-11-24: razón social del cliente (Oficina la muestra y busca por ella)
+    string? ClienteRazonSocial = null);
 
 public class CreateAlqReservaItemRequest
 {

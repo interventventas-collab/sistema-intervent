@@ -17,7 +17,7 @@
                 <span class="mpc-chip @(vista == vSel ? "on" : "")" @onclick="() => vista = vSel">@txt</span>
             }
         </div>
-        <input class="mpc-search" type="search" placeholder="🔍 Cliente, N° de reserva o dirección…" @bind="buscar" @bind:event="oninput" />
+        <input class="mpc-search" type="search" placeholder="🔍 Cliente, razón social, N° de reserva o dirección…" @bind="buscar" @bind:event="oninput" />
 
         @if (cargando)
         {
@@ -46,7 +46,7 @@
                 var saldo = r.MontoTotal - r.Sena - r.MontoCobrado;
                 <div class="mpc-row">
                     <div class="mpc-r1">
-                        <span class="mpc-cli">@r.Numero · @r.ClienteNombre</span>
+                        <span class="mpc-cli">@r.Numero · @r.ClienteNombre<ClienteRS Nombre="@r.ClienteNombre" RazonSocial="@r.ClienteRazonSocial" /></span>
                         @if (r.Estado == "cancelado")
                         {
                             <span class="mpc-tot" style="color:#6b7280;">cancelada</span>
@@ -127,9 +127,15 @@
         };
         var t = buscar.Trim();
         if (t.Length > 0)
-            q = q.Where(r => r.ClienteNombre.Contains(t, StringComparison.OrdinalIgnoreCase)
-                || r.Numero.Contains(t, StringComparison.OrdinalIgnoreCase)
-                || (r.DireccionEvento ?? "").Contains(t, StringComparison.OrdinalIgnoreCase));
+        {
+            // 24/11/2026: busca también por razón social, sin tildes ni puntos (como los demás buscadores).
+            var palabras = ClienteSearch.Normalizar(t).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            q = q.Where(r =>
+            {
+                var clave = ClienteSearch.Normalizar($"{r.Numero} {r.ClienteNombre} {r.ClienteRazonSocial} {r.DireccionEvento}");
+                return palabras.All(clave.Contains);
+            });
+        }
         return vista == "todos" ? q.OrderByDescending(DiaDe).ToList() : q.OrderBy(DiaDe).ToList();
     }
 

@@ -131,6 +131,8 @@ public class AlqReservaDto
     public string Estado { get; set; } = "reservado";
     /// <summary>2026-09-10: dias cobrados.</summary>
     public int Dias { get; set; } = 1;
+    // 2026-11-24: razón social del cliente (Oficina la muestra y busca por ella)
+    public string? ClienteRazonSocial { get; set; }
     public string? Notas { get; set; }
     public string? NotasInternas { get; set; }
     public DateTime CreatedAt { get; set; }

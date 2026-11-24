@@ -78,7 +78,7 @@
                 }
                 <div class="mpc-row" @onclick="() => viendo = c" style="cursor:pointer;">
                     <div class="mpc-r1">
-                        <span class="mpc-cli">@c.ClienteNombre</span>
+                        <span class="mpc-cli">@c.ClienteNombre<ClienteRS Nombre="@c.ClienteNombre" RazonSocial="@c.ClienteFantasia" /></span>
                         <span class="mpc-tot">@Plata(c.Total)</span>
                     </div>
                     <div class="mpc-est">
