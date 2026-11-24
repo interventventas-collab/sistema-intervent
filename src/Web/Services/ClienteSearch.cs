@@ -139,7 +139,7 @@ public static class ClienteSearch
     }
 
     /// <summary>Minúsculas, sin tildes, sin . , ' ´ ` - y con espacios simples ('/' '(' ')' pasan a espacio).</summary>
-    private static string Normalizar(string? s)
+    public static string Normalizar(string? s)
     {
         if (string.IsNullOrEmpty(s)) return "";
         var sb = new System.Text.StringBuilder(s.Length);
