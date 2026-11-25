@@ -361,6 +361,7 @@ public class AppDbContext : DbContext
     public DbSet<Me1ZonaPrecio> Me1ZonaPrecios => Set<Me1ZonaPrecio>();
     public DbSet<Me1CpDistancia> Me1CpDistancias => Set<Me1CpDistancia>();
     public DbSet<MeliAlertaPausada> MeliAlertasPausadas => Set<MeliAlertaPausada>();
+    public DbSet<MeliEtiquetaGuardada> MeliEtiquetasGuardadas => Set<MeliEtiquetaGuardada>();   // 2026-11-25: etiqueta original para "Recuperar etiqueta impresa"
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
