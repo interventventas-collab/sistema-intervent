@@ -39,6 +39,17 @@ public class MeliEtiquetaMe1Service
     public record Contacto(string Nombre, string? Whatsapp, string? Email, string? Web1, string? Web2,
         string BaseUrl = "https://app.palanica.com.ar");
 
+    /// <summary>
+    /// 2026-11-25: reimpresión de una etiqueta FLEX que MeLi ya no entrega (envío despachado: MeLi
+    /// contesta NOT_PRINTABLE_STATUS). Se usa este mismo diseño con el QR de Flex, que es SOLO
+    /// {"id":envío,"sender_id":cuenta,"hash_code":null,"security_digit":null} (verificado sobre la
+    /// etiqueta original del envío 48621574463), así que la app de Flex lo vuelve a leer.
+    /// </summary>
+    public record Flex(long SenderId, string? Cuenta, DateTime? EntregaAr);
+
+    public static string QrFlex(long envio, long senderId) =>
+        $"{{\"id\":\"{envio}\",\"sender_id\":{senderId},\"hash_code\":null,\"security_digit\":null}}";
+
     /// <summary>Lo que abre el QR: la pantalla del depósito con este envío marcado (pide estar logueado).</summary>
     private static string UrlDelEnvio(Contacto k, long envio) => $"{k.BaseUrl.TrimEnd('/')}/deposito/ordenes-meli?orden={envio}";
 
@@ -137,7 +148,7 @@ public class MeliEtiquetaMe1Service
 
     // ─────────────────────────── ZPL (Zebra / HPRT, 203 dpi, 10 x 20 cm) ───────────────────────────
 
-    public string Zpl(Datos d, Contacto k)
+    public string Zpl(Datos d, Contacto k, Flex? flex = null)
     {
         var z = new StringBuilder();
         z.Append("^XA^CI28^PW812^LL1624^LH0,0\n");
@@ -168,10 +179,18 @@ public class MeliEtiquetaMe1Service
         T(z, 32, y + 2, 26, "¿Alguna duda o reclamo? Contactanos.", bold: true);
         z.Append("^FO16,520^GB780,3,3^FS\n");
 
-        T(z, 16, 540, 64, "ME1", w: 390, align: "C", bold: true);
+        T(z, 16, 540, 64, flex is null ? "ME1" : "FLEX", w: 390, align: "C", bold: true);
         z.Append("^FO406,520^GB3,96,3^FS\n");
-        T(z, 409, 532, 34, "DESPACHO", w: 387, align: "C");
-        T(z, 409, 568, 40, d.FechaAr.ToString("dd/MM"), w: 387, align: "C", bold: true);
+        if (flex is null)
+        {
+            T(z, 409, 532, 34, "DESPACHO", w: 387, align: "C");
+            T(z, 409, 568, 40, d.FechaAr.ToString("dd/MM"), w: 387, align: "C", bold: true);
+        }
+        else
+        {
+            T(z, 409, 528, 40, flex.Cuenta ?? "", w: 387, align: "C", bold: true);
+            T(z, 409, 574, 28, flex.EntregaAr is { } e ? $"Entrega {e:dd/MM} · reimpresa" : "Reimpresa", w: 387, align: "C");
+        }
         z.Append("^FO16,616^GB780,3,3^FS\n");
 
         T(z, 32, 628, 22, "DESTINATARIO");
@@ -193,9 +212,12 @@ public class MeliEtiquetaMe1Service
         if (!string.IsNullOrWhiteSpace(d.Referencia)) T(z, 32, 1116, 28, "Referencia: " + d.Referencia, w: 750, lineas: 8);
 
         z.Append("^FO16,1390^GB780,3,3^FS\n");
-        T(z, 32, 1420, 30, "Escaneá el QR para ver el pedido con fotos y detalle", w: 520, lineas: 3, bold: true);
+        T(z, 32, 1420, 30, flex is null ? "Escaneá el QR para ver el pedido con fotos y detalle"
+            : "QR de Flex: se escanea con la app de Flex igual que la original", w: 520, lineas: 3, bold: true);
         T(z, 32, 1540, 30, $"ENVÍO {d.Envio}");
-        z.Append($"^FO600,1402^BQN,2,5^FDLA,{UrlDelEnvio(k, d.Envio)}^FS\n");
+        z.Append(flex is null
+            ? $"^FO600,1402^BQN,2,5^FDLA,{UrlDelEnvio(k, d.Envio)}^FS\n"
+            : $"^FO560,1392^BQN,2,5^FDLA,{QrFlex(d.Envio, flex.SenderId)}^FS\n");
         z.Append("^XZ\n");
         return z.ToString();
     }
@@ -316,11 +338,11 @@ public class MeliEtiquetaMe1Service
 
     // ─────────────────────────── PDF (10 x 20 cm, una página) ───────────────────────────
 
-    public byte[] Pdf(Datos d, Contacto k)
+    public byte[] Pdf(Datos d, Contacto k, Flex? flex = null)
     {
         byte[] qr;
         using (var gen = new QRCoder.QRCodeGenerator())
-        using (var datosQr = gen.CreateQrCode(UrlDelEnvio(k, d.Envio), QRCoder.QRCodeGenerator.ECCLevel.M))
+        using (var datosQr = gen.CreateQrCode(flex is null ? UrlDelEnvio(k, d.Envio) : QrFlex(d.Envio, flex.SenderId), QRCoder.QRCodeGenerator.ECCLevel.M))
             qr = new QRCoder.PngByteQRCode(datosQr).GetGraphic(10);
         var iconoWa = $"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path fill=\"#000\" d=\"{WhatsappSvgPath}\"/></svg>";
         var totalU = d.Productos.Sum(p => p.Cantidad);
@@ -382,11 +404,19 @@ public class MeliEtiquetaMe1Service
                     });
                     b.Item().BorderBottom(borde).Height(12, Unit.Millimetre).Row(r =>
                     {
-                        r.RelativeItem().BorderRight(borde).AlignCenter().AlignMiddle().Text("ME1").FontSize(20).Bold();
+                        r.RelativeItem().BorderRight(borde).AlignCenter().AlignMiddle().Text(flex is null ? "ME1" : "FLEX").FontSize(20).Bold();
                         r.RelativeItem().AlignCenter().AlignMiddle().Column(cc =>
                         {
-                            cc.Item().AlignCenter().Text("DESPACHO").FontSize(10);
-                            cc.Item().AlignCenter().Text(d.FechaAr.ToString("dd/MM")).FontSize(14).Bold();
+                            if (flex is null)
+                            {
+                                cc.Item().AlignCenter().Text("DESPACHO").FontSize(10);
+                                cc.Item().AlignCenter().Text(d.FechaAr.ToString("dd/MM")).FontSize(14).Bold();
+                            }
+                            else
+                            {
+                                cc.Item().AlignCenter().Text(flex.Cuenta ?? "").FontSize(14).Bold();
+                                cc.Item().AlignCenter().Text(flex.EntregaAr is { } e ? $"Entrega {e:dd/MM} · reimpresa" : "Reimpresa").FontSize(9);
+                            }
                         });
                     });
                     b.Item().BorderBottom(borde).Padding(4).Column(r =>
@@ -425,7 +455,8 @@ public class MeliEtiquetaMe1Service
                     {
                         r.RelativeItem().AlignMiddle().Column(cc =>
                         {
-                            cc.Item().Text("Escaneá el QR para ver el pedido con fotos y detalle").Bold().FontSize(10);
+                            cc.Item().Text(flex is null ? "Escaneá el QR para ver el pedido con fotos y detalle"
+                                : "QR de Flex: se escanea con la app de Flex igual que la original").Bold().FontSize(10);
                             cc.Item().PaddingTop(6).Text($"ENVÍO {d.Envio}").FontSize(10);
                         });
                         r.ConstantItem(26, Unit.Millimetre).Height(26, Unit.Millimetre).Image(qr);

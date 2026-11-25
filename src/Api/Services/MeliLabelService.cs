@@ -49,7 +49,13 @@ public class MeliLabelService
         // Mapear cada envio (ShippingId) a su cuenta MeLi, para saber con que token pedirlo.
         var mapa = await _db.MeliOrders
             .Where(o => o.ShippingId != null && shipmentIds.Contains(o.ShippingId.Value))
-            .Select(o => new { ShipId = o.ShippingId!.Value, o.MeliAccountId, EsMe1 = o.ShippingMode == "me1" })
+            .Select(o => new
+            {
+                ShipId = o.ShippingId!.Value, o.MeliAccountId, EsMe1 = o.ShippingMode == "me1",
+                EsFlex = o.LogisticType == "self_service",
+                // 2026-11-25: MeLi solo da la etiqueta mientras el envío está listo para despachar.
+                YaSalio = o.ShippingStatus == "shipped" || o.ShippingStatus == "delivered" || o.ShippingStatus == "not_delivered",
+            })
             .Distinct()
             .ToListAsync();
 
@@ -85,9 +91,23 @@ public class MeliLabelService
             var account = await _db.MeliAccounts.FindAsync(grupo.Key);
             if (account is null) { errores.Add($"Cuenta {grupo.Key} no encontrada."); continue; }
 
-            var ids = grupo.Select(x => x.ShipId).Distinct().ToArray();
+            // 2026-11-25: Flex que ya salió (MeLi ya no da la etiqueta): se reimprime armándola acá con
+            // el mismo QR de Flex. Pasó con una etiqueta que se puso negra al sol y había que escanearla.
+            var reimprimir = grupo.Where(x => x.EsFlex && x.YaSalio).Select(x => x.ShipId).Distinct().ToList();
+            if (reimprimir.Count > 0)
+                await ReimprimirFlexAsync(account, reimprimir, esTermica, zpl, piezas, errores);
+
+            var ids = grupo.Select(x => x.ShipId).Except(reimprimir).Distinct().ToArray();
+            if (ids.Length == 0) continue;
             var (bytes, err) = await FetchLabelFromMeliAsync(account, ids, esTermica ? "zpl2" : "pdf");
-            if (bytes is null) { errores.Add($"{account.Nickname}: {err}"); continue; }
+            if (bytes is null)
+            {
+                // El estado guardado puede estar atrasado: si MeLi la niega, los Flex se reimprimen igual.
+                var flexIds = grupo.Where(x => x.EsFlex && ids.Contains(x.ShipId)).Select(x => x.ShipId).Distinct().ToList();
+                if (flexIds.Count > 0) await ReimprimirFlexAsync(account, flexIds, esTermica, zpl, piezas, errores);
+                if (flexIds.Count < ids.Length) errores.Add($"{account.Nickname}: {err}");
+                continue;
+            }
 
             // 2026-09-24: MeLi ya la marco impresa; anotamos la hora de la PRIMERA impresion.
             await AnotarImpresionAsync(ids);
@@ -125,6 +145,29 @@ public class MeliLabelService
 
         // errores puede traer avisos parciales (algunas cuentas fallaron) aunque haya PDF.
         return new LabelResult(true, outBytes, errores.Count > 0 ? string.Join(" ", errores) : null);
+    }
+
+    /// <summary>Etiqueta Flex armada por el sistema (mismo diseño que la de ME1, con el QR de Flex).</summary>
+    private async Task ReimprimirFlexAsync(MeliAccount account, List<long> envios, bool esTermica,
+        System.Text.StringBuilder zpl, List<Pieza> piezas, List<string> errores)
+    {
+        var (datos, err) = await _me1.ArmarAsync(envios);
+        errores.AddRange(err);
+        if (datos.Count == 0) return;
+        var contacto = await _me1.ContactoAsync();
+        var entregas = await _db.MeliShipments.AsNoTracking()
+            .Where(s => envios.Contains(s.MeliShipmentId))
+            .Select(s => new { s.MeliShipmentId, Fecha = s.EstimatedDeliveryLimit ?? s.EstimatedDeliveryFinal })
+            .ToListAsync();
+        foreach (var d in datos)
+        {
+            var f = entregas.FirstOrDefault(x => x.MeliShipmentId == d.Envio)?.Fecha;
+            var flex = new MeliEtiquetaMe1Service.Flex(account.MeliUserId, NombreCorto(account.Nickname),
+                f is { } u ? u.AddHours(-3) : null);
+            if (esTermica) zpl.Append(_me1.Zpl(d, contacto, flex));
+            else piezas.Add(new Pieza(_me1.Pdf(d, contacto, flex), 1, 0, 0, TermicaAncho, TermicaAlto));
+        }
+        await AnotarImpresionAsync(datos.Select(d => d.Envio).ToArray());
     }
 
     private async Task AnotarImpresionAsync(long[] shipIds)
