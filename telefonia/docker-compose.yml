@@ -1,0 +1,16 @@
+# Central telefonica (internos). Va aparte: no toca ni dev ni prod.
+# Levantar:  docker compose -f telefonia/docker-compose.yml --env-file .env up --build -d
+name: aiml-telefonia
+services:
+  central:
+    build: .
+    container_name: aiml-central-telefonica
+    network_mode: host          # la voz (RTP) necesita puertos directos
+    environment:
+      - TEL_101_PASS=${TEL_101_PASS}
+      - TEL_102_PASS=${TEL_102_PASS}
+      - IP_PUBLICA=${TEL_IP_PUBLICA:-179.43.123.134}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
