@@ -27,7 +27,7 @@
     [Parameter] public EventCallback OnImprimir { get; set; }
 
     private string Clase => Impresa ? "ok" : Pendiente ? "pend" : "";
-    private string Titulo => Impresa ? "Volver a imprimir la etiqueta (sale la misma)" : "Imprimir la etiqueta de este envío";
+    private string Titulo => Impresa ? "Recuperar etiqueta impresa (sale la misma de la primera vez, aunque el envío ya haya salido)" : "Imprimir la etiqueta de este envío";
 
     private static string Cuando(DateTime utc)
     {

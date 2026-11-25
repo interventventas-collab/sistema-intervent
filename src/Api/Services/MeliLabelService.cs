@@ -29,11 +29,13 @@ public class MeliLabelService
     private readonly IHttpClientFactory _httpFactory;
     private readonly MeliAccountService _accountService;
     private readonly MeliEtiquetaMe1Service _me1;
+    private readonly IServiceScopeFactory _scopes;
+    private readonly ILogger<MeliLabelService> _log;
 
     public MeliLabelService(AppDbContext db, IHttpClientFactory httpFactory, MeliAccountService accountService,
-        MeliEtiquetaMe1Service me1)
+        MeliEtiquetaMe1Service me1, IServiceScopeFactory scopes, ILogger<MeliLabelService> log)
     {
-        _db = db; _httpFactory = httpFactory; _accountService = accountService; _me1 = me1;
+        _db = db; _httpFactory = httpFactory; _accountService = accountService; _me1 = me1; _scopes = scopes; _log = log;
     }
 
     /// <summary>Pdf = el archivo (PDF, o .txt ZPL si EsZpl).</summary>
@@ -91,39 +93,55 @@ public class MeliLabelService
             var account = await _db.MeliAccounts.FindAsync(grupo.Key);
             if (account is null) { errores.Add($"Cuenta {grupo.Key} no encontrada."); continue; }
 
-            // 2026-11-25: Flex que ya salió (MeLi ya no da la etiqueta): se reimprime armándola acá con
-            // el mismo QR de Flex. Pasó con una etiqueta que se puso negra al sol y había que escanearla.
-            var reimprimir = grupo.Where(x => x.EsFlex && x.YaSalio).Select(x => x.ShipId).Distinct().ToList();
-            if (reimprimir.Count > 0)
-                await ReimprimirFlexAsync(account, reimprimir, esTermica, zpl, piezas, errores);
+            // 2026-11-25: "Recuperar etiqueta impresa". MeLi deja de dar la etiqueta cuando el envío sale
+            // (pasó con una térmica que se puso negra al sol y había que volver a escanearla en Flex).
+            // Se devuelve la ORIGINAL guardada al imprimirla; si no hay copia y es Flex, se arma con el
+            // mismo QR de Flex.
+            var recuperar = grupo.Where(x => x.YaSalio).Select(x => x.ShipId).Distinct().ToList();
+            if (recuperar.Count > 0)
+                await RecuperarAsync(account, recuperar, grupo.Where(x => x.EsFlex).Select(x => x.ShipId).ToHashSet(),
+                    esTermica, zpl, piezas, errores);
 
-            var ids = grupo.Select(x => x.ShipId).Except(reimprimir).Distinct().ToArray();
+            var ids = grupo.Select(x => x.ShipId).Except(recuperar).Distinct().ToArray();
             if (ids.Length == 0) continue;
-            var (bytes, err) = await FetchLabelFromMeliAsync(account, ids, esTermica ? "zpl2" : "pdf");
-            if (bytes is null)
-            {
-                // El estado guardado puede estar atrasado: si MeLi la niega, los Flex se reimprimen igual.
-                var flexIds = grupo.Where(x => x.EsFlex && ids.Contains(x.ShipId)).Select(x => x.ShipId).Distinct().ToList();
-                if (flexIds.Count > 0) await ReimprimirFlexAsync(account, flexIds, esTermica, zpl, piezas, errores);
-                if (flexIds.Count < ids.Length) errores.Add($"{account.Nickname}: {err}");
-                continue;
-            }
-
-            // 2026-09-24: MeLi ya la marco impresa; anotamos la hora de la PRIMERA impresion.
-            await AnotarImpresionAsync(ids);
-
-            // 2026-11-20: cada etiqueta sale con el nombre corto de la cuenta (GROVAS / FRIKAF) en un
-            // recuadro a la derecha del remitente, para separar los paquetes de cada cuenta.
+            var flexDelGrupo = grupo.Where(x => x.EsFlex).Select(x => x.ShipId).ToHashSet();
             var cuentaCorta = NombreCorto(account.Nickname);
-            if (esTermica) { zpl.Append(ZplConCuenta(System.Text.Encoding.UTF8.GetString(bytes), cuentaCorta)).Append('\n'); continue; }
 
-            try
+            // MeLi rechaza el lote entero si UNO ya salió: en ese caso se pide de a uno.
+            var tipo = esTermica ? "zpl2" : "pdf";
+            var (todo, errTodo) = await FetchLabelFromMeliAsync(account, ids, tipo);
+            var tandas = todo is null && ids.Length > 1 ? ids.Select(x => new[] { x }).ToList() : new List<long[]> { ids };
+
+            foreach (var tanda in tandas)
             {
-                piezas.AddRange(Recortar(bytes, ids.Length, cuentaCorta));
-            }
-            catch (Exception ex)
-            {
-                errores.Add($"{account.Nickname}: no se pudo leer el PDF de MeLi ({ex.Message}).");
+                var (bytes, err) = tandas.Count == 1 ? (todo, errTodo) : await FetchLabelFromMeliAsync(account, tanda, tipo);
+                if (bytes is null)
+                {
+                    // El estado guardado estaba atrasado: ya salió y el sistema no se había enterado.
+                    if (err == YaSalioMsg)
+                        await RecuperarAsync(account, tanda.ToList(), flexDelGrupo, esTermica, zpl, piezas, errores);
+                    else errores.Add($"{account.Nickname}{(tandas.Count > 1 ? $" (envío {tanda[0]})" : "")}: {err}");
+                    continue;
+                }
+
+                // Guardar la original de cada envío (la Zebra ya la tenemos acá; el PDF se pide de fondo).
+                GuardarOriginalesLuego(account.Id, tanda, esTermica ? PartirZplPorEnvio(System.Text.Encoding.UTF8.GetString(bytes), tanda) : null);
+
+                // 2026-09-24: MeLi ya la marco impresa; anotamos la hora de la PRIMERA impresion.
+                await AnotarImpresionAsync(tanda);
+
+                // 2026-11-20: cada etiqueta sale con el nombre corto de la cuenta (GROVAS / FRIKAF) en un
+                // recuadro a la derecha del remitente, para separar los paquetes de cada cuenta.
+                if (esTermica) { zpl.Append(ZplConCuenta(System.Text.Encoding.UTF8.GetString(bytes), cuentaCorta)).Append('\n'); continue; }
+
+                try
+                {
+                    piezas.AddRange(Recortar(bytes, tanda.Length, cuentaCorta));
+                }
+                catch (Exception ex)
+                {
+                    errores.Add($"{account.Nickname}: no se pudo leer el PDF de MeLi ({ex.Message}).");
+                }
             }
         }
 
@@ -147,8 +165,42 @@ public class MeliLabelService
         return new LabelResult(true, outBytes, errores.Count > 0 ? string.Join(" ", errores) : null);
     }
 
-    /// <summary>Etiqueta Flex armada por el sistema (mismo diseño que la de ME1, con el QR de Flex).</summary>
-    private async Task ReimprimirFlexAsync(MeliAccount account, List<long> envios, bool esTermica,
+    /// <summary>
+    /// Pone en la salida la etiqueta guardada de cada envío (idéntica a la original, con el mismo
+    /// recuadro de la cuenta). Los Flex sin copia se arman con el QR de Flex. Devuelve los que no se
+    /// pudieron recuperar (y, si viene <paramref name="errores"/>, los anota ahí).
+    /// </summary>
+    private async Task<List<long>> RecuperarAsync(MeliAccount account, List<long> envios, HashSet<long> flex,
+        bool esTermica, System.Text.StringBuilder zpl, List<Pieza> piezas, List<string>? errores)
+    {
+        var cuentaCorta = NombreCorto(account.Nickname);
+        List<MeliEtiquetaGuardada> guardadas;
+        try { guardadas = await _db.MeliEtiquetasGuardadas.AsNoTracking().Where(g => envios.Contains(g.MeliShipmentId)).ToListAsync(); }
+        catch (Exception ex) { _log.LogWarning(ex, "Etiquetas guardadas: no se pudo leer"); guardadas = new(); }
+
+        var armarFlex = new List<long>();
+        var faltan = new List<long>();
+        foreach (var envio in envios)
+        {
+            var g = guardadas.FirstOrDefault(x => x.MeliShipmentId == envio);
+            if (esTermica && !string.IsNullOrEmpty(g?.Zpl)) { zpl.Append(ZplConCuenta(g!.Zpl!, cuentaCorta)).Append('\n'); continue; }
+            if (!esTermica && g?.Pdf is { Length: > 0 } pdf)
+            {
+                try { piezas.AddRange(Recortar(pdf, 1, cuentaCorta)); continue; }
+                catch (Exception ex) { _log.LogWarning(ex, "Etiqueta guardada {Envio}: PDF ilegible", envio); }
+            }
+            if (flex.Contains(envio)) armarFlex.Add(envio); else faltan.Add(envio);
+        }
+        if (armarFlex.Count > 0) await ArmarFlexAsync(account, armarFlex, esTermica, zpl, piezas, errores ?? new List<string>());
+        if (errores is not null)
+            foreach (var envio in faltan)
+                errores.Add($"Envío {envio}: ya salió y MercadoLibre no da más la etiqueta; no hay copia guardada (se imprimió antes del 25/11, cuando el sistema todavía no las guardaba).");
+        return faltan;
+    }
+
+    /// <summary>Etiqueta Flex armada por el sistema (mismo diseño que la de ME1, con el QR de Flex).
+    /// Solo para envíos sin copia guardada de la original.</summary>
+    private async Task ArmarFlexAsync(MeliAccount account, List<long> envios, bool esTermica,
         System.Text.StringBuilder zpl, List<Pieza> piezas, List<string> errores)
     {
         var (datos, err) = await _me1.ArmarAsync(envios);
@@ -170,6 +222,78 @@ public class MeliLabelService
         await AnotarImpresionAsync(datos.Select(d => d.Envio).ToArray());
     }
 
+    // ───── 2026-11-25: copia de la etiqueta original de cada envío ─────
+
+    /// <summary>Del ZPL de MeLi (varias etiquetas), el bloque de cada envío + los bloques de
+    /// configuración que vienen atrás (ej. "^XA^MCY^XZ"). El envío se reconoce por su número adentro.</summary>
+    private static Dictionary<long, string> PartirZplPorEnvio(string zplTodo, IEnumerable<long> envios)
+    {
+        var res = new Dictionary<long, string>();
+        long? actual = null;
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(zplTodo, @"\^XA.*?\^XZ", System.Text.RegularExpressions.RegexOptions.Singleline))
+        {
+            var bloque = m.Value;
+            if (bloque.Contains("^FD"))
+            {
+                actual = envios.Cast<long?>().FirstOrDefault(e => bloque.Contains(e!.Value.ToString()));
+                if (actual is { } e1 && !res.ContainsKey(e1)) res[e1] = bloque + "\n";
+                else actual = null;
+            }
+            else if (actual is { } e2) res[e2] += bloque + "\n";
+        }
+        return res;
+    }
+
+    /// <summary>De fondo (no demora la impresión): guarda la Zebra y el PDF original de cada envío.</summary>
+    private void GuardarOriginalesLuego(int accountId, long[] envios, Dictionary<long, string>? zplYa)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopes.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<MeliLabelService>().GuardarOriginalesAsync(accountId, envios, zplYa);
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "Etiquetas guardadas: fallo al guardar {Envios}", string.Join(",", envios)); }
+        });
+    }
+
+    internal async Task GuardarOriginalesAsync(int accountId, long[] envios, Dictionary<long, string>? zplYa)
+    {
+        var account = await _db.MeliAccounts.FindAsync(accountId);
+        if (account is null) return;
+        var filas = await _db.MeliEtiquetasGuardadas.Where(g => envios.Contains(g.MeliShipmentId)).ToListAsync();
+        MeliEtiquetaGuardada Fila(long e)
+        {
+            var f = filas.FirstOrDefault(x => x.MeliShipmentId == e);
+            if (f is null) { f = new MeliEtiquetaGuardada { MeliShipmentId = e, MeliAccountId = accountId }; filas.Add(f); _db.MeliEtiquetasGuardadas.Add(f); }
+            return f;
+        }
+
+        // Zebra: lo que ya vino al imprimir; lo que falte, en un solo pedido.
+        var sinZpl = envios.Where(e => string.IsNullOrEmpty(filas.FirstOrDefault(x => x.MeliShipmentId == e)?.Zpl)).ToList();
+        var zpls = new Dictionary<long, string>(zplYa ?? new());
+        var pedir = sinZpl.Where(e => !zpls.ContainsKey(e)).ToArray();
+        if (pedir.Length > 0)
+        {
+            var (b, _) = await FetchLabelFromMeliAsync(account, pedir, "zpl2");
+            if (b is not null) foreach (var kv in PartirZplPorEnvio(System.Text.Encoding.UTF8.GetString(b), pedir)) zpls[kv.Key] = kv.Value;
+        }
+        foreach (var e in sinZpl) if (zpls.TryGetValue(e, out var z)) Fila(e).Zpl = z;
+
+        // PDF: uno por envío (así la hoja de MeLi trae solo esa etiqueta y se recorta sin dudas).
+        foreach (var e in envios.Where(e => filas.FirstOrDefault(x => x.MeliShipmentId == e)?.Pdf is not { Length: > 0 }))
+        {
+            var (b, _) = await FetchLabelFromMeliAsync(account, new[] { e }, "pdf");
+            if (b is not null) Fila(e).Pdf = b;
+        }
+        await _db.SaveChangesAsync();
+
+        // A los 60 días ya no hacen falta.
+        var limite = DateTime.UtcNow.AddDays(-60);
+        await _db.MeliEtiquetasGuardadas.Where(g => g.GuardadaAt < limite).ExecuteDeleteAsync();
+    }
+
     private async Task AnotarImpresionAsync(long[] shipIds)
     {
         try
@@ -187,6 +311,8 @@ public class MeliLabelService
     /// tipo "pdf" devuelve el PDF; "zpl2" devuelve el texto ZPL para impresora Zebra (MeLi lo manda
     /// dentro de un ZIP; se saca el .txt de adentro).
     /// </summary>
+    private const string YaSalioMsg = "el envío ya salió: MercadoLibre no da más la etiqueta.";
+
     private async Task<(byte[]? bytes, string? error)> FetchLabelFromMeliAsync(MeliAccount account, long[] shipmentIds, string tipo)
     {
         var token = await _accountService.GetValidTokenAsync(account);
@@ -213,6 +339,10 @@ public class MeliLabelService
 
         if (!resp.IsSuccessStatusCode)
         {
+            // 2026-11-25: "status is shipped/delivered" = ya salió; se recupera la guardada.
+            var cuerpo = await resp.Content.ReadAsStringAsync();
+            if (cuerpo.Contains("NOT_PRINTABLE_STATUS") && System.Text.RegularExpressions.Regex.IsMatch(cuerpo, @"status is (shipped|delivered|not_delivered)"))
+                return (null, YaSalioMsg);
             var hint = ((int)resp.StatusCode) switch
             {
                 404 => "el envio no tiene etiqueta disponible.",

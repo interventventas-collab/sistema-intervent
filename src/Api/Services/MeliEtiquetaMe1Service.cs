@@ -189,7 +189,7 @@ public class MeliEtiquetaMe1Service
         else
         {
             T(z, 409, 528, 40, flex.Cuenta ?? "", w: 387, align: "C", bold: true);
-            T(z, 409, 574, 28, flex.EntregaAr is { } e ? $"Entrega {e:dd/MM} · reimpresa" : "Reimpresa", w: 387, align: "C");
+            T(z, 409, 574, 28, flex.EntregaAr is { } e ? $"Entrega {e:dd/MM} · recuperada" : "Recuperada", w: 387, align: "C");
         }
         z.Append("^FO16,616^GB780,3,3^FS\n");
 
@@ -415,7 +415,7 @@ public class MeliEtiquetaMe1Service
                             else
                             {
                                 cc.Item().AlignCenter().Text(flex.Cuenta ?? "").FontSize(14).Bold();
-                                cc.Item().AlignCenter().Text(flex.EntregaAr is { } e ? $"Entrega {e:dd/MM} · reimpresa" : "Reimpresa").FontSize(9);
+                                cc.Item().AlignCenter().Text(flex.EntregaAr is { } e ? $"Entrega {e:dd/MM} · recuperada" : "Recuperada").FontSize(9);
                             }
                         });
                     });

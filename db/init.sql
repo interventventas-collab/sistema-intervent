@@ -9162,3 +9162,21 @@ BEGIN
     CREATE INDEX IX_Meli_AlertasPausadas_Estado ON Meli_AlertasPausadas(Estado, MeliItemId);
 END
 GO
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 25/11/2026 — Etiqueta ORIGINAL de MeLi guardada al imprimirla, para "Recuperar etiqueta
+-- impresa" cuando MeLi ya no la da (envío despachado). Se borran solas a los 60 días.
+-- ⚠ PROD: correr a mano ANTES de publicar la API (si falta, imprimir sigue andando, solo no guarda).
+-- ─────────────────────────────────────────────────────────────────────────────
+IF OBJECT_ID('Meli_EtiquetasGuardadas','U') IS NULL
+BEGIN
+    CREATE TABLE Meli_EtiquetasGuardadas (
+        MeliShipmentId BIGINT NOT NULL PRIMARY KEY,
+        MeliAccountId INT NOT NULL,
+        Zpl NVARCHAR(MAX) NULL,
+        Pdf VARBINARY(MAX) NULL,
+        GuardadaAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_Meli_EtiquetasGuardadas_GuardadaAt ON Meli_EtiquetasGuardadas(GuardadaAt);
+END
+GO
