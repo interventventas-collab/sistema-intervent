@@ -11119,7 +11119,7 @@ public record MapeoPendienteDto(string Tipo, int Id, string Numero, string Clien
 
 // 20/11/2026: isla de novedades del Mapeo
 public record MapeoNovedadDto(string Tipo, string Ref, string Titulo, string? Sub, DateTime EntroAt,
-    DateTime? Entrega, string EntregaTexto, bool ParaElDia, bool EnMapa);
+    DateTime? Entrega, string EntregaTexto, bool ParaElDia, bool EnMapa, string? Me1Estado = null);
 public record MapeoNovedadesResp(string Dia, List<MapeoNovedadDto> Items);
 
 // 18/11/2026: combustible Shell

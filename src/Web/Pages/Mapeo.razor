@@ -70,6 +70,8 @@
     .isla-fe { font-size: 0.7rem; border-radius: 8px; padding: 0.05rem 0.45rem; white-space: nowrap; background: #262626; color: #a3a3a3; }
     .isla-fe.hoy { background: #14532d; color: #bbf7d0; }
     .isla-ok { color: #4ade80; font-size: 0.72rem; white-space: nowrap; }
+    .isla-desp { border: none; background: #3483fa; color: #fff; border-radius: 8px; padding: 0.2rem 0.6rem; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .isla-desp:hover { background: #2968c8; } .isla-desp:disabled { opacity: .5; }
     .isla-sep { color: #737373; font-size: 0.72rem; padding: 0.45rem 0.8rem; border-top: 1px solid #1f1f1f; }
     .isla-vacio { color: #a3a3a3; padding: 0.8rem; text-align: center; }
     .isla-pie { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.5rem 0.8rem; border-top: 1px solid #1f1f1f; color: #737373; font-size: 0.72rem; }
@@ -1401,6 +1403,12 @@
                                 <span class="isla-ic @x.Tipo">@TipoCorto(x.Tipo)</span>
                                 <span class="isla-t">@x.Titulo<span>@x.Sub · entró @x.EntroAt.AddHours(-3).ToString("dd/MM HH:mm")</span></span>
                                 <span class="isla-fe hoy">@x.EntregaTexto</span>
+                                @* 2026-11-25: el "Avisar despacho" de MeLi (En camino), acá mismo. *@
+                                @if (x.Me1Estado == "avisar")
+                                {
+                                    <button type="button" class="isla-desp" disabled="@(islaAvisandoRef is not null)" @onclick="() => AvisarDespachoIsla(x)">@(islaAvisandoRef == x.Ref ? "Avisando…" : "Avisar despacho")</button>
+                                }
+                                else if (x.Me1Estado == "despachado") { <span class="isla-ok">✓ despachado</span> }
                                 @if (x.EnMapa) { <span class="isla-ok">✓ en el mapa</span> }
                                 else { <button type="button" class="isla-tr" disabled="@islaTrayendo" @onclick="() => TraerNovedad(x)">+ Traer</button> }
                             </div>
@@ -8817,6 +8825,29 @@
         {
             try { await InvokeAsync(CargarNovedades); } catch { }
         }, null, 1500, 30000);
+    }
+
+    // 2026-11-25: "Avisar despacho" en la isla (ME1): MeLi le avisa al comprador "En camino". Es lo mismo
+    // que el "Sí, sale hoy" del cartel; si ya tiene repartidor en el mapa, el robot manda "Salió a distribución".
+    private string? islaAvisandoRef;
+    private async Task AvisarDespachoIsla(MapeoNovedadDto x)
+    {
+        if (!long.TryParse(x.Ref, out var envio) || islaAvisandoRef is not null) return;
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", $"¿Avisar a MercadoLibre que la compra de {x.Titulo} salió hoy?\n\nEl comprador recibe el aviso \"En camino\". No se puede deshacer."); }
+        catch { ok = false; }
+        if (!ok) return;
+        islaAvisandoRef = x.Ref; StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.SetMe1DiaSalidaAsync(new List<long> { envio }, HoyAr);
+            if (res is null) ToastService.Error("No se pudo avisar: " + (err ?? "sin respuesta"));
+            else if (res?.Errores is { Count: > 0 } es) ToastService.Error("MercadoLibre no lo aceptó: " + string.Join(" · ", es));
+            else ToastService.Success($"Avisado a MercadoLibre: {x.Titulo} está en camino");
+            await CargarNovedades();
+            if (islaResultados is not null) await BuscarIsla();
+        }
+        finally { islaAvisandoRef = null; StateHasChanged(); }
     }
 
     private async Task CargarNovedades()

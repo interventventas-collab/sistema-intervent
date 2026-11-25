@@ -954,7 +954,14 @@ public class MapeoStopsController : ControllerBase
     // Lo que va entrando (Flex, ME1, ventas, alquileres) con su fecha de entrega, para avisar mientras
     // mapean. Lee solo la base: los Flex/ME1 nuevos entran solos por el aviso de MercadoLibre.
     public record NovedadDto(string Tipo, string Ref, string Titulo, string? Sub, DateTime EntroAt,
-        DateTime? Entrega, string EntregaTexto, bool ParaElDia, bool EnMapa);
+        DateTime? Entrega, string EntregaTexto, bool ParaElDia, bool EnMapa, string? Me1Estado = null);
+
+    /// <summary>2026-11-25: para el botón "Avisar despacho" de la isla. "avisar" = MeLi todavía no sabe que
+    /// salió; "despachado" = ya se le avisó (En camino / Salió a distribución). Solo ME1.</summary>
+    private static string? Me1EstadoIsla(MeliShipment s)
+        => s.Mode != "me1" ? null
+         : MeliShipmentService.Me1SinDespachar(s.Status, s.Substatus) ? "avisar"
+         : s.Status == "shipped" ? "despachado" : null;
 
     [HttpGet("novedades")]
     public async Task<IActionResult> Novedades([FromQuery] DateTime? fecha = null, [FromQuery] string? q = null)
@@ -1002,7 +1009,7 @@ public class MapeoStopsController : ControllerBase
             res.Add(new NovedadDto("me1", m.MeliShipmentId.ToString(), m.ReceiverName ?? m.BuyerNickname ?? "ME1",
                 Junto(m.AddressLine, m.City, m.BuyerNickname is null ? null : "@" + m.BuyerNickname), m.DateCreated ?? DateTime.UtcNow, lim,
                 lim is DateTime ld ? "llega hasta " + ld.ToString("dd/MM") : "sin fecha", true,
-                refsMeli.Contains(m.MeliShipmentId.ToString())));
+                refsMeli.Contains(m.MeliShipmentId.ToString()), Me1EstadoIsla(m)));
         }
         foreach (var v in await VentasRecientesAsync(dia))
         {
@@ -1056,7 +1063,7 @@ public class MapeoStopsController : ControllerBase
             res.Add(new NovedadDto(esMe1 ? "me1" : "flex", e.MeliShipmentId.ToString(), e.ReceiverName ?? e.BuyerNickname ?? "MeLi",
                 Junto(e.AddressLine, e.City, e.BuyerNickname is null ? null : "@" + e.BuyerNickname), e.DateCreated ?? DateTime.UtcNow, lim,
                 esMe1 ? (lim is DateTime l1 ? "llega hasta " + l1.ToString("dd/MM") : "sin fecha") : (lim is DateTime l2 ? Dia(l2) : "MeLi todavía no dice el día"),
-                esMe1 || (lim is DateTime l3 && l3 <= dia), En("meli", e.MeliShipmentId.ToString())));
+                esMe1 || (lim is DateTime l3 && l3 <= dia), En("meli", e.MeliShipmentId.ToString()), Me1EstadoIsla(e)));
         }
 
         var ventas = await _db.CafeVentas.AsNoTracking().Include(v => v.ClienteNav)
