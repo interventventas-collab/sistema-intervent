@@ -684,6 +684,20 @@ public class MaquinaPendienteDto
     public bool EnDolares => Moneda == "USD";
 }
 
+/// <summary>25/11/2026: máquina financiada que debe, de cualquier cliente (botón Máquinas de Nueva cobranza).</summary>
+public class MaquinaDeudorDto
+{
+    public int ClienteId { get; set; }
+    public int ComodatoId { get; set; }
+    public string Nombre { get; set; } = "";
+    public string Moneda { get; set; } = "ARS";
+    public decimal Saldo { get; set; }
+    public decimal? ValorCuota { get; set; }
+    public int? CuotasTotales { get; set; }
+    public int? CuotaActual { get; set; }
+    public bool EnDolares => Moneda == "USD";
+}
+
 // ========== Depositos + Stock por deposito ==========
 public class CafeDepositoDto
 {

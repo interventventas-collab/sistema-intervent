@@ -438,13 +438,13 @@
                            primero salen los que deben y abajo, en gris, los que no deben nada. *@
                         var hayTexto = !string.IsNullOrWhiteSpace(clienteSearch);
                         <div style="display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap; margin-top:0.45rem; font-size:0.8rem;">
-                            @foreach (var (modo, txt) in new[] { ("deben", "Los que deben"), ("ventas", "Ventas"), ("alquileres", "Alquileres") })
+                            @foreach (var (modo, txt) in new[] { ("deben", "Los que deben"), ("ventas", "Ventas"), ("alquileres", "Alquileres"), ("maquinas", "Máquinas") })
                             {
                                 var m = modo;
                                 var activo = !verTodosClientes && filtroDeuda == m;
                                 <button type="button" @onclick="() => { filtroDeuda = m; verTodosClientes = false; }"
                                         style="border:1px solid @(activo ? "#111827" : "#d1d5db"); background:@(activo ? "#111827" : "white"); color:@(activo ? "white" : "#374151"); border-radius:999px; padding:0.2rem 0.7rem; cursor:pointer; font-size:0.8rem;">
-                                    @txt <span style="opacity:0.7;">@DeudoresFiltrados(m).Count</span>
+                                    @txt <span style="opacity:0.7;">@(m == "maquinas" ? maqPorCliente.Count : DeudoresFiltrados(m).Count)</span>
                                 </button>
                             }
                             <button type="button" @onclick="() => verTodosClientes = true"
@@ -474,12 +474,20 @@
                             else
                             {
                                 var filtrados = DeudoresFiltrados(filtroDeuda);
-                                var ids = filtrados.Select(d => d.ClienteId).ToHashSet();
+                                // 25/11/2026: en "Máquinas" la lista sale de las máquinas financiadas que deben.
+                                var ids = filtroDeuda == "maquinas" ? maqPorCliente.Keys.ToHashSet() : filtrados.Select(d => d.ClienteId).ToHashSet();
                                 if (hayTexto)
                                 {
                                     var todos = ClientesMatching(clienteSearch);
                                     conDeuda = todos.Where(c => ids.Contains(c.Id)).ToList();
-                                    sinDeuda = ClienteSearch.Recortar(todos.Where(c => !deudorPorId.ContainsKey(c.Id)).ToList());
+                                    sinDeuda = ClienteSearch.Recortar(todos.Where(c => !deudorPorId.ContainsKey(c.Id) && !maqPorCliente.ContainsKey(c.Id)).ToList());
+                                }
+                                else if (filtroDeuda == "maquinas")
+                                {
+                                    var porId = (clientes ?? new()).ToDictionary(c => c.Id);
+                                    conDeuda = maqPorCliente.OrderByDescending(kv => kv.Value.Any(x => x.EnDolares)).ThenByDescending(kv => kv.Value.Sum(x => x.Saldo))
+                                        .Where(kv => porId.ContainsKey(kv.Key)).Select(kv => porId[kv.Key]).ToList();
+                                    sinDeuda = new();
                                 }
                                 else
                                 {
@@ -493,7 +501,7 @@
                                 @if (conDeuda.Count == 0 && sinDeuda.Count == 0)
                                 {
                                     <div style="padding: 0.6rem; color: #6b7280; font-size: 0.85rem;">
-                                        @(hayTexto ? "Sin resultados." : filtroDeuda == "alquileres" ? "Nadie debe alquileres." : filtroDeuda == "ventas" ? "Nadie debe ventas." : "Nadie debe nada.")
+                                        @(hayTexto ? "Sin resultados." : filtroDeuda == "alquileres" ? "Nadie debe alquileres." : filtroDeuda == "maquinas" ? "Nadie debe cuotas de máquina." : filtroDeuda == "ventas" ? "Nadie debe ventas." : "Nadie debe nada.")
                                     </div>
                                 }
                                 @foreach (var ci in conDeuda)
@@ -2758,14 +2766,19 @@
     // ── 16/11/2026: lista de los que DEBEN en Nueva cobranza ──
     private List<ClienteSaldoPendienteDto>? deudores;
     private Dictionary<int, ClienteSaldoPendienteDto> deudorPorId = new();
-    private string filtroDeuda = "deben";   // deben | ventas | alquileres
+    private string filtroDeuda = "deben";   // deben | ventas | alquileres | maquinas
     private bool verTodosClientes;
+    /// <summary>25/11/2026: máquinas financiadas que deben, por cliente (botón Máquinas).</summary>
+    private Dictionary<int, List<MaquinaDeudorDto>> maqPorCliente = new();
 
     private async Task CargarDeudores()
     {
-        deudores = null; deudorPorId = new();
+        deudores = null; deudorPorId = new(); maqPorCliente = new();
+        var tMaq = Api.GetMaquinasDeudoresAsync();
         try { deudores = await Api.GetCafeClientesSaldosPendientesAsync() ?? new(); }
         catch { deudores = new(); }
+        try { maqPorCliente = ((await tMaq) ?? new()).GroupBy(m => m.ClienteId).ToDictionary(g => g.Key, g => g.ToList()); }
+        catch { maqPorCliente = new(); }
         deudorPorId = deudores.GroupBy(d => d.ClienteId).ToDictionary(g => g.Key, g => g.First());
         StateHasChanged();
     }
@@ -2814,7 +2827,21 @@
                     <div style="color: #6b7280; font-size: 0.75rem; margin-top: 0.15rem;">📍 @dirMostrar</div>
                 }
             </div>
-            @if (deu is not null)
+            @if (!gris && !verTodosClientes && filtroDeuda == "maquinas" && maqPorCliente.TryGetValue(ciId, out var maqs))
+            {
+                @* 25/11/2026: en el botón Máquinas, lo que debe de cada máquina (no las ventas). *@
+                <div style="text-align:right; white-space:nowrap;">
+                    @foreach (var mq in maqs)
+                    {
+                        var sym = mq.EnDolares ? "US$ " : "$";
+                        <div style="font-weight:700;">debe @sym@mq.Saldo.ToString("N2")</div>
+                        <div style="color:#6b7280; font-size:0.72rem;">
+                            @mq.Nombre@(mq.CuotaActual is > 0 ? (mq.CuotasTotales is > 0 ? $" · cuota {mq.CuotaActual} de {mq.CuotasTotales}" : $" · cuota {mq.CuotaActual}") : "")@(mq.ValorCuota is > 0m ? $" de {sym}{mq.ValorCuota.Value:N0}" : "")
+                        </div>
+                    }
+                </div>
+            }
+            else if (deu is not null)
             {
                 <div style="text-align:right; white-space:nowrap;">
                     <div style="font-weight:700;">debe $@deu.SaldoPendiente.ToString("N2")</div>
@@ -2833,6 +2860,8 @@
 
     private async Task SelectCliente(int id)
     {
+        // 25/11/2026: elegido desde el botón Máquinas → la cuota de la máquina ya viene tildada.
+        var desdeMaquinas = !verTodosClientes && filtroDeuda == "maquinas" && maqPorCliente.ContainsKey(id);
         selClienteId = id;
         clienteSearch = "";
         clienteSearchOpen = false;
@@ -2840,6 +2869,8 @@
         enviarPorEmail = !string.IsNullOrWhiteSpace(cli?.Email);
         enviarPorWhatsapp = false;
         await OnClienteChange();
+        if (desdeMaquinas && selClienteId == id)
+            foreach (var m in maquinasPend) TildarMaquina(m, true);
     }
 
     private void ClearCliente()
