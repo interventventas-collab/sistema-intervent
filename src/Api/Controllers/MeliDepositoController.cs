@@ -56,7 +56,9 @@ public class MeliDepositoController : ControllerBase
             if (long.TryParse(texto, out var n))
                 query = query.Where(o => o.MeliOrderId == n || o.ShippingId == n || o.PackId == n);
             else
-                query = query.Where(o => o.BuyerNickname.Contains(texto) || o.ItemTitle.Contains(texto));
+                // 2026-11-25: también por el nombre real del destinatario ("Cintia Leticia Romero"), no solo el usuario.
+                query = query.Where(o => o.BuyerNickname.Contains(texto) || o.ItemTitle.Contains(texto)
+                    || _db.MeliShipments.Any(s => s.MeliShipmentId == o.ShippingId && s.ReceiverName != null && s.ReceiverName.Contains(texto)));
         }
 
         var filas = await query

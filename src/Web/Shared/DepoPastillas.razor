@@ -106,6 +106,14 @@
     .dp-flot.dp-vent.abajo { max-height:calc(100vh - 176px); }
     .dp-vh { display:flex; align-items:center; gap:0.6rem; padding:0.7rem 1rem; border-bottom:1px solid #e5e7eb; font-size:1.1rem; font-weight:700; flex-shrink:0; }
     .dp-vh small { font-size:0.78rem; font-weight:400; color:#6b7280; }
+    .dp-ir { margin-left:auto; font-size:0.8rem; font-weight:500; color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe; border-radius:999px; padding:0.2rem 0.7rem; text-decoration:none; white-space:nowrap; }
+    .dp-ir:hover { background:#dbeafe; }
+    .dp-x.pegado { margin-left:0.3rem; }
+    .dp-bus { flex-basis:100%; display:flex; align-items:center; gap:0.4rem; border:2px solid #93c5fd; border-radius:8px; padding:0.25rem 0.6rem; background:#fff; }
+    .dp-bus:focus-within { border-color:#2563eb; }
+    .dp-bus input { flex:1; border:none; outline:none; font-size:0.9rem; padding:0.2rem 0; background:transparent; min-width:0; }
+    .dp-bus button { background:none; border:none; color:#6b7280; cursor:pointer; font-size:0.8rem; white-space:nowrap; }
+    .dp-bus-n { flex-basis:100%; font-size:0.78rem; color:#6b7280; }
     .dp-x { margin-left:auto; background:none; border:none; font-size:1.3rem; cursor:pointer; color:#374151; line-height:1; }
     .dp-vf { display:flex; flex-wrap:wrap; gap:0.4rem; align-items:center; padding:0.5rem 1rem; font-size:0.8rem; background:#f9fafb; border-bottom:1px solid #eef0f3; flex-shrink:0; }
     .dp-ch { border:1px solid #e5e7eb; background:#fff; border-radius:999px; padding:0.2rem 0.65rem; font:inherit; font-size:0.8rem; cursor:pointer; }
@@ -365,7 +373,12 @@
         <div class="dp-vh">
             @(esMe1 ? "🚚 Envíos ME1" : "🏷️ Ventas MeLi")
             <small>@(esMe1 ? "los que despachamos nosotros" : "Flex y Correo")</small>
-            <button class="dp-x" title="Cerrar" @onclick="Cerrar">✕</button>
+            @if (!esMe1)
+            {
+                @* 2026-11-25: atajo a la pantalla completa de órdenes. *@
+                <a class="dp-ir" href="/deposito/ordenes-meli" @onclick="Cerrar">🏷️ Ir a Órdenes MeLi →</a>
+            }
+            <button class="dp-x @(esMe1 ? "" : "pegado")" title="Cerrar" @onclick="Cerrar">✕</button>
         </div>
         <div class="dp-vf">
             @if (esMe1)
@@ -375,10 +388,21 @@
             }
             else
             {
+                @* 2026-11-25: buscador. Mientras hay algo escrito muestra TODAS (impresas, en camino, entregadas)
+                   de los últimos 30 días; al borrarlo vuelve al filtro que estaba. *@
+                <div class="dp-bus">
+                    🔎 <input placeholder="Buscar por nombre, usuario de MeLi, nº de venta, nº de envío o producto"
+                              value="@busVen" @oninput="e => Buscar(e.Value?.ToString())" />
+                    @if (Buscando) { <button title="Borrar la búsqueda" @onclick="() => Buscar(null)">✕ borrar</button> }
+                </div>
+                @if (Buscando)
+                {
+                    <div class="dp-bus-n">@FilasVentana.Count venta@(FilasVentana.Count == 1 ? "" : "s") encontrada@(FilasVentana.Count == 1 ? "" : "s") en los últimos 30 días (todas: para imprimir, impresas, en camino y entregadas)</div>
+                }
                 @* 2026-11-10: no solo las de imprimir: también impresas, en camino y entregadas. *@
                 @foreach (var (k, l) in FiltrosVentas)
                 {
-                    <button class="dp-ch @(filtroVen == k ? "on" : "")" @onclick="() => ElegirFiltroVen(k)">@l @(k == "todas" ? "" : $"({ventasVentana.Count(o => Fase(o) == k)})")</button>
+                    <button class="dp-ch @((Buscando ? k == "todas" : filtroVen == k) ? "on" : "")" @onclick="() => ElegirFiltroVen(k)">@l @(k == "todas" ? "" : $"({ventasVentana.Count(o => Fase(o) == k)})")</button>
                 }
                 <span class="dp-sep"></span>
                 @foreach (var (d, l) in new[] { (1, "Hoy"), (7, "7 días"), (30, "30 días") })
@@ -483,9 +507,11 @@
                     <div class="dp-fase">
                         <b>@TituloFase(o, fase)</b>
                         <span class="sub">@DetalleFase(o, fase)</span>
-                        @if (env.HasValue && fase is "imprimir" or "armado")
+                        @if (env.HasValue && fase is "imprimir" or "armado" or "camino" or "entregado")
                         {
-                            <button class="dp-est @(o.EtiquetaImpresa ? "ya" : "")" title="@(o.EtiquetaImpresa ? "Volver a imprimir esta" : "Imprimir solo esta")" @onclick="() => ImprimirUna(env.Value)">@(o.EtiquetaImpresa ? "Reimprimir" : "🖨️ Imprimir")</button>
+                            @* 2026-11-25: "Recuperar etiqueta impresa" = la misma de la primera vez, aunque el envío ya haya salido. *@
+                            var yaImpresa = o.EtiquetaImpresa || fase is "camino" or "entregado";
+                            <button class="dp-est @(yaImpresa ? "ya" : "")" title="@(yaImpresa ? "Sale la misma etiqueta que se imprimió la primera vez (aunque el envío ya haya salido)" : "Imprimir solo esta")" @onclick="() => ImprimirUna(env.Value)">@(yaImpresa ? "🖨️ Recuperar etiqueta impresa" : "🖨️ Imprimir")</button>
                         }
                     </div>
                 </div>
@@ -723,7 +749,8 @@
     private List<MeliDepoOrden> Me1SinImprimir => Me1ParaDespachar.Where(o => o.NumeroEnvio.HasValue && !o.EtiquetaImpresa).ToList();
     private List<MeliDepoOrden> VentasSinEtiqueta => ventas.Where(o => o.NumeroEnvio.HasValue && !o.EtiquetaImpresa).ToList();
     private List<MeliDepoOrden> FilasVentana => ventana == "ven"
-        ? ventasVentana.Where(o => filtroVen == "todas" || Fase(o) == filtroVen).ToList()
+        ? (Buscando ? ventasVentana.Where(Coincide).ToList()
+                    : ventasVentana.Where(o => filtroVen == "todas" || Fase(o) == filtroVen).ToList())
         : verDespachados ? Me1Despachados : Me1ParaDespachar;
 
     // ───── 2026-11-10: en qué anda cada envío (color del renglón y texto de la derecha) ─────
@@ -776,7 +803,54 @@
         catch { }
     }
 
-    private void ElegirFiltroVen(string k) { filtroVen = k; tildadas.Clear(); detalleAbierto = null; }
+    private async Task ElegirFiltroVen(string k)
+    {
+        if (Buscando) await Buscar(null);   // tocar un filtro deja de buscar
+        filtroVen = k; tildadas.Clear(); detalleAbierto = null;
+    }
+
+    // ───── 2026-11-25: buscador de la ventana Ventas MeLi ─────
+    private string? busVen;
+    private int? diasAntesDeBuscar;
+    private bool Buscando => !string.IsNullOrWhiteSpace(busVen);
+
+    private async Task Buscar(string? texto)
+    {
+        var antes = Buscando;
+        busVen = texto;
+        tildadas.Clear(); detalleAbierto = null;
+        if (Buscando && !antes && diasVen < 30)
+        {
+            diasAntesDeBuscar = diasVen; diasVen = 30;
+            await CargarVentasVentana();
+        }
+        else if (!Buscando && diasAntesDeBuscar is { } d)
+        {
+            diasAntesDeBuscar = null; diasVen = d;
+            await CargarVentasVentana();
+        }
+    }
+
+    /// <summary>Sin tildes, sin espacios ni puntos y en minúscula: "Cintia Leticia" encuentra a CINTIALETICIAROMERO.</summary>
+    private static string Normal(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var d = s.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder(d.Length);
+        foreach (var c in d)
+            if (char.IsLetterOrDigit(c) && System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(char.ToLowerInvariant(c));
+        return sb.ToString();
+    }
+
+    private bool Coincide(MeliDepoOrden o)
+    {
+        var q = Normal(busVen);
+        if (q.Length == 0) return true;
+        return new[] { o.Destinatario, o.Comprador, o.NumeroVenta.ToString(), o.Numero.ToString(), o.NumeroEnvio?.ToString(), o.Cuenta }
+                   .Concat(o.Productos.Select(p => p.Titulo))
+                   .Any(x => Normal(x).Contains(q));
+    }
 
     private async Task ElegirDiasVen(int d)
     {
