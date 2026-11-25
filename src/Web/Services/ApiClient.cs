@@ -7823,6 +7823,10 @@ public partial class ApiClient
     public async Task<List<MaquinaPendienteDto>?> GetMaquinasPendientesAsync(int clienteId)
         => await GetAsync<List<MaquinaPendienteDto>>($"/api/cafe/cobranzas/maquinas-pendientes/{clienteId}");
 
+    /// <summary>25/11/2026: todas las máquinas financiadas que deben (botón Máquinas de Nueva cobranza).</summary>
+    public async Task<List<MaquinaDeudorDto>?> GetMaquinasDeudoresAsync()
+        => await GetAsync<List<MaquinaDeudorDto>>("/api/cafe/cobranzas/maquinas-deudores");
+
     /// <summary>Lista de otras sucursales que comparten el mismo CUIT con el cliente dado.</summary>
     public async Task<List<SucursalMismoCuitDto>?> GetSucursalesMismoCuitAsync(int clienteId)
         => await GetAsync<List<SucursalMismoCuitDto>>($"/api/cafe/cobranzas/sucursales-mismo-cuit/{clienteId}");

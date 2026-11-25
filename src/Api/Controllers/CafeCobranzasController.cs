@@ -384,6 +384,39 @@ public class CafeCobranzasController : ControllerBase
         return Ok(res);
     }
 
+    public record MaquinaDeudorDto(int ClienteId, int ComodatoId, string Nombre, string Moneda, decimal Saldo,
+        decimal? ValorCuota, int? CuotasTotales, int? CuotaActual);
+
+    /// <summary>25/11/2026 (pedido del dueño): TODAS las máquinas financiadas que todavía deben, de todos los
+    /// clientes, para el botón "Máquinas" de Nueva cobranza (al lado de Ventas / Alquileres). Misma cuenta
+    /// que maquinas-pendientes. CuotaActual = cuotas enteras ya pagadas + 1 (null si no tiene plan de cuotas).</summary>
+    [HttpGet("maquinas-deudores")]
+    public async Task<IActionResult> MaquinasDeudores()
+    {
+        var maquinas = await _db.CafeComodatos.AsNoTracking()
+            .Where(c => c.Modalidad == "FINANCIADA" && c.Estado == "EN_CLIENTE")
+            .Select(c => new { c.Id, c.ClienteId, c.Marca, c.Modelo, c.Moneda, c.PrecioVenta, c.ValorCuota, c.CuotasTotales })
+            .ToListAsync();
+        if (maquinas.Count == 0) return Ok(new List<MaquinaDeudorDto>());
+        var pagado = await CafeComodatoSaldoService.PagadoAsync(_db, maquinas.Select(m => m.Id));
+        var res = maquinas.Select(m =>
+            {
+                var pg = pagado.TryGetValue(m.Id, out var p) ? p : 0m;
+                var saldo = (m.PrecioVenta ?? 0m) - pg;
+                int? cuota = null;
+                if (m.ValorCuota is > 0m)
+                {
+                    var n = (int)Math.Floor((pg + 0.01m) / m.ValorCuota.Value) + 1;
+                    cuota = m.CuotasTotales is > 0 ? Math.Min(n, m.CuotasTotales.Value) : n;
+                }
+                return new MaquinaDeudorDto(m.ClienteId, m.Id, CafeComodatoSaldoService.Nombre(m.Marca, m.Modelo),
+                    m.Moneda == "USD" ? "USD" : "ARS", saldo, m.ValorCuota, m.CuotasTotales, cuota);
+            })
+            .Where(m => m.Saldo > 0.01m)
+            .ToList();
+        return Ok(res);
+    }
+
     /// <summary>Devuelve las OTRAS sucursales/clientes que comparten el mismo CUIT que el
     /// cliente dado. Vacio si el cliente no tiene CUIT o si nadie mas comparte ese CUIT.
     /// Sirve para que el modal de Cobranza muestre el checkbox "Incluir tambien las otras X sucursales".</summary>
