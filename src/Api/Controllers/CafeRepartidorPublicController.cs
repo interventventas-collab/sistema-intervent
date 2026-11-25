@@ -2186,6 +2186,26 @@ public class CafeRepartidorPublicController : ControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>2026-11-25: "Avisar despacho" desde el celu del repartidor (si la oficina no lo avisó al
+    /// armar el recorrido). Es el mismo "Sí, sale hoy": MeLi le avisa al comprador "En camino" y, como ya
+    /// tiene repartidor, el robot manda "Salió a distribución" enseguida.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/me1/{shipmentId:int}/despachar")]
+    public async Task<IActionResult> DespacharMe1(string tokenRepartidor, int shipmentId, [FromServices] Me1AvisosService avisos)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
+
+        var ship = await _db.MeliShipments.AsNoTracking().FirstOrDefaultAsync(s => s.Id == shipmentId);
+        if (ship is null) return NotFound(new { error = "Envio no encontrado" });
+        if (ship.RepartidorAsignadoId != r.Id) return Forbid();
+        if (!MeliShipmentService.Me1SinDespachar(ship.Status, ship.Substatus))
+            return BadRequest(new { error = ship.Status == "shipped" ? "Ya estaba avisado a MeLi" : "Este envio no se puede avisar como despachado" });
+
+        var (avisados, _, errores) = await avisos.ElegirDiaSalidaAsync(new[] { ship.MeliShipmentId }, Me1AvisosService.HoyAr());
+        if (avisados == 0) return BadRequest(new { error = errores.FirstOrDefault() ?? "MeLi no lo acepto" });
+        return Ok(new { ok = true });
+    }
+
     public record NoEntregadoMe1Request(string? Motivo);
 
     /// <summary>2026-11-18: "No pude entregar" desde el celu del repartidor → visita fallida en MeLi

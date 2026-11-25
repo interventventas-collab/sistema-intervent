@@ -660,8 +660,12 @@ public class MeliShipmentService
     /// <summary>Substatus de "visita fallida" que MeLi acepta para ME1 (van con status = shipped).</summary>
     public static readonly string[] Me1VisitasFallidas = { "receiver_absent", "bad_address", "unauthorized_receiver", "dangerous_area" };
 
-    /// <summary>Estados de MeLi en los que el envío todavía no salió (se le puede avisar "En camino").</summary>
-    public static bool Me1SinDespachar(string? status) => status is "ready_to_ship" or "handling";
+    /// <summary>Estados de MeLi en los que el envío todavía no salió (se le puede avisar "En camino").
+    /// 2026-11-25: en prod los ME1 se quedan en pending/shipment_paid aunque MeLi ya los tomó (date_handling
+    /// con fecha) y nunca pasan a ready_to_ship; MeLi muestra "Listo para despachar · Avisar despacho" en ese
+    /// estado. Antes solo se contaban handling/ready_to_ship y el "¿Sale hoy?" no aparecía nunca.</summary>
+    public static bool Me1SinDespachar(string? status, string? substatus)
+        => status is "ready_to_ship" or "handling" || (status == "pending" && substatus == "shipment_paid");
 
     /// <summary>
     /// Cambia el estado de un envío ME1 en MeLi.
@@ -678,7 +682,7 @@ public class MeliShipmentService
 
         bool esFinalOFallida = status is "delivered" or "not_delivered"
             || (status == "shipped" && substatus is not null && Me1VisitasFallidas.Contains(substatus));
-        if (esFinalOFallida && Me1SinDespachar(ship.Status))
+        if (esFinalOFallida && Me1SinDespachar(ship.Status, ship.Substatus))
         {
             await PostMe1StatusAsync(shipmentId, "shipped", null, null, null, "Despachado");
             await Task.Delay(1500);

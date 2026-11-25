@@ -313,6 +313,7 @@
                                             <span class="badge-me1" title="Envio ME1 - click para marcar estado de entrega"
                                                   @onclick:stopPropagation="true"
                                                   @onclick="@(() => OpenMe1Modal(packMe1Order))">🏎 ME1</span>
+                                            @Me1DespachoBoton(packMe1Order)
                                         }
                                     </td>
                                     <td>@group.Orders.First().DateCreated.ToString("dd/MM/yyyy HH:mm")</td>
@@ -394,6 +395,7 @@
                                             <span class="badge-me1" title="Envio ME1 - click para marcar estado de entrega"
                                                   @onclick:stopPropagation="true"
                                                   @onclick="@(() => OpenMe1Modal(order))">🏎 ME1</span>
+                                            @Me1DespachoBoton(order)
                                         }
                                     </td>
                                     <td>@order.DateCreated.ToString("dd/MM/yyyy HH:mm")</td>
@@ -1088,6 +1090,12 @@
     .row-me1:hover {
         background-color: #ffedd5 !important;
     }
+
+    /* 2026-11-25: "Avisar despacho" como el de MercadoLibre, al lado del badge ME1 */
+    .btn-me1-desp { display: inline-block; margin-left: 0.4rem; border: none; background: #3483fa; color: #fff; border-radius: 8px;
+        padding: 0.15rem 0.6rem; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .btn-me1-desp:hover { background: #2968c8; } .btn-me1-desp:disabled { opacity: .5; }
+    .me1-desp-ok { margin-left: 0.4rem; color: #15803d; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
 
     /* Badge "ME1" al lado del numero de orden/pack */
     .badge-me1 {
@@ -2104,6 +2112,49 @@
     }
 
     // ===== Modal de cambio de estado ME1 (se abre con click en el badge 🏎 ME1) =====
+    // 2026-11-25: botón "Avisar despacho" en cada ME1 que MeLi todavía no sabe que salió (igual que el de
+    // MercadoLibre). Es el "Sí, sale hoy": MeLi le avisa al comprador "En camino".
+    private static bool Me1PorAvisar(MeliOrderDto o)
+        => o.ShippingStatus is "ready_to_ship" or "handling" || (o.ShippingStatus == "pending" && o.ShippingSubstatus == "shipment_paid");
+    private long? me1AvisandoEnvio;
+
+    private RenderFragment Me1DespachoBoton(MeliOrderDto o) => __builder =>
+    {
+        if (o.ShippingId is long envio && Me1PorAvisar(o))
+        {
+            <button type="button" class="btn-me1-desp" disabled="@(me1AvisandoEnvio is not null)"
+                    @onclick:stopPropagation="true" @onclick="() => AvisarDespachoOrden(o)">@(me1AvisandoEnvio == envio ? "Avisando…" : "Avisar despacho")</button>
+        }
+        else if (o.ShippingStatus == "shipped")
+        {
+            <span class="me1-desp-ok">✓ despachado</span>
+        }
+    };
+
+    private async Task AvisarDespachoOrden(MeliOrderDto o)
+    {
+        if (o.ShippingId is not long envio || me1AvisandoEnvio is not null) return;
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", $"¿Avisar a MercadoLibre que la compra de {o.BuyerNickname} salió hoy?\n\nEl comprador recibe el aviso \"En camino\". No se puede deshacer."); }
+        catch { ok = false; }
+        if (!ok) return;
+        me1AvisandoEnvio = envio; StateHasChanged();
+        try
+        {
+            var (res, err) = await Api.SetMe1DiaSalidaAsync(new List<long> { envio }, DateTimeExt.AhoraAr().Date);
+            if (res is null) ToastService.Error("No se pudo avisar: " + (err ?? "sin respuesta"));
+            else if (res.Errores is { Count: > 0 } es) ToastService.Error("MercadoLibre no lo aceptó: " + string.Join(" · ", es));
+            else
+            {
+                // La orden se actualiza sola cuando MeLi manda su aviso; mientras tanto lo mostramos ya.
+                foreach (var x in orders?.Where(x => x.ShippingId == envio) ?? Enumerable.Empty<MeliOrderDto>())
+                { x.ShippingStatus = "shipped"; x.ShippingSubstatus = null; }
+                ToastService.Success("Avisado a MercadoLibre: en camino");
+            }
+        }
+        finally { me1AvisandoEnvio = null; StateHasChanged(); }
+    }
+
     private MeliOrderDto? me1ModalOrder;
     private string me1SelectedKey = "";
     private string me1CommentInput = "";

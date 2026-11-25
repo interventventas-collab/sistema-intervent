@@ -1150,6 +1150,17 @@
                     {
                         <div style="margin-top:0.5rem; font-size:0.8rem; color:#b42318;">❌ Avisado a MeLi: @yaAvisado. Si lo volvés a intentar, marcalo de nuevo.</div>
                     }
+                    @* 2026-11-25: si la oficina no avisó el despacho, lo avisa el repartidor antes de salir. *@
+                    @if (Me1PorAvisar(m))
+                    {
+                        <button type="button" class="mp-card-btn" style="width:100%; margin-top:0.6rem; padding:0.7rem 0.3rem; font-size:0.95rem; background:#3483fa; color:#fff; border:none; font-weight:700; border-radius:8px;"
+                                disabled="@(me1Despachando is not null)" @onclick="() => DespacharMe1(m)">@(me1Despachando == m.Id ? "Avisando…" : "🚚 Avisar despacho")</button>
+                        <div style="font-size:0.75rem; color:#6b7280; margin-top:0.25rem; text-align:center;">Tocalo cuando lo cargás para salir: MeLi le avisa al comprador que va en camino.</div>
+                    }
+                    else if (m.Status == "shipped" && MotivoFallido(m.Substatus) is null)
+                    {
+                        <div style="margin-top:0.5rem; font-size:0.8rem; color:#15803d; font-weight:600;">✓ Despachado (MeLi ya sabe que va en camino)</div>
+                    }
                     @* 2026-11-18: "No pude entregar" → visita fallida en MeLi (no es final, lo podés volver a intentar). *@
                     <div style="display:flex; gap:0.5rem; margin-top:0.7rem;">
                         <button type="button" class="mp-card-btn mp-card-btn-entregar" style="flex:1; padding:0.7rem 0.3rem; font-size:0.95rem;" @onclick="() => AbrirEntregarMe1(m)">✅ Entregado</button>
@@ -4799,6 +4810,28 @@
     }
 
     // 2026-11-18: ME1 — "No pude entregar" (visita fallida en MeLi).
+    // 2026-11-25: "Avisar despacho" (En camino) desde el celu.
+    private static bool Me1PorAvisar(Me1PedidoDto m)
+        => !m.YaEntregada && (m.Status is "ready_to_ship" or "handling" || (m.Status == "pending" && m.Substatus == "shipment_paid"));
+    private int? me1Despachando;
+    private async Task DespacharMe1(Me1PedidoDto m)
+    {
+        if (me1Despachando is not null) return;
+        me1Despachando = m.Id; StateHasChanged();
+        try
+        {
+            var resp = await Http.PostAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/me1/{m.Id}/despachar", null);
+            if (resp.IsSuccessStatusCode) { MostrarToast("Avisado a MeLi: va en camino", false); await Recargar(); }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                MostrarToast("No se pudo avisar. " + body, true);
+            }
+        }
+        catch (Exception ex) { MostrarToast("Error: " + ex.Message, true); }
+        finally { me1Despachando = null; StateHasChanged(); }
+    }
+
     private Me1PedidoDto? me1NoPude;
     private bool me1NoPudeEnviando;
     private string? me1NoPudeError;

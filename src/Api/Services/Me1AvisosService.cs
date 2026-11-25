@@ -40,7 +40,7 @@ public class Me1AvisosService
         if (ids.Count == 0) return new();
         var lista = await _db.MeliShipments.AsNoTracking()
             .Where(s => ids.Contains(s.MeliShipmentId) && s.Mode == "me1"
-                        && (s.Status == "ready_to_ship" || s.Status == "handling")
+                        && ((s.Status == "ready_to_ship" || s.Status == "handling") || (s.Status == "pending" && s.Substatus == "shipment_paid"))
                         && s.Me1SaleFecha == null)
             .Select(s => new { s.MeliShipmentId, s.ReceiverName, s.BuyerNickname, s.City, s.ItemsSummary })
             .ToListAsync();
@@ -64,7 +64,7 @@ public class Me1AvisosService
             s.Me1SaleFecha = fecha;
             await _db.SaveChangesAsync();
             if (fecha > hoy) { programados++; continue; }
-            if (!MeliShipmentService.Me1SinDespachar(s.Status)) continue;
+            if (!MeliShipmentService.Me1SinDespachar(s.Status, s.Substatus)) continue;
             var (ok, err) = await _ship.SetMe1StatusAsync(s.Id, "shipped", null, null, null, "Despachado");
             if (ok) avisados++;
             else errores.Add($"{s.ReceiverName ?? s.MeliShipmentId.ToString()}: {err}");
@@ -86,7 +86,7 @@ public class Me1AvisosService
         {
             var programados = await _db.MeliShipments.AsNoTracking()
                 .Where(s => s.Mode == "me1" && s.Me1SaleFecha != null && s.Me1SaleFecha <= hoy
-                            && (s.Status == "ready_to_ship" || s.Status == "handling"))
+                            && ((s.Status == "ready_to_ship" || s.Status == "handling") || (s.Status == "pending" && s.Substatus == "shipment_paid")))
                 .Select(s => s.Id).ToListAsync(ct);
             foreach (var id in programados)
             {
@@ -110,7 +110,7 @@ public class Me1AvisosService
             var ids = conChofer.Keys.ToList();
             var envios = await _db.MeliShipments.AsNoTracking()
                 .Where(s => ids.Contains(s.MeliShipmentId) && s.Mode == "me1"
-                            && s.Status != null && !Finales.Contains(s.Status) && s.Status != "pending")
+                            && s.Status != null && !Finales.Contains(s.Status) && (s.Status != "pending" || s.Substatus == "shipment_paid"))
                 .Select(s => new { s.Id, s.MeliShipmentId, s.Status, s.Substatus, s.Me1SalioDistribucionFecha, s.Me1VisitaFallidaAt })
                 .ToListAsync(ct);
             // 2026-11-20: registro de cada decisión (el 20/11 en prod no salió ningún aviso y no se pudo saber por qué).
@@ -129,7 +129,7 @@ public class Me1AvisosService
                 // 2026-11-20: "a conciencia" (pedido del usuario): estar en el mapa NO avisa "En camino". Ese
                 // aviso sale solo cuando alguien contesta "Sí, sale hoy" (al imprimir o en el mapa). Si nadie
                 // confirmó todavía, tampoco se manda "Salió a distribución".
-                if (MeliShipmentService.Me1SinDespachar(s.Status)) continue;
+                if (MeliShipmentService.Me1SinDespachar(s.Status, s.Substatus)) continue;
                 bool fallidaHoy = s.Me1VisitaFallidaAt.HasValue && s.Me1VisitaFallidaAt.Value.AddHours(-3).Date == hoy;
                 if (conChofer[s.MeliShipmentId] && s.Me1SalioDistribucionFecha != hoy && !fallidaHoy)
                 {
@@ -152,7 +152,7 @@ public class Me1AvisosService
         var desdeUtc = hoy.AddHours(3);   // 00:00 AR en UTC
         var lista = await _db.MeliShipments.AsNoTracking()
             .Where(s => s.RepartidorAsignadoId == repartidorId && s.Mode == "me1"
-                        && s.Status != null && !Finales.Contains(s.Status) && s.Status != "pending"
+                        && s.Status != null && !Finales.Contains(s.Status) && (s.Status != "pending" || s.Substatus == "shipment_paid")
                         && (s.Me1SaleFecha == null || s.Me1SaleFecha <= hoy)
                         && (s.Me1VisitaFallidaAt == null || s.Me1VisitaFallidaAt < desdeUtc))
             .OrderBy(s => s.ReceiverName)
