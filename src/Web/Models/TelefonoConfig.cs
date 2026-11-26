@@ -5,6 +5,7 @@ public class TelefonoInterno
 {
     public string Nombre { get; set; } = "";
     public string Numero { get; set; } = "";
+    public string Grupo { get; set; } = "";
 }
 
 public class TelefonoConfig
@@ -14,5 +15,11 @@ public class TelefonoConfig
     public string Dominio { get; set; } = "";
     public string Usuario { get; set; } = "";
     public string Clave { get; set; } = "";
+    public string MiNombre { get; set; } = "";
     public List<TelefonoInterno> Internos { get; set; } = new();
+}
+
+public class TelefonoEstado
+{
+    public List<string> Conectados { get; set; } = new();
 }

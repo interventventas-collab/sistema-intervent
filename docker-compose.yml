@@ -73,7 +73,7 @@ services:
       # WhatsApp Cloud API oficial de Meta (alternativa a Twilio, sin intermediario).
       - META_WA_TOKEN=${META_WA_TOKEN:-}
       # Telefono dentro del sistema (interno 103 de la central, ver telefonia/)
-      - TEL_103_PASS=${TEL_103_PASS:-}
+      - TEL_SECRET=${TEL_SECRET:-}
       - TELEFONO_WS_URL=wss://${DOMAIN:-localhost}/telefono-ws
       - META_WA_PHONE_ID=${META_WA_PHONE_ID:-}
       - META_WA_WABA_ID=${META_WA_WABA_ID:-}
