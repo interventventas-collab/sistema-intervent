@@ -194,6 +194,9 @@
                     <button @onclick="@(() => Agregar("heladera"))"><svg width="44" height="26"><rect x="12" y="2" width="20" height="22" fill="#f8fafc" stroke="#57534e" /><line x1="12" y1="9" x2="32" y2="9" stroke="#57534e" /></svg>Heladera</button>
                     <button @onclick="@(() => Agregar("puerta"))"><svg width="44" height="26"><line x1="4" y1="13" x2="40" y2="13" stroke="#EF9F27" stroke-width="5" /></svg>Puerta</button>
                     <button @onclick="@(() => Agregar("ventana"))"><svg width="44" height="26"><line x1="4" y1="13" x2="40" y2="13" stroke="#111" stroke-width="5" /><line x1="4" y1="13" x2="40" y2="13" stroke="#fff" stroke-width="1" /></svg>Ventana</button>
+                    @* 2026-11-26: pasillos/calles con la medida que se elija + escalera *@
+                    <button @onclick="@(() => Agregar("pasillo"))"><svg width="44" height="26"><rect x="2" y="7" width="40" height="12" fill="#f9fafb" stroke="#9ca3af" stroke-dasharray="3 2" /><line x1="4" y1="13" x2="40" y2="13" stroke="#9ca3af" stroke-dasharray="4 3" /></svg>Pasillo / calle</button>
+                    <button @onclick="@(() => Agregar("escalera"))"><svg width="44" height="26"><rect x="4" y="5" width="36" height="16" fill="#e5e7eb" stroke="#374151" /><line x1="10" y1="5" x2="10" y2="21" stroke="#374151" /><line x1="16" y1="5" x2="16" y2="21" stroke="#374151" /><line x1="22" y1="5" x2="22" y2="21" stroke="#374151" /><line x1="28" y1="5" x2="28" y2="21" stroke="#374151" /><line x1="34" y1="5" x2="34" y2="21" stroke="#374151" /></svg>Escalera</button>
                     <button @onclick="@(() => Agregar("texto"))"><svg width="44" height="26"><rect x="4" y="5" width="36" height="16" fill="none" stroke="#9ca3af" stroke-dasharray="3 2" /><text x="22" y="17" font-size="10" text-anchor="middle" fill="#6b7280">Aa</text></svg>Texto</button>
                     <button @onclick="@(() => Agregar("mueble"))"><svg width="44" height="26"><rect x="4" y="4" width="36" height="18" rx="3" fill="#f3f4f6" stroke="#9ca3af" /><text x="22" y="17" font-size="11" text-anchor="middle" fill="#6b7280">+</text></svg>Otro mueble</button>
                 </div>
@@ -217,7 +220,9 @@
                     @foreach (var e in Ordenados())
                     {
                         var r = Rect(e);
-                        var fijo = e.Tipo == "terreno" || !string.IsNullOrWhiteSpace(e.Puntos);
+                        // 2026-11-26: las zonas (ambientes) tampoco se arrastran: se movían sin querer al tocar el plano.
+                        // Se corren con "Desde la pared izquierda / Desde la calle" en el panel de la derecha.
+                        var fijo = e.Tipo == "terreno" || e.Tipo == "zona" || !string.IsNullOrWhiteSpace(e.Puntos);
                         <g @key="e.Id" data-id="@e.Id" data-tipo="@e.Tipo" data-x="@F(e.X)" data-y="@F(e.Y)" data-fijo="@(fijo ? "1" : "0")">
                             @switch (e.Tipo)
                             {
@@ -361,6 +366,44 @@
                                     <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#f8fafc" stroke="#57534e" stroke-width="0.04" />
                                     <line x1="@F(r.X)" y1="@F(r.Y + r.H * 0.3)" x2="@F(r.X + r.W)" y2="@F(r.Y + r.H * 0.3)" stroke="#57534e" stroke-width="0.03" />
                                     break;
+                                case "pasillo":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#f9fafb" fill-opacity="0.85" stroke="#9ca3af" stroke-width="0.04" stroke-dasharray="0.25 0.15" />
+                                    @if (r.Horiz)
+                                    {
+                                        <line x1="@F(r.X + 0.2)" y1="@F(r.CY)" x2="@F(r.X + r.W - 0.2)" y2="@F(r.CY)" stroke="#d1d5db" stroke-width="0.04" stroke-dasharray="0.4 0.3" />
+                                    }
+                                    else
+                                    {
+                                        <line x1="@F(r.CX)" y1="@F(r.Y + 0.2)" x2="@F(r.CX)" y2="@F(r.Y + r.H - 0.2)" stroke="#d1d5db" stroke-width="0.04" stroke-dasharray="0.4 0.3" />
+                                    }
+                                    var pfs = Math.Clamp(r.Corto * 0.28, 0.18, 0.42);
+                                    var ptx = $"{(string.IsNullOrWhiteSpace(e.Nombre) ? "Pasillo" : e.Nombre)} · {M((decimal)r.Corto)} m";
+                                    @if (r.Horiz)
+                                    {
+                                        <g><text x="@F(r.CX)" y="@F(r.CY - pfs * 0.4)" font-size="@F(pfs)" fill="#6b7280" text-anchor="middle" pointer-events="none">@ptx</text></g>
+                                    }
+                                    else
+                                    {
+                                        <g transform="rotate(-90 @F(r.CX) @F(r.CY))"><text x="@F(r.CX)" y="@F(r.CY - pfs * 0.4)" font-size="@F(pfs)" fill="#6b7280" text-anchor="middle" pointer-events="none">@ptx</text></g>
+                                    }
+                                    break;
+                                case "escalera":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#e5e7eb" stroke="#374151" stroke-width="0.05" />
+                                    @foreach (var t in Cortes(r.Largo, 0.25))
+                                    {
+                                        @if (r.Horiz)
+                                        {
+                                            <line x1="@F(r.X + t)" y1="@F(r.Y)" x2="@F(r.X + t)" y2="@F(r.Y + r.H)" stroke="#374151" stroke-width="0.025" />
+                                        }
+                                        else
+                                        {
+                                            <line x1="@F(r.X)" y1="@F(r.Y + t)" x2="@F(r.X + r.W)" y2="@F(r.Y + t)" stroke="#374151" stroke-width="0.025" />
+                                        }
+                                    }
+                                    var efs = Math.Clamp(r.Corto * 0.25, 0.18, 0.4);
+                                    <rect x="@F(r.CX - efs * 2.4)" y="@F(r.CY - efs * 0.75)" width="@F(efs * 4.8)" height="@F(efs * 1.2)" rx="0.05" fill="#fff" fill-opacity="0.9" pointer-events="none" />
+                                    <g><text x="@F(r.CX)" y="@F(r.CY + efs * 0.3)" font-size="@F(efs)" font-weight="700" fill="#374151" text-anchor="middle" pointer-events="none">@(string.IsNullOrWhiteSpace(e.Nombre) ? "Escalera" : e.Nombre)</text></g>
+                                    break;
                                 case "texto":
                                     <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="transparent"
                                           stroke="@(editar ? "#9ca3af" : "none")" stroke-width="0.02" stroke-dasharray="0.1 0.06" />
@@ -491,7 +534,11 @@
                         }
                         <label>Notas</label>
                         <textarea rows="2" value="@s.Notas" @onchange="@(ev => Cambiar(el => el.Notas = Txt(ev)))"></textarea>
-                        <div class="pd-g" style="margin-top:6px">Lugar: @M(s.X) m de la pared izquierda · @M(s.Y) m desde la calle</div>
+                        @* 2026-11-26: el lugar también se escribe, para dejarlo exacto (y para mover las zonas, que no se arrastran) *@
+                        <div class="pd-dos">
+                            <div><label>Desde la pared izquierda (m)</label><input inputmode="decimal" value="@M(s.X)" @onchange="@(ev => CambiarPos(ev, (el, v) => el.X = v))" /></div>
+                            <div><label>Desde la calle (m)</label><input inputmode="decimal" value="@M(s.Y)" @onchange="@(ev => CambiarPos(ev, (el, v) => el.Y = v))" /></div>
+                        </div>
 
                         @if (s.Tipo == "rack")
                         {
@@ -902,6 +949,8 @@
         ["heladera"] = new(0.70m, 0.70m),
         ["puerta"] = new(0.80m, 0.15m),
         ["ventana"] = new(1.00m, 0.15m),
+        ["pasillo"] = new(1.50m, 5.00m, null, "Pasillo"),
+        ["escalera"] = new(1.60m, 3.30m, null, "Escalera"),
         ["texto"] = new(2.00m, 0.50m, null, "Texto"),
         ["mueble"] = new(1.00m, 1.00m, null, "Mueble"),
     };
@@ -968,6 +1017,14 @@
     {
         var v = ParseDec(Txt(ev));
         if (v is null || v <= 0) { ToastService.Warning("Poné una medida en metros, por ejemplo 1,10"); StateHasChanged(); return; }
+        await Cambiar(el => f(el, Math.Round(v.Value, 2)));
+    }
+
+    /// <summary>Lugar (X/Y): el 0 vale (pegado a la pared o a la calle).</summary>
+    private async Task CambiarPos(ChangeEventArgs ev, Action<PlanoElementoDto, decimal> f)
+    {
+        var v = ParseDec(Txt(ev));
+        if (v is null || v < 0) { ToastService.Warning("Poné cuántos metros, por ejemplo 2,80 (0 = pegado)"); StateHasChanged(); return; }
         await Cambiar(el => f(el, Math.Round(v.Value, 2)));
     }
 
@@ -1065,7 +1122,7 @@
     }
 
     private IEnumerable<PlanoElementoDto> Ordenados()
-        => elementos.OrderBy(e => e.Tipo switch { "terreno" => 0, "zona" => 1, "techo" => 2, "texto" => 4, _ => 3 })
+        => elementos.OrderBy(e => e.Tipo switch { "terreno" => 0, "zona" => 1, "pasillo" => 2, "techo" => 2, "texto" => 4, _ => 3 })
                     .ThenBy(e => e.Orden).ThenBy(e => e.Id);
 
     private static List<double[]>? LeerPuntos(PlanoElementoDto e)
@@ -1177,6 +1234,8 @@
         "pallet" => "Pallet",
         "heladera" => "Heladera",
         "texto" => "Texto",
+        "pasillo" => "Pasillo / calle · el ancho es la medida del pasillo",
+        "escalera" => "Escalera",
         _ => "Mueble",
     };
 
