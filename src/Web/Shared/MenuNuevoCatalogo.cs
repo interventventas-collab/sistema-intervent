@@ -110,6 +110,7 @@ public static class MenuNuevoCatalogo
             new("Faltantes para pedir", "/stock/ideal"),
             new("Reposición / pedidos", "/stock/reposicion"),
             new("Ubicaciones", "/cafe/ubicaciones"),
+            new("Plano del depósito", "/deposito/plano"),
             new("Tareas del depósito", "/deposito/tareas"),
             new("Valor de stock", "/stock/valuacion"),
         }, Nuevo: "stock", Directo: "/cafe/stock"),

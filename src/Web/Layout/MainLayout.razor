@@ -1353,7 +1353,7 @@
                    2026-06-09: Stock masivo + Historial stock vuelven aca tambien (ademas de Favoritos)
                    porque el usuario penso que Favoritos era solo acceso directo y no encontraba Stock. *@
                 <NavGroup Label="📦 Stock y compras" Icon="@SvgIcons.Store" FlyoutMode="true"
-                          HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/stock/reposicion") || IsActive("/stock/ranking") || IsActive("/cafe/ubicaciones") || IsActive("/deposito/tareas") || IsActive("/cafe/vencimientos") || IsActive("/stock/valuacion") || IsActive("/stock/ideal"))">
+                          HasActiveChild="@(IsActive("/cafe/compras") || IsActive("/cafe/depositos") || IsActive("/cafe/stock-masivo") || IsActive("/cafe/historial-stock") || IsActive("/stock/reposicion") || IsActive("/stock/ranking") || IsActive("/cafe/ubicaciones") || IsActive("/deposito/plano") || IsActive("/deposito/tareas") || IsActive("/cafe/vencimientos") || IsActive("/stock/valuacion") || IsActive("/stock/ideal"))">
                     <NavItem Href="/cafe/historial-stock" Label="📊 Historial stock" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/historial-stock")" OnClick="@(() => NavigateTo("/cafe/historial-stock"))" />
                     @* 2026-06-15: pantalla nueva — listar reservas activas con detalle por orden MeLi *@
@@ -1371,6 +1371,9 @@
                     @* 2026-09-24: dónde está cada producto en el depósito (planta + zona) *@
                     <NavItem Href="/cafe/ubicaciones" Label="📍 Ubicaciones" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/cafe/ubicaciones")" OnClick="@(() => NavigateTo("/cafe/ubicaciones"))" />
+                    @* 2026-11-26: plano del depósito (racks, estantes y qué hay en cada uno) *@
+                    <NavItem Href="/deposito/plano" Label="🗺 Plano del depósito" Icon="@SvgIcons.Tag"
+                             IsActive="@IsActive("/deposito/plano")" OnClick="@(() => NavigateTo("/deposito/plano"))" />
                     @* 2026-11-03: tareas para los del depósito (les aparecen en el celu) *@
                     <NavItem Href="/deposito/tareas" Label="✅ Tareas del depósito" Icon="@SvgIcons.Tag"
                              IsActive="@IsActive("/deposito/tareas")" OnClick="@(() => NavigateTo("/deposito/tareas"))" />
@@ -3119,6 +3122,8 @@
         // Compras
         { "cafe/compras", ("📋", "Compras", "/cafe/compras") },
         { "cafe/depositos", ("📦", "Depósitos", "/cafe/depositos") },
+        // 2026-11-26: plano del depósito — el admin se lo puede habilitar a los de depósito desde el panel de menú
+        { "deposito/plano", ("🗺", "Plano del depósito", "/deposito/plano") },
         // Otros
         { "cafe/consultas", ("🔍", "Consultas", "/cafe/consultas") },
         { "cafe/configuracion", ("⚙", "Configuración", "/cafe/configuracion") },
@@ -3989,7 +3994,9 @@
                     permitidasDeposito.Add(entry.Href.TrimStart('/'));
             }
 
-            if (!permitidasDeposito.Contains(relativePath))
+            // 2026-11-26: el QR pegado en cada estante abre /deposito/estante/{codigo}: siempre permitido
+            if (!permitidasDeposito.Contains(relativePath)
+                && !relativePath.StartsWith("deposito/estante/", StringComparison.OrdinalIgnoreCase))
             {
                 Navigation.NavigateTo(GetHomeRouteForUser());
             }

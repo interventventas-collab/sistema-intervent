@@ -1,0 +1,1194 @@
+@page "/deposito/plano"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+@implements IAsyncDisposable
+
+@* 2026-11-26: "Plano del depósito". El dibujo del terreno visto desde arriba con la CALLE A LA
+   IZQUIERDA (X de pantalla = fondo del terreno, Y de pantalla = ancho). Se busca un producto y
+   se marca en qué rack está; tocando un rack aparece a la derecha su vista de frente
+   (posiciones × niveles, nivel 1 abajo) con lo que hay en cada estante. Cualquiera puede guardar
+   o sacar productos de un estante. El admin dibuja el plano ("✏ Editar plano"): cada cambio se
+   guarda en el momento, por eso el botón para salir dice "Listo".
+   Mover / agrandar el plano y arrastrar cosas lo hace js/plano-deposito.js.
+   Estilo: texto plano con ·, color solo donde significa algo (azul = lo buscado/elegido). *@
+
+<style>
+    .pd { display: flex; flex-direction: column; min-height: calc(100vh - 90px); background: #f3f4f6; }
+    .pd-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; background: #fff; border-bottom: 1px solid #e5e7eb; padding: 10px 18px; }
+    .pd-cab h1 { margin: 0; font-size: 1.25rem; white-space: nowrap; }
+    .pd-tabs { display: flex; gap: 6px; }
+    .pd-tabs button { padding: 6px 14px; border-radius: 999px; border: 1px solid #d1d5db; font-weight: 700; font-size: .88rem; background: #fff; cursor: pointer; color: #111827; }
+    .pd-tabs button.on { background: #111827; color: #fff; border-color: #111827; }
+    .pd-busca { flex: 1; min-width: 200px; max-width: 430px; display: flex; align-items: center; gap: 8px; border: 1px solid #d1d5db; border-radius: 8px; padding: 0 12px; background: #fff; }
+    .pd-busca input { border: none; outline: none; flex: 1; font: inherit; font-size: .95rem; padding: 7px 0; background: transparent; }
+    .pd-busca.edit { border-style: dashed; color: #6b7280; padding: 7px 12px; font-size: .9rem; }
+    .pd-btn { border: 1px solid #d1d5db; border-radius: 8px; padding: 7px 14px; font-weight: 700; font-size: .9rem; background: #fff; white-space: nowrap; cursor: pointer; color: #111827; }
+    .pd-btn.prim { background: #111827; color: #fff; border-color: #111827; }
+    .pd-btn:disabled { opacity: .5; cursor: default; }
+    .pd-der { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+    .pd-main { display: grid; grid-template-columns: 270px minmax(0, 1fr) 410px; flex: 1; }
+    .pd-izq { background: #fff; border-right: 1px solid #e5e7eb; padding: 14px; }
+    .pd-izq h3 { margin: 0 0 8px; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+    .pd-res { display: block; width: 100%; text-align: left; font: inherit; border: 1px solid #e5e7eb; border-radius: 8px; padding: 9px 10px; margin-bottom: 8px; font-size: .9rem; background: #fff; cursor: pointer; color: #111827; }
+    .pd-res.on { border-color: #2563eb; background: #eff6ff; }
+    .pd-res b { display: block; font-size: .95rem; }
+    .pd-lug { font-family: monospace; font-weight: 800; font-size: 1rem; color: #1d4ed8; }
+    .pd-g { color: #6b7280; font-size: .82rem; }
+    .pd-pal { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .pd-pal button { border: 1px solid #e5e7eb; border-radius: 8px; padding: 9px 6px; text-align: center; font: inherit; font-size: .82rem; font-weight: 600; background: #fff; cursor: pointer; color: #111827; }
+    .pd-pal button:hover { border-color: #9ca3af; }
+    .pd-pal svg { display: block; margin: 0 auto 4px; }
+    .pd-centro { padding: 14px 16px; min-width: 0; }
+    .pd-lienzo { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; position: relative; }
+    .pd-svg { display: block; width: 100%; height: clamp(260px, 52vh, 760px); user-select: none; -webkit-user-select: none; }
+    .pd-svg.editar [data-id] { cursor: move; }
+    .pd-svg.editar [data-fijo="1"] { cursor: pointer; }
+    .pd-svg:not(.editar) [data-tipo="rack"] { cursor: pointer; }
+    .pd-arrastrando { opacity: .75; }
+    .pd-zoom { position: absolute; right: 16px; top: 14px; display: flex; flex-direction: column; gap: 4px; }
+    .pd-zoom button { width: 30px; height: 30px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; cursor: pointer; padding: 0; color: #111827; }
+    .pd-vacio { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #4b5563; pointer-events: none; text-align: center; padding: 1rem; }
+    .pd-vacio button { pointer-events: auto; }
+    .pd-nota { font-size: .85rem; color: #4b5563; margin-top: 10px; }
+    .pd-panel { background: #fff; border-left: 1px solid #e5e7eb; padding: 14px 16px; min-width: 0; }
+    .pd-panel h2 { margin: 0; font-size: 1.2rem; }
+    .pd-sub { color: #6b7280; font-size: .88rem; margin: 2px 0 12px; }
+    .pd-frente { border: 2px solid #633806; border-radius: 4px; background: #fffbeb; }
+    .pd-fila { display: grid; border-bottom: 3px solid #b45309; }
+    .pd-fila:last-child { border-bottom: none; }
+    .pd-niv { display: flex; align-items: center; justify-content: center; font-size: .75rem; color: #6b7280; font-weight: 700; border-right: 1px solid #e5e7eb; background: #fff; }
+    .pd-cel { border: none; border-right: 1px solid #fcd34d; padding: 5px; min-height: 74px; font: inherit; font-size: .74rem; line-height: 1.25; text-align: left; vertical-align: top; background: transparent; cursor: pointer; color: #111827; display: block; min-width: 0; overflow-wrap: anywhere; }
+    .pd-cel:last-child { border-right: none; }
+    .pd-cel:hover { background: #fef3c7; }
+    .pd-cod { font-family: monospace; font-weight: 800; font-size: .8rem; color: #78350f; }
+    .pd-vac { color: #9ca3af; font-style: italic; }
+    .pd-cel.hit { background: #dbeafe; outline: 3px solid #2563eb; outline-offset: -3px; }
+    .pd-cel.hit .pd-cod { color: #1d4ed8; }
+    .pd-pie { display: grid; font-size: .72rem; color: #6b7280; font-weight: 700; text-align: center; margin-top: 3px; }
+    .pd-acc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .pd-est { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; margin-top: 14px; }
+    .pd-est h4 { margin: 0 0 6px; font-size: 1rem; }
+    .pd-prod { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f3f4f6; font-size: .9rem; }
+    .pd-prod > div { flex: 1; }
+    .pd-x { border: none; background: none; cursor: pointer; color: #6b7280; font-size: 1rem; padding: 0 4px; }
+    .pd-sku { font-family: monospace; color: #6b7280; font-size: .8em; }
+    .pd-prop label { display: block; font-size: .8rem; color: #6b7280; margin: 10px 0 3px; }
+    .pd-prop input, .pd-prop textarea { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 9px; font: inherit; font-size: .95rem; background: #fff; }
+    .pd-prop input[type=color] { padding: 2px; height: 34px; }
+    .pd-dos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .pd-rot { display: flex; gap: 4px; }
+    .pd-rot button { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 0; font: inherit; font-size: .85rem; background: #fff; cursor: pointer; color: #111827; }
+    .pd-rot button.on { background: #111827; color: #fff; border-color: #111827; }
+    @@media (max-width: 1100px) {
+        .pd-main { grid-template-columns: 230px minmax(0, 1fr) 340px; }
+    }
+    @@media (max-width: 900px) {
+        .pd-main { grid-template-columns: 1fr; }
+        .pd-izq { border-right: none; border-bottom: 1px solid #e5e7eb; }
+        .pd-panel { border-left: none; border-top: 1px solid #e5e7eb; }
+        .pd-centro { padding: 10px; }
+        .pd-svg { height: 55vh; }
+        .pd-busca { max-width: none; order: 5; flex-basis: 100%; }
+    }
+</style>
+
+<div class="pd">
+    <div class="pd-cab">
+        <h1>Plano del depósito</h1>
+        <div class="pd-tabs">
+            <button class="@(planta == "PB" ? "on" : "")" @onclick="@(() => CambiarPlanta("PB"))">Planta baja</button>
+            <button class="@(planta == "P1" ? "on" : "")" @onclick="@(() => CambiarPlanta("P1"))">Planta alta</button>
+        </div>
+        @if (!editar)
+        {
+            <div class="pd-busca">
+                <span>🔍</span>
+                <input placeholder="¿Dónde está…? (nombre o código)" value="@busca" @oninput="OnBuscar" />
+                @if (!string.IsNullOrEmpty(busca))
+                {
+                    <button class="pd-x" title="Borrar búsqueda" @onclick="LimpiarBusqueda">✕</button>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="pd-busca edit">Modo editar · tocá algo de la izquierda para agregarlo · cada cambio se guarda solo</div>
+        }
+        <div class="pd-der">
+            @if (esAdmin)
+            {
+                @if (!editar)
+                {
+                    <button class="pd-btn" @onclick="EntrarEditar">✏ Editar plano</button>
+                }
+                else
+                {
+                    <button class="pd-btn prim" @onclick="SalirEditar">Listo</button>
+                }
+            }
+        </div>
+    </div>
+
+    <div class="pd-main">
+        @* ───────── Izquierda: búsqueda (ver) o cosas para agregar (editar) ───────── *@
+        <div class="pd-izq">
+            @if (!editar)
+            {
+                var filas = FilasBusqueda();
+                var sinLugar = resultados.Where(r => r.Lugares.Count == 0).ToList();
+                @if (string.IsNullOrWhiteSpace(busca))
+                {
+                    <h3>Dónde está</h3>
+                    <div class="pd-g">Escribí arriba el nombre o el código de un producto y te marco en qué rack y estante está.</div>
+                }
+                else if (buscando)
+                {
+                    <div class="pd-g">Buscando…</div>
+                }
+                else
+                {
+                    <h3>Dónde está · @filas.Count @(filas.Count == 1 ? "resultado" : "resultados")</h3>
+                    @foreach (var (p, l) in filas)
+                    {
+                        var pp = p; var ll = l;
+                        var on = lugarSel == ll.AsignacionId;
+                        var (rk, pos, niv) = PartirCodigo(ll.Codigo);
+                        <button class="pd-res @(on ? "on" : "")" @onclick="@(() => IrALugar(pp, ll))">
+                            <b>@pp.Nombre</b><span class="pd-lug">@ll.Codigo</span>
+                            <span class="pd-g">
+                                @if (!string.IsNullOrWhiteSpace(ll.Cantidad)) { <text> · @ll.Cantidad</text> }
+                                @if (on && pos > 0) { <text> · Rack @rk, posición @pos, nivel @niv</text> }
+                                @if (!string.Equals(ll.Planta, planta, StringComparison.OrdinalIgnoreCase)) { <text> · @NombrePlanta(ll.Planta)</text> }
+                            </span>
+                        </button>
+                    }
+                    @if (filas.Count == 0 && sinLugar.Count == 0)
+                    {
+                        <div class="pd-g">No encontré productos con “@busca”.</div>
+                    }
+                    @if (sinLugar.Count > 0)
+                    {
+                        <h3 style="margin-top:18px">Sin lugar en el plano</h3>
+                        @foreach (var p in sinLugar.Take(20))
+                        {
+                            <div class="pd-res" style="cursor:default"><b>@p.Nombre</b><span class="pd-g">todavía no se guardó en ningún estante</span></div>
+                        }
+                    }
+                }
+            }
+            else
+            {
+                <h3>Agregar al plano</h3>
+                <div class="pd-pal">
+                    <button @onclick="@(() => Agregar("rack"))"><svg width="44" height="26"><rect x="2" y="4" width="40" height="18" fill="#fcd34d" stroke="#633806" /><line x1="15" y1="4" x2="15" y2="22" stroke="#633806" /><line x1="29" y1="4" x2="29" y2="22" stroke="#633806" /></svg>Rack</button>
+                    <button @onclick="@(() => Agregar("montacargas"))"><svg width="44" height="26"><rect x="10" y="2" width="24" height="22" fill="#d6d3d1" stroke="#111" /><line x1="10" y1="2" x2="34" y2="24" stroke="#111" /><line x1="34" y1="2" x2="10" y2="24" stroke="#111" /></svg>Montacargas</button>
+                    <button @onclick="@(() => Agregar("escritorio"))"><svg width="44" height="26"><rect x="4" y="6" width="36" height="14" rx="2" fill="#e7e5e4" stroke="#57534e" /></svg>Escritorio</button>
+                    <button @onclick="@(() => Agregar("pc"))"><svg width="44" height="26"><rect x="12" y="3" width="20" height="13" rx="1" fill="#1f2937" /><rect x="19" y="16" width="6" height="4" fill="#6b7280" /><rect x="14" y="20" width="16" height="3" fill="#6b7280" /></svg>PC</button>
+                    <button @onclick="@(() => Agregar("mesa"))"><svg width="44" height="26"><rect x="6" y="5" width="32" height="16" rx="8" fill="#e7e5e4" stroke="#57534e" /></svg>Mesa</button>
+                    <button @onclick="@(() => Agregar("sillas"))"><svg width="44" height="26"><rect x="8" y="4" width="10" height="10" fill="#fff" stroke="#57534e" /><rect x="24" y="4" width="10" height="10" fill="#fff" stroke="#57534e" /><rect x="8" y="14" width="10" height="10" fill="#fff" stroke="#57534e" /><rect x="24" y="14" width="10" height="10" fill="#fff" stroke="#57534e" /></svg>Pilas de sillas</button>
+                    <button @onclick="@(() => Agregar("pallet"))"><svg width="44" height="26"><rect x="8" y="4" width="28" height="18" fill="#d6b48a" stroke="#7c5a2c" /><line x1="8" y1="10" x2="36" y2="10" stroke="#7c5a2c" /><line x1="8" y1="16" x2="36" y2="16" stroke="#7c5a2c" /></svg>Pallet</button>
+                    <button @onclick="@(() => Agregar("heladera"))"><svg width="44" height="26"><rect x="12" y="2" width="20" height="22" fill="#f8fafc" stroke="#57534e" /><line x1="12" y1="9" x2="32" y2="9" stroke="#57534e" /></svg>Heladera</button>
+                    <button @onclick="@(() => Agregar("puerta"))"><svg width="44" height="26"><line x1="4" y1="13" x2="40" y2="13" stroke="#EF9F27" stroke-width="5" /></svg>Puerta</button>
+                    <button @onclick="@(() => Agregar("ventana"))"><svg width="44" height="26"><line x1="4" y1="13" x2="40" y2="13" stroke="#111" stroke-width="5" /><line x1="4" y1="13" x2="40" y2="13" stroke="#fff" stroke-width="1" /></svg>Ventana</button>
+                    <button @onclick="@(() => Agregar("texto"))"><svg width="44" height="26"><rect x="4" y="5" width="36" height="16" fill="none" stroke="#9ca3af" stroke-dasharray="3 2" /><text x="22" y="17" font-size="10" text-anchor="middle" fill="#6b7280">Aa</text></svg>Texto</button>
+                    <button @onclick="@(() => Agregar("mueble"))"><svg width="44" height="26"><rect x="4" y="4" width="36" height="18" rx="3" fill="#f3f4f6" stroke="#9ca3af" /><text x="22" y="17" font-size="11" text-anchor="middle" fill="#6b7280">+</text></svg>Otro mueble</button>
+                </div>
+                <div class="pd-nota">Lo nuevo aparece en el medio de lo que se ve. Tocás una cosa del plano para moverla (arrastrando), girarla ⟳, cambiarle las medidas o borrarla. Se acomoda sola a la cuadrícula de 10 cm.</div>
+            }
+        </div>
+
+        @* ───────── Centro: el plano ───────── *@
+        <div class="pd-centro">
+            <div class="pd-lienzo">
+                <svg @ref="svgRef" class="pd-svg @(editar ? "editar" : "")" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                        <pattern id="pd-cuad" width="1" height="1" patternUnits="userSpaceOnUse"><path d="M1 0 L0 0 0 1" fill="none" stroke="#e5e7eb" stroke-width="0.03" /></pattern>
+                    </defs>
+                    @if (elementos.Count > 0)
+                    {
+                        var (bx, by, bw, bh) = Limites(false);
+                        <g><text x="@F(bx - 0.6)" y="@F(by + bh / 2)" font-size="0.75" font-weight="700" fill="#374151" text-anchor="middle"
+                              transform="rotate(-90 @F(bx - 0.6) @F(by + bh / 2))" pointer-events="none">CALLE</text></g>
+                    }
+                    @foreach (var e in Ordenados())
+                    {
+                        var r = Rect(e);
+                        var fijo = e.Tipo == "terreno" || !string.IsNullOrWhiteSpace(e.Puntos);
+                        <g @key="e.Id" data-id="@e.Id" data-tipo="@e.Tipo" data-x="@F(e.X)" data-y="@F(e.Y)" data-fijo="@(fijo ? "1" : "0")">
+                            @switch (e.Tipo)
+                            {
+                                case "terreno":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="url(#pd-cuad)" stroke="#111" stroke-width="0.1" />
+                                    break;
+                                case "zona":
+                                    var col = string.IsNullOrWhiteSpace(e.Color) ? "#f3f4f6" : e.Color;
+                                    var pts = Puntos(e);
+                                    if (pts is not null)
+                                    {
+                                        <polygon points="@pts" fill="@col" stroke="#888780" stroke-width="0.04" />
+                                    }
+                                    else
+                                    {
+                                        <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@col" stroke="#888780" stroke-width="0.04" />
+                                    }
+                                    if (!string.IsNullOrWhiteSpace(e.Nombre))
+                                    {
+                                        var (zx, zy) = CentroZona(e, r);
+                                        var vert = r.H > r.W * 1.6;
+                                        var fs = Math.Clamp(Math.Min(r.W, r.H) * 0.16, 0.3, 0.9);
+                                        <g><text x="@F(zx)" y="@F(zy + fs * 0.35)" font-size="@F(fs)" font-weight="700" fill="#374151" text-anchor="middle"
+                                              transform="@(vert ? $"rotate(-90 {F(zx)} {F(zy)})" : null)" pointer-events="none">@e.Nombre</text></g>
+                                    }
+                                    break;
+                                case "techo":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="transparent" />
+                                    @if (r.Horiz)
+                                    {
+                                        <line x1="@F(r.X)" y1="@F(r.CY)" x2="@F(r.X + r.W)" y2="@F(r.CY)" stroke="#444" stroke-width="0.07" stroke-dasharray="0.3 0.2" />
+                                    }
+                                    else
+                                    {
+                                        <line x1="@F(r.CX)" y1="@F(r.Y)" x2="@F(r.CX)" y2="@F(r.Y + r.H)" stroke="#444" stroke-width="0.07" stroke-dasharray="0.3 0.2" />
+                                    }
+                                    break;
+                                case "porton":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#2c2c2a" />
+                                    @foreach (var t in Cortes(r.Largo, 0.45))
+                                    {
+                                        @if (r.Horiz)
+                                        {
+                                            <line x1="@F(r.X + t)" y1="@F(r.Y)" x2="@F(r.X + t)" y2="@F(r.Y + r.H)" stroke="#fff" stroke-width="0.03" />
+                                        }
+                                        else
+                                        {
+                                            <line x1="@F(r.X)" y1="@F(r.Y + t)" x2="@F(r.X + r.W)" y2="@F(r.Y + t)" stroke="#fff" stroke-width="0.03" />
+                                        }
+                                    }
+                                    break;
+                                case "puerta":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#EF9F27" />
+                                    break;
+                                case "ventana":
+                                case "ventanal":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@(e.Tipo == "ventanal" ? "#378ADD" : "#111")" />
+                                    @if (r.Horiz)
+                                    {
+                                        <line x1="@F(r.X)" y1="@F(r.CY)" x2="@F(r.X + r.W)" y2="@F(r.CY)" stroke="#fff" stroke-width="@F(Math.Min(0.03, r.H / 4))" />
+                                    }
+                                    else
+                                    {
+                                        <line x1="@F(r.CX)" y1="@F(r.Y)" x2="@F(r.CX)" y2="@F(r.Y + r.H)" stroke="#fff" stroke-width="@F(Math.Min(0.03, r.W / 4))" />
+                                    }
+                                    break;
+                                case "rack":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#FCD34D" stroke="#633806" stroke-width="0.06" />
+                                    var npos = Math.Max(1, e.Posiciones ?? 1);
+                                    var aLoLargo = Largo(e) >= Ancho(e); // posiciones a lo largo del fondo (X de pantalla)
+                                    @for (var i = 1; i < npos; i++)
+                                    {
+                                        @if (aLoLargo)
+                                        {
+                                            <line x1="@F(r.X + r.W * i / npos)" y1="@F(r.Y)" x2="@F(r.X + r.W * i / npos)" y2="@F(r.Y + r.H)" stroke="#b45309" stroke-width="0.03" />
+                                        }
+                                        else
+                                        {
+                                            <line x1="@F(r.X)" y1="@F(r.Y + r.H * i / npos)" x2="@F(r.X + r.W)" y2="@F(r.Y + r.H * i / npos)" stroke="#b45309" stroke-width="0.03" />
+                                        }
+                                    }
+                                    var lfs = Math.Clamp(Math.Min(r.W, r.H) * 0.5, 0.25, 0.7);
+                                    <g><text x="@F(r.CX)" y="@F(r.CY + lfs * 0.35)" font-size="@F(lfs)" font-weight="800" fill="#78350f" text-anchor="middle" pointer-events="none">@e.Codigo</text></g>
+                                    break;
+                                case "montacargas":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#d6d3d1" stroke="#111" stroke-width="0.05" />
+                                    <line x1="@F(r.X)" y1="@F(r.Y)" x2="@F(r.X + r.W)" y2="@F(r.Y + r.H)" stroke="#111" stroke-width="0.04" />
+                                    <line x1="@F(r.X + r.W)" y1="@F(r.Y)" x2="@F(r.X)" y2="@F(r.Y + r.H)" stroke="#111" stroke-width="0.04" />
+                                    break;
+                                case "sillas":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="transparent" />
+                                    var lado = r.Corto / 2;
+                                    var cant = Math.Max(1, (int)Math.Floor(r.Largo / lado));
+                                    var paso = r.Largo / cant;
+                                    @for (var fila = 0; fila < 2; fila++)
+                                    {
+                                        @for (var k = 0; k < cant; k++)
+                                        {
+                                            var a = k * paso + paso * 0.06; var b = fila * lado + lado * 0.06;
+                                            <rect x="@F(r.Horiz ? r.X + a : r.X + b)" y="@F(r.Horiz ? r.Y + b : r.Y + a)"
+                                                  width="@F(r.Horiz ? paso * 0.88 : lado * 0.88)" height="@F(r.Horiz ? lado * 0.88 : paso * 0.88)"
+                                                  rx="0.06" fill="#fff" stroke="#6b7280" stroke-width="0.03" />
+                                        }
+                                    }
+                                    break;
+                                case "vehiculo":
+                                    var inv = e.Rotacion == 180 || e.Rotacion == 270;
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="@F(r.Corto * 0.25)" fill="#d6d3d1" stroke="#444" stroke-width="0.05" />
+                                    var vid = Tramo(r, 0.17, 0.29, 0.12, inv);
+                                    <rect x="@F(vid.X)" y="@F(vid.Y)" width="@F(vid.W)" height="@F(vid.H)" rx="0.05" fill="#9ec5e8" stroke="#444" stroke-width="0.02" />
+                                    var caja = Tramo(r, 0.45, 0.95, 0.1, inv);
+                                    <rect x="@F(caja.X)" y="@F(caja.Y)" width="@F(caja.W)" height="@F(caja.H)" fill="#c8c5c2" stroke="#444" stroke-width="0.04" />
+                                    break;
+                                case "contenedor":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#3b6d11" stroke="#27500a" stroke-width="0.05" />
+                                    break;
+                                case "escritorio":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="0.05" fill="#e7e5e4" stroke="#57534e" stroke-width="0.04" />
+                                    break;
+                                case "pc":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="0.03" fill="#1f2937" />
+                                    break;
+                                case "mesa":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="@F(r.Corto / 2)" fill="#e7e5e4" stroke="#57534e" stroke-width="0.04" />
+                                    break;
+                                case "pallet":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#d6b48a" stroke="#7c5a2c" stroke-width="0.04" />
+                                    @foreach (var t in new[] { 1.0 / 3, 2.0 / 3 })
+                                    {
+                                        @if (r.Horiz)
+                                        {
+                                            <line x1="@F(r.X)" y1="@F(r.Y + r.H * t)" x2="@F(r.X + r.W)" y2="@F(r.Y + r.H * t)" stroke="#7c5a2c" stroke-width="0.03" />
+                                        }
+                                        else
+                                        {
+                                            <line x1="@F(r.X + r.W * t)" y1="@F(r.Y)" x2="@F(r.X + r.W * t)" y2="@F(r.Y + r.H)" stroke="#7c5a2c" stroke-width="0.03" />
+                                        }
+                                    }
+                                    break;
+                                case "heladera":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#f8fafc" stroke="#57534e" stroke-width="0.04" />
+                                    <line x1="@F(r.X)" y1="@F(r.Y + r.H * 0.3)" x2="@F(r.X + r.W)" y2="@F(r.Y + r.H * 0.3)" stroke="#57534e" stroke-width="0.03" />
+                                    break;
+                                case "texto":
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="transparent"
+                                          stroke="@(editar ? "#9ca3af" : "none")" stroke-width="0.02" stroke-dasharray="0.1 0.06" />
+                                    var tfs = Math.Clamp(r.H * 0.6, 0.2, 1.2);
+                                    <g><text x="@F(r.CX)" y="@F(r.CY + tfs * 0.35)" font-size="@F(tfs)" font-weight="700" fill="#374151" text-anchor="middle" pointer-events="none">@e.Nombre</text></g>
+                                    break;
+                                default:
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="0.06" fill="#f3f4f6" stroke="#9ca3af" stroke-width="0.04" />
+                                    @if (!string.IsNullOrWhiteSpace(e.Nombre))
+                                    {
+                                        var mfs = Math.Clamp(Math.Min(r.W, r.H) * 0.3, 0.15, 0.45);
+                                        <g><text x="@F(r.CX)" y="@F(r.CY + mfs * 0.35)" font-size="@F(mfs)" fill="#4b5563" text-anchor="middle" pointer-events="none">@e.Nombre</text></g>
+                                    }
+                                    break;
+                            }
+                        </g>
+                    }
+                    @* el borde del terreno arriba de todo (las zonas lo tapaban) *@
+                    @foreach (var t in elementos.Where(x => x.Tipo == "terreno"))
+                    {
+                        var r = Rect(t);
+                        <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="none" stroke="#111" stroke-width="0.1" pointer-events="none" />
+                    }
+
+                    @* rack elegido / buscado: recuadro azul y cartelito *@
+                    @if (!editar && rack is not null && elementos.FirstOrDefault(x => x.Id == rack.Elemento.Id) is { } rs)
+                    {
+                        var r = Rect(rs);
+                        <rect x="@F(r.X - 0.15)" y="@F(r.Y - 0.15)" width="@F(r.W + 0.3)" height="@F(r.H + 0.3)" rx="0.15" fill="none" stroke="#2563eb" stroke-width="0.14" pointer-events="none" />
+                        @if (!string.IsNullOrEmpty(cartel))
+                        {
+                            var ancho = cartel.Length * 0.27 + 0.5;
+                            var cy = r.Y - 1.3;
+                            <path d="M@F(r.CX - 0.4) @F(cy + 0.95) l0.4 0.3 l0.4 -0.3 z" fill="#2563eb" pointer-events="none" />
+                            <rect x="@F(r.CX - ancho / 2)" y="@F(cy)" width="@F(ancho)" height="0.95" rx="0.2" fill="#2563eb" pointer-events="none" />
+                            <g><text x="@F(r.CX)" y="@F(cy + 0.65)" font-size="0.48" font-weight="700" fill="#fff" text-anchor="middle" pointer-events="none">@cartel</text></g>
+                        }
+                    }
+                    @if (!editar && infoSel is not null && infoSel.Tipo != "rack")
+                    {
+                        var r = Rect(infoSel);
+                        <rect x="@F(r.X - 0.1)" y="@F(r.Y - 0.1)" width="@F(r.W + 0.2)" height="@F(r.H + 0.2)" rx="0.1" fill="none" stroke="#2563eb" stroke-width="0.08" pointer-events="none" />
+                    }
+                    @* modo editar: lo elegido con línea punteada azul y sus medidas *@
+                    @if (editar && sel is not null)
+                    {
+                        var r = Rect(sel);
+                        <rect x="@F(r.X - 0.08)" y="@F(r.Y - 0.08)" width="@F(r.W + 0.16)" height="@F(r.H + 0.16)" fill="none" stroke="#2563eb" stroke-width="0.08" stroke-dasharray="0.3 0.15" pointer-events="none" />
+                        <g><text x="@F(r.CX)" y="@F(r.Y + r.H + 0.6)" font-size="0.42" fill="#1d4ed8" text-anchor="middle" pointer-events="none">@M(Largo(sel)) m × @M(Ancho(sel)) m</text></g>
+                    }
+                </svg>
+                <div class="pd-zoom">
+                    <button title="Agrandar" @onclick="@(() => Zoom(1.3))">+</button>
+                    <button title="Achicar" @onclick="@(() => Zoom(1 / 1.3))">−</button>
+                    <button title="Ver todo" style="font-size:.7rem" @onclick="Encuadrar">⤢</button>
+                </div>
+                @if (cargando)
+                {
+                    <div class="pd-vacio">Cargando el plano…</div>
+                }
+                else if (elementos.Count == 0)
+                {
+                    <div class="pd-vacio">
+                        <div>@(planta == "P1" ? "Todavía no está dibujada la planta alta" : "Todavía no está dibujado este plano")</div>
+                        @if (esAdmin && !editar)
+                        {
+                            <button class="pd-btn" @onclick="EntrarEditar">✏ Editar plano</button>
+                        }
+                    </div>
+                }
+            </div>
+            @if (!editar)
+            {
+                <div class="pd-nota">Tocás cualquier rack y a la derecha aparece su <b>vista de frente</b>. La calle queda a la izquierda; el plano se agranda con la ruedita, con + / − o con dos dedos en el celu, y se mueve arrastrando.</div>
+            }
+            else
+            {
+                <div class="pd-nota">Arrastrá las cosas para moverlas; a la derecha les cambiás medidas, giro y nombre. Todo queda guardado al momento.</div>
+            }
+        </div>
+
+        @* ───────── Derecha: vista de frente del rack / datos / propiedades ───────── *@
+        <div class="pd-panel">
+            @if (editar)
+            {
+                @if (sel is null)
+                {
+                    <div class="pd-g">Tocá una cosa del plano para cambiarle medidas, nombre o giro, o agregá algo nuevo desde la izquierda.</div>
+                }
+                else
+                {
+                    var s = sel;
+                    <div class="pd-prop">
+                        <h2>@Titulo(s)</h2>
+                        <div class="pd-sub">@(s.Tipo == "rack" ? "Lo que pongas acá arma la vista de frente y las etiquetas" : NombreTipo(s.Tipo))</div>
+                        @if (s.Tipo == "rack")
+                        {
+                            <label>Letra</label>
+                            <input value="@s.Codigo" @onchange="@(ev => Cambiar(el => el.Codigo = Txt(ev)?.ToUpperInvariant()))" />
+                            <div class="pd-dos">
+                                <div><label>Posiciones (a lo largo)</label><input inputmode="numeric" value="@s.Posiciones" @onchange="@(ev => CambiarInt(ev, (el, v) => el.Posiciones = v))" /></div>
+                                <div><label>Niveles (hacia arriba)</label><input inputmode="numeric" value="@s.Niveles" @onchange="@(ev => CambiarInt(ev, (el, v) => el.Niveles = v))" /></div>
+                            </div>
+                        }
+                        <label>Nombre</label>
+                        <input value="@s.Nombre" placeholder="@(s.Tipo == "rack" ? $"Rack {s.Codigo}" : "")" @onchange="@(ev => Cambiar(el => el.Nombre = Txt(ev)))" />
+                        <div class="pd-dos">
+                            <div><label>Ancho (m) · de pared a pared</label><input inputmode="decimal" value="@M(s.Ancho)" @onchange="@(ev => CambiarDec(ev, (el, v) => el.Ancho = v))" /></div>
+                            <div><label>Largo (m) · hacia el fondo</label><input inputmode="decimal" value="@M(s.Largo)" @onchange="@(ev => CambiarDec(ev, (el, v) => el.Largo = v))" /></div>
+                        </div>
+                        <div class="pd-dos">
+                            <div><label>Alto (m)</label><input inputmode="decimal" value="@(s.Alto is decimal al ? M(al) : "")" @onchange="@(ev => CambiarDecOpc(ev, (el, v) => el.Alto = v))" /></div>
+                            <div>
+                                <label>Girar ⟳</label>
+                                <div class="pd-rot">
+                                    @foreach (var g in new[] { 0, 90, 180, 270 })
+                                    {
+                                        var gg = g;
+                                        <button class="@(s.Rotacion == gg ? "on" : "")" @onclick="@(() => Cambiar(el => el.Rotacion = gg))">@(gg)°</button>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        @if (s.Tipo == "zona")
+                        {
+                            <label>Color</label>
+                            <input type="color" value="@(string.IsNullOrWhiteSpace(s.Color) ? "#f3f4f6" : s.Color)" @onchange="@(ev => Cambiar(el => el.Color = Txt(ev)))" />
+                        }
+                        <label>Notas</label>
+                        <textarea rows="2" value="@s.Notas" @onchange="@(ev => Cambiar(el => el.Notas = Txt(ev)))"></textarea>
+                        <div class="pd-g" style="margin-top:6px">Lugar: @M(s.X) m de la pared izquierda · @M(s.Y) m desde la calle</div>
+
+                        @if (s.Tipo == "rack")
+                        {
+                            var np = Math.Clamp(s.Posiciones ?? 1, 1, 30); var nn = Math.Clamp(s.Niveles ?? 1, 1, 30);
+                            var cw = 360.0 / np; var ch = 30.0;
+                            <label>Vista previa de frente</label>
+                            <svg width="100%" viewBox="0 0 360 @F(ch * nn)" style="display:block;background:#fffbeb;border:2px solid #633806;border-radius:4px">
+                                @for (var n = 1; n < nn; n++)
+                                {
+                                    <line x1="0" y1="@F(ch * n)" x2="360" y2="@F(ch * n)" stroke="#b45309" stroke-width="3" />
+                                }
+                                @for (var p = 1; p < np; p++)
+                                {
+                                    <line x1="@F(cw * p)" y1="0" x2="@F(cw * p)" y2="@F(ch * nn)" stroke="#fcd34d" stroke-width="2" />
+                                }
+                                @for (var n = nn; n >= 1; n--)
+                                {
+                                    @for (var p = 1; p <= np; p++)
+                                    {
+                                        <g><text x="@F(cw * (p - 1) + 6)" y="@F(ch * (nn - n) + 19)" font-family="monospace" font-size="@(np > 6 ? "8" : "12")" font-weight="800" fill="#78350f">@($"{s.Codigo}-{p}-{n}")</text></g>
+                                    }
+                                }
+                            </svg>
+                        }
+                        <div class="pd-acc">
+                            <button class="pd-btn" @onclick="BorrarSel">🗑 Borrar</button>
+                            <button class="pd-btn" @onclick="DuplicarSel">📋 Duplicar</button>
+                        </div>
+                    </div>
+                }
+            }
+            else if (rack is not null)
+            {
+                var el = rack.Elemento;
+                var np = Math.Max(1, el.Posiciones ?? (rack.Estantes.Count > 0 ? rack.Estantes.Max(x => x.Posicion) : 1));
+                var nn = Math.Max(1, el.Niveles ?? (rack.Estantes.Count > 0 ? rack.Estantes.Max(x => x.Nivel) : 1));
+                var cols = $"grid-template-columns:34px repeat({np}, minmax(0, 1fr))";
+                <h2>@Titulo(el) · vista de frente</h2>
+                <div class="pd-sub">
+                    @np @(np == 1 ? "posición" : "posiciones") · @nn @(nn == 1 ? "nivel" : "niveles") · @M(Largo(el)) × @M(Ancho(el))@(el.Alto is decimal alto ? $" · {M(alto)} de alto" : "")@(string.IsNullOrWhiteSpace(el.Notas) ? "" : " · " + el.Notas)
+                </div>
+                <div class="pd-frente">
+                    @for (var n = nn; n >= 1; n--)
+                    {
+                        <div class="pd-fila" style="@cols">
+                            <div class="pd-niv">@n</div>
+                            @for (var p = 1; p <= np; p++)
+                            {
+                                var est = rack.Estantes.FirstOrDefault(x => x.Posicion == p && x.Nivel == n);
+                                var cod = est?.Codigo ?? $"{el.Codigo}-{p}-{n}";
+                                var hit = string.Equals(cod, celdaSel, StringComparison.OrdinalIgnoreCase);
+                                <button class="pd-cel @(hit ? "hit" : "")" @onclick="@(() => ElegirCelda(cod))">
+                                    <span class="pd-cod">@cod</span><br />
+                                    @if (est is null || est.Productos.Count == 0)
+                                    {
+                                        <span class="pd-vac">vacío</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var pr in est.Productos.Take(3))
+                                        {
+                                            var buscado = productoBuscado == pr.ProductoId;
+                                            <span>@if (buscado) { <b>@pr.Nombre</b> } else { @pr.Nombre }@if (!string.IsNullOrWhiteSpace(pr.Cantidad)) { <span class="pd-g"> · @pr.Cantidad</span> }</span><br />
+                                        }
+                                        @if (est.Productos.Count > 3)
+                                        {
+                                            <span class="pd-g">+@(est.Productos.Count - 3) más</span>
+                                        }
+                                    }
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="pd-pie" style="@cols"><span>nivel</span>@for (var p = 1; p <= np; p++) { <span>pos. @p</span> }</div>
+
+                @if (celdaSel is not null)
+                {
+                    var est = rack.Estantes.FirstOrDefault(x => string.Equals(x.Codigo, celdaSel, StringComparison.OrdinalIgnoreCase));
+                    var (_, cpos, cniv) = PartirCodigo(celdaSel);
+                    <div class="pd-est">
+                        <h4><span class="pd-cod" style="font-size:1rem">@celdaSel</span> <span class="pd-g">· posición @cpos · nivel @cniv</span></h4>
+                        @if (est is null || est.Productos.Count == 0)
+                        {
+                            <div class="pd-g" style="margin-bottom:8px">Este estante está vacío.</div>
+                        }
+                        else
+                        {
+                            @foreach (var pr in est.Productos)
+                            {
+                                var prr = pr;
+                                <div class="pd-prod">
+                                    <div>
+                                        <b>@pr.Nombre</b> <span class="pd-sku">@pr.Sku</span>
+                                        @if (!string.IsNullOrWhiteSpace(pr.Cantidad)) { <span> · @pr.Cantidad</span> }
+                                        @if (!string.IsNullOrWhiteSpace(pr.Nota)) { <div class="pd-g">@pr.Nota</div> }
+                                        @if (pr.At is not null || !string.IsNullOrWhiteSpace(pr.Por))
+                                        {
+                                            <div class="pd-g">guardado @(pr.At?.ToString("dd/MM") ?? "")@(string.IsNullOrWhiteSpace(pr.Por) ? "" : " por " + pr.Por)</div>
+                                        }
+                                    </div>
+                                    <button class="pd-x" title="Sacar de este estante" @onclick="@(() => SacarProducto(prr))">✕</button>
+                                </div>
+                            }
+                        }
+                        <div style="font-weight:700;font-size:.88rem;margin:10px 0 6px">+ Guardar un producto acá</div>
+                        <EstanteAgregarProducto @key="celdaSel" Codigo="@celdaSel" OnGuardado="RecargarRack" />
+                    </div>
+                }
+                else
+                {
+                    <div class="pd-nota">Tocás un estante y ves qué hay y cuánto, y podés guardar o sacar productos. Desde el celu: escaneás el QR del estante.</div>
+                }
+                <div class="pd-acc">
+                    <button class="pd-btn" disabled="@imprimiendo" @onclick="ImprimirEtiquetas">🖨 Etiquetas QR de este rack (@rack.Estantes.Count)</button>
+                </div>
+            }
+            else if (infoSel is not null)
+            {
+                <h2>@Titulo(infoSel)</h2>
+                <div class="pd-sub">@NombreTipo(infoSel.Tipo)</div>
+                <div>Medidas: @M(Largo(infoSel)) × @M(Ancho(infoSel)) m@(infoSel.Alto is decimal al2 ? $" · {M(al2)} m de alto" : "")</div>
+                @if (!string.IsNullOrWhiteSpace(infoSel.Notas)) { <div class="pd-nota">@infoSel.Notas</div> }
+            }
+            else
+            {
+                <div class="pd-g">Tocá un rack del plano para ver su vista de frente, o buscá un producto arriba.</div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = "estante")] public string? Estante { get; set; }
+
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    private ElementReference svgRef;
+    private DotNetObjectReference<PlanoDeposito>? refJs;
+    private bool jsListo, encuadrarPendiente;
+
+    private bool esAdmin, editar, cargando = true, imprimiendo;
+    private string planta = "PB";
+    private List<PlanoElementoDto> elementos = new();
+
+    // modo ver
+    private PlanoRackDto? rack;          // rack abierto a la derecha
+    private string? celdaSel;            // estante marcado (B-3-2)
+    private string? cartel;              // "📍 Cucharín grande · B-3-2" debajo del rack
+    private int? productoBuscado;
+    private PlanoElementoDto? infoSel;   // cosa que no es rack (muestra medidas)
+
+    // búsqueda
+    private string busca = "";
+    private bool buscando;
+    private List<PlanoBuscarDto> resultados = new();
+    private int? lugarSel;
+    private CancellationTokenSource? ctsBusca;
+
+    // modo editar
+    private PlanoElementoDto? sel;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var st = await AuthState.GetAuthenticationStateAsync();
+            esAdmin = st.User.IsInRole("admin");
+        }
+        catch { }
+
+        if (!string.IsNullOrWhiteSpace(Estante))
+        {
+            var cod = Estante.Trim().ToUpperInvariant();
+            PlanoEstanteDetalleDto? det = null;
+            try { det = await Api.GetEstantePlanoAsync(cod); } catch (Exception ex) { ToastService.Error(ex.Message); }
+            if (det is not null)
+            {
+                await CargarPlanta(string.IsNullOrWhiteSpace(det.Planta) ? "PB" : det.Planta!);
+                await AbrirRack(det.RackId, det.Codigo);
+                cartel = $"📍 {det.Codigo}";
+                return;
+            }
+            ToastService.Warning($"No encontré el estante {cod}");
+        }
+        await CargarPlanta("PB");
+        if (!string.IsNullOrWhiteSpace(Q))
+        {
+            busca = Q.Trim();
+            await Buscar(busca, CancellationToken.None);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            refJs = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("planoDeposito.init", svgRef, refJs); jsListo = true; } catch { }
+        }
+        if (jsListo && encuadrarPendiente)
+        {
+            encuadrarPendiente = false;
+            await Encuadrar();
+        }
+    }
+
+    // ───────────── carga ─────────────
+    private async Task CargarPlanta(string p)
+    {
+        planta = p.ToUpperInvariant();
+        cargando = true;
+        sel = null; infoSel = null;
+        StateHasChanged();
+        try
+        {
+            var r = await Api.GetPlanoDepositoAsync(planta);
+            elementos = r?.Elementos ?? new();
+            ActualizarAnchoTerreno();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); elementos = new(); }
+        finally { cargando = false; encuadrarPendiente = true; }
+        StateHasChanged();
+    }
+
+    private async Task CambiarPlanta(string p)
+    {
+        if (string.Equals(p, planta, StringComparison.OrdinalIgnoreCase)) return;
+        rack = null; celdaSel = null; cartel = null; lugarSel = null;
+        await CargarPlanta(p);
+    }
+
+    private async Task Encuadrar()
+    {
+        if (!jsListo) return;
+        var (x, y, w, h) = Limites(true);
+        try { await JS.InvokeVoidAsync("planoDeposito.encuadrar", svgRef, x, y, w, h); } catch { }
+    }
+
+    private async Task Zoom(double f)
+    {
+        try { await JS.InvokeVoidAsync("planoDeposito.zoom", svgRef, f); } catch { }
+    }
+
+    // ───────────── búsqueda ─────────────
+    private async Task OnBuscar(ChangeEventArgs e)
+    {
+        busca = e.Value?.ToString() ?? "";
+        ctsBusca?.Cancel();
+        var cts = ctsBusca = new CancellationTokenSource();
+        try { await Task.Delay(300, cts.Token); } catch (TaskCanceledException) { return; }
+        await Buscar(busca, cts.Token);
+    }
+
+    private async Task Buscar(string q, CancellationToken ct)
+    {
+        lugarSel = null;
+        if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2) { resultados = new(); StateHasChanged(); return; }
+        buscando = true; StateHasChanged();
+        try
+        {
+            var r = await Api.BuscarEnPlanoAsync(q.Trim());
+            if (ct.IsCancellationRequested) return;
+            resultados = r;
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { buscando = false; StateHasChanged(); }
+        // si hay un solo lugar, lo marcamos directo
+        var filas = FilasBusqueda();
+        if (filas.Count == 1) await IrALugar(filas[0].P, filas[0].L);
+    }
+
+    private void LimpiarBusqueda()
+    {
+        ctsBusca?.Cancel();
+        busca = ""; resultados = new(); lugarSel = null; cartel = null; productoBuscado = null;
+    }
+
+    private List<(PlanoBuscarDto P, PlanoLugarDto L)> FilasBusqueda()
+        => resultados.SelectMany(p => p.Lugares.Select(l => (p, l))).Take(40).ToList();
+
+    private async Task IrALugar(PlanoBuscarDto p, PlanoLugarDto l)
+    {
+        lugarSel = l.AsignacionId;
+        productoBuscado = p.ProductoId;
+        if (!string.IsNullOrWhiteSpace(l.Planta) && !string.Equals(l.Planta, planta, StringComparison.OrdinalIgnoreCase))
+            await CargarPlanta(l.Planta!);
+        await AbrirRack(l.RackId, l.Codigo);
+        cartel = $"📍 {p.Nombre} · {l.Codigo}";
+    }
+
+    // ───────────── rack (vista de frente) ─────────────
+    private async Task AbrirRack(int id, string? celda)
+    {
+        infoSel = null;
+        try
+        {
+            rack = await Api.GetRackPlanoAsync(id);
+            celdaSel = celda;
+            cartel = null;
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        StateHasChanged();
+    }
+
+    private async Task RecargarRack()
+    {
+        if (rack is null) return;
+        try { rack = await Api.GetRackPlanoAsync(rack.Elemento.Id); } catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private void ElegirCelda(string cod)
+        => celdaSel = string.Equals(celdaSel, cod, StringComparison.OrdinalIgnoreCase) ? null : cod;
+
+    private async Task SacarProducto(PlanoAsignacionDto pr)
+    {
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", $"¿Sacar «{pr.Nombre}» de {celdaSel}?"); } catch { ok = false; }
+        if (!ok) return;
+        try
+        {
+            await Api.SacarProductoDeEstanteAsync(pr.Id);
+            ToastService.Success("Listo, lo saqué del estante");
+            await RecargarRack();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task ImprimirEtiquetas()
+    {
+        if (rack is null) return;
+        imprimiendo = true;
+        try
+        {
+            var url = ApiClient.UrlEtiquetasRackPlano(rack.Elemento.Id, Nav.BaseUri.TrimEnd('/'));
+            string r;
+            try { r = await JS.InvokeAsync<string>("zebraImprimir", url); } catch { r = "sin-zebra"; }
+            if (r == "ok") { ToastService.Success($"Etiquetas enviadas a la impresora ({rack.Estantes.Count})"); return; }
+            if (r.StartsWith("error:")) { ToastService.Error(r[6..]); return; }
+            ToastService.Warning("No encontré el programa de la impresora (Zebra Browser Print o QZ Tray) en esta compu: te bajo el archivo .txt");
+            try { await JS.InvokeVoidAsync("zebraBajar", url); } catch { }
+        }
+        finally { imprimiendo = false; }
+    }
+
+    // ───────────── lo que avisa el JS ─────────────
+    [JSInvokable]
+    public async Task ElementoTocado(int id)
+    {
+        var e = elementos.FirstOrDefault(x => x.Id == id);
+        if (e is null) return;
+        if (editar) { sel = e; StateHasChanged(); return; }
+        if (e.Tipo == "terreno") { FondoTocado(); return; }
+        if (e.Tipo == "rack")
+        {
+            lugarSel = null; productoBuscado = null;
+            await AbrirRack(e.Id, null);
+            return;
+        }
+        rack = null; celdaSel = null; cartel = null;
+        infoSel = e;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void FondoTocado()
+    {
+        if (editar) sel = null;
+        else infoSel = null;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task ElementoMovido(int id, decimal x, decimal y)
+    {
+        var e = elementos.FirstOrDefault(el => el.Id == id);
+        if (e is null || !editar) return;
+        e.X = Math.Round(x, 1); e.Y = Math.Round(y, 1);
+        sel = e;
+        StateHasChanged();
+        await Guardar(e);
+    }
+
+    // ───────────── modo editar ─────────────
+    private async Task EntrarEditar()
+    {
+        editar = true; rack = null; infoSel = null; celdaSel = null; cartel = null; sel = null;
+        try { await JS.InvokeVoidAsync("planoDeposito.setEditar", svgRef, true); } catch { }
+    }
+
+    private async Task SalirEditar()
+    {
+        editar = false; sel = null;
+        try { await JS.InvokeVoidAsync("planoDeposito.setEditar", svgRef, false); } catch { }
+    }
+
+    private record Molde(decimal Ancho, decimal Largo, decimal? Alto = null, string? Nombre = null);
+    private static readonly Dictionary<string, Molde> Moldes = new()
+    {
+        ["rack"] = new(1.10m, 2.55m, 3.00m),
+        ["montacargas"] = new(1.10m, 2.10m),
+        ["escritorio"] = new(1.40m, 0.70m),
+        ["pc"] = new(0.50m, 0.40m),
+        ["mesa"] = new(1.80m, 0.80m),
+        ["sillas"] = new(1.00m, 3.00m, null, "Sillas"),
+        ["pallet"] = new(1.00m, 1.20m),
+        ["heladera"] = new(0.70m, 0.70m),
+        ["puerta"] = new(0.80m, 0.15m),
+        ["ventana"] = new(1.00m, 0.15m),
+        ["texto"] = new(2.00m, 0.50m, null, "Texto"),
+        ["mueble"] = new(1.00m, 1.00m, null, "Mueble"),
+    };
+
+    private async Task Agregar(string tipo)
+    {
+        var m = Moldes.TryGetValue(tipo, out var mm) ? mm : new Molde(1m, 1m);
+        double[] c = { 5, 10 };
+        try { c = await JS.InvokeAsync<double[]>("planoDeposito.centro", svgRef); } catch { }
+        var nuevo = new PlanoElementoDto
+        {
+            Planta = planta, Tipo = tipo, Nombre = m.Nombre,
+            Ancho = m.Ancho, Largo = m.Largo, Alto = m.Alto,
+            X = Math.Max(0, Math.Round((decimal)(WT - c[0]) - m.Ancho / 2, 1)), // pantalla Y = ancho − X
+            Y = Math.Max(0, Math.Round((decimal)c[1] - m.Largo / 2, 1)),
+            Orden = elementos.Count == 0 ? 0 : elementos.Max(x => x.Orden) + 1,
+        };
+        if (tipo == "rack") { nuevo.Codigo = LetraLibre(); nuevo.Posiciones = 3; nuevo.Niveles = 4; }
+        await Crear(nuevo);
+    }
+
+    private async Task Crear(PlanoElementoDto nuevo)
+    {
+        try
+        {
+            var creado = await Api.CrearElementoPlanoAsync(PlanoElementoGuardarDto.De(nuevo));
+            if (creado is null) return;
+            elementos.Add(creado);
+            sel = creado;
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task Guardar(PlanoElementoDto e)
+    {
+        try
+        {
+            var g = await Api.GuardarElementoPlanoAsync(e.Id, PlanoElementoGuardarDto.De(e));
+            if (g is not null)
+            {
+                var i = elementos.FindIndex(x => x.Id == e.Id);
+                if (i >= 0) { elementos[i] = g; if (sel?.Id == g.Id) sel = g; }
+            }
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error(ex.Message);
+            // volver a lo que quedó guardado
+            var idSel = sel?.Id;
+            try { elementos = (await Api.GetPlanoDepositoAsync(planta))?.Elementos ?? elementos; ActualizarAnchoTerreno(); } catch { }
+            sel = elementos.FirstOrDefault(x => x.Id == idSel);
+        }
+        StateHasChanged();
+    }
+
+    private async Task Cambiar(Action<PlanoElementoDto> f)
+    {
+        if (sel is null) return;
+        f(sel);
+        await Guardar(sel);
+    }
+
+    private async Task CambiarDec(ChangeEventArgs ev, Action<PlanoElementoDto, decimal> f)
+    {
+        var v = ParseDec(Txt(ev));
+        if (v is null || v <= 0) { ToastService.Warning("Poné una medida en metros, por ejemplo 1,10"); StateHasChanged(); return; }
+        await Cambiar(el => f(el, Math.Round(v.Value, 2)));
+    }
+
+    private async Task CambiarDecOpc(ChangeEventArgs ev, Action<PlanoElementoDto, decimal?> f)
+    {
+        var t = Txt(ev);
+        if (t is null) { await Cambiar(el => f(el, null)); return; }
+        var v = ParseDec(t);
+        if (v is null || v <= 0) { ToastService.Warning("Poné una medida en metros, por ejemplo 2,40"); return; }
+        await Cambiar(el => f(el, Math.Round(v.Value, 2)));
+    }
+
+    private async Task CambiarInt(ChangeEventArgs ev, Action<PlanoElementoDto, int> f)
+    {
+        if (!int.TryParse(Txt(ev), out var v) || v < 1 || v > 30) { ToastService.Warning("Poné un número del 1 al 30"); return; }
+        await Cambiar(el => f(el, v));
+    }
+
+    private async Task BorrarSel()
+    {
+        if (sel is null) return;
+        var s = sel;
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", $"¿Borrar «{Titulo(s)}» del plano?"); } catch { ok = false; }
+        if (!ok) return;
+        try
+        {
+            await Api.BorrarElementoPlanoAsync(s.Id);
+            elementos.RemoveAll(x => x.Id == s.Id);
+            sel = null;
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task DuplicarSel()
+    {
+        if (sel is null) return;
+        var c = sel.Copia();
+        c.Id = 0; c.Productos = 0;
+        c.Y = Math.Round(c.Y + Largo(sel) + 0.2m, 1);
+        c.Orden = elementos.Max(x => x.Orden) + 1;
+        if (c.Tipo == "rack") { c.Codigo = LetraLibre(); c.Nombre = null; }
+        await Crear(c);
+    }
+
+    private string LetraLibre()
+    {
+        var usadas = elementos.Where(x => x.Tipo == "rack" && x.Codigo is not null)
+            .Select(x => x.Codigo!.Trim().ToUpperInvariant()).ToHashSet();
+        for (var ch = 'A'; ch <= 'Z'; ch++)
+            if (!usadas.Contains(ch.ToString())) return ch.ToString();
+        var n = 1;
+        while (usadas.Contains($"R{n}")) n++;
+        return $"R{n}";
+    }
+
+    // ───────────── dibujo ─────────────
+    private readonly record struct R(double X, double Y, double W, double H)
+    {
+        public double CX => X + W / 2;
+        public double CY => Y + H / 2;
+        public bool Horiz => W >= H;
+        public double Largo => Math.Max(W, H);
+        public double Corto => Math.Min(W, H);
+    }
+
+    private static bool Girado(PlanoElementoDto e) => e.Rotacion == 90 || e.Rotacion == 270;
+    /// <summary>Medida a lo ancho del terreno (X del plano) como se ve, con el giro aplicado.</summary>
+    private static decimal Ancho(PlanoElementoDto e) => Girado(e) ? e.Largo : e.Ancho;
+    /// <summary>Medida hacia el fondo (Y del plano) como se ve, con el giro aplicado.</summary>
+    private static decimal Largo(PlanoElementoDto e) => Girado(e) ? e.Ancho : e.Largo;
+
+    /// <summary>Ancho del terreno (X del plano). 2026-11-26: al acostar el plano con la calle a la
+    /// izquierda, la pared izquierda (X = 0) va ABAJO y la derecha arriba; si no, queda en espejo.</summary>
+    private static double WT = 10;
+    private void ActualizarAnchoTerreno()
+        => WT = (double)(elementos.FirstOrDefault(t => t.Tipo == "terreno")?.Ancho ?? 10m);
+
+    /// <summary>Rectángulo en coordenadas de PANTALLA: X = Y del plano, Y = ancho del terreno − X del plano.</summary>
+    private static R Rect(PlanoElementoDto e)
+        => new((double)e.Y, WT - (double)e.X - (double)Ancho(e), (double)Largo(e), (double)Ancho(e));
+
+    /// <summary>Un tramo a lo largo de la cosa (de a a b, 0..1) con margen m a los costados.</summary>
+    private static R Tramo(R r, double a, double b, double m, bool invertido)
+    {
+        if (invertido) (a, b) = (1 - b, 1 - a);
+        return r.Horiz
+            ? new R(r.X + r.W * a, r.Y + r.H * m, r.W * (b - a), r.H * (1 - 2 * m))
+            : new R(r.X + r.W * m, r.Y + r.H * a, r.W * (1 - 2 * m), r.H * (b - a));
+    }
+
+    private static IEnumerable<double> Cortes(double largo, double paso)
+    {
+        for (var t = paso; t < largo - paso / 2; t += paso) yield return t;
+    }
+
+    private IEnumerable<PlanoElementoDto> Ordenados()
+        => elementos.OrderBy(e => e.Tipo switch { "terreno" => 0, "zona" => 1, "techo" => 2, "texto" => 4, _ => 3 })
+                    .ThenBy(e => e.Orden).ThenBy(e => e.Id);
+
+    private static List<double[]>? LeerPuntos(PlanoElementoDto e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Puntos)) return null;
+        try
+        {
+            var p = System.Text.Json.JsonSerializer.Deserialize<List<double[]>>(e.Puntos);
+            return p is { Count: >= 3 } && p.All(x => x.Length >= 2) ? p : null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Polígono en coordenadas de pantalla ("y,x y,x ...").</summary>
+    private static string? Puntos(PlanoElementoDto e)
+    {
+        var p = LeerPuntos(e);
+        return p is null ? null : string.Join(" ", p.Select(q => $"{F(q[1])},{F(WT - q[0])}"));
+    }
+
+    private static (double, double) CentroZona(PlanoElementoDto e, R r)
+    {
+        var p = LeerPuntos(e);
+        if (p is null) return (r.CX, r.CY);
+        // centro "de verdad" del polígono (por área), así el nombre cae adentro aunque tenga forma de L
+        double a = 0, cx = 0, cy = 0;
+        for (int i = 0; i < p.Count; i++)
+        {
+            var (x0, y0) = (p[i][1], WT - p[i][0]);
+            var (x1, y1) = (p[(i + 1) % p.Count][1], WT - p[(i + 1) % p.Count][0]);
+            var k = x0 * y1 - x1 * y0; a += k; cx += (x0 + x1) * k; cy += (y0 + y1) * k;
+        }
+        if (Math.Abs(a) < 1e-9) return (p.Average(q => q[1]), WT - p.Average(q => q[0]));
+        return (cx / (3 * a), cy / (3 * a));
+    }
+
+    /// <summary>Lo que ocupa todo el dibujo (en pantalla). conMargen: con lugar para "CALLE".</summary>
+    private (double X, double Y, double W, double H) Limites(bool conMargen)
+    {
+        double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+        foreach (var e in elementos)
+        {
+            var pts = LeerPuntos(e);
+            if (pts is not null)
+            {
+                foreach (var q in pts) { minX = Math.Min(minX, q[1]); maxX = Math.Max(maxX, q[1]); minY = Math.Min(minY, WT - q[0]); maxY = Math.Max(maxY, WT - q[0]); }
+                continue;
+            }
+            var r = Rect(e);
+            minX = Math.Min(minX, r.X); minY = Math.Min(minY, r.Y);
+            maxX = Math.Max(maxX, r.X + r.W); maxY = Math.Max(maxY, r.Y + r.H);
+        }
+        if (minX == double.MaxValue) { minX = 0; minY = 0; maxX = 42; maxY = 10; }
+        if (!conMargen) return (minX, minY, maxX - minX, maxY - minY);
+        return (minX - 1.4, minY - 0.8, maxX - minX + 2.0, maxY - minY + 1.6);
+    }
+
+    // ───────────── textos ─────────────
+    private static string F(double v) => v.ToString("0.###", Inv);
+    private static string F(decimal v) => v.ToString("0.###", Inv);
+    private static string M(decimal v) => v.ToString("0.00", Inv).Replace('.', ',');
+
+    private static string? Txt(ChangeEventArgs ev)
+    {
+        var s = ev.Value?.ToString();
+        return string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+    }
+
+    private static decimal? ParseDec(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        s = s.Replace("m", "").Trim().Replace(',', '.');
+        return decimal.TryParse(s, NumberStyles.Number, Inv, out var v) ? v : null;
+    }
+
+    /// <summary>"B-3-2" → (rack B, posición 3, nivel 2). El rack puede tener guiones.</summary>
+    private static (string Rack, int Pos, int Niv) PartirCodigo(string? cod)
+    {
+        if (string.IsNullOrWhiteSpace(cod)) return ("", 0, 0);
+        var p = cod.Split('-');
+        if (p.Length < 3 || !int.TryParse(p[^2], out var pos) || !int.TryParse(p[^1], out var niv)) return (cod, 0, 0);
+        return (string.Join("-", p[..^2]), pos, niv);
+    }
+
+    private static string NombrePlanta(string? p) => (p ?? "").ToUpperInvariant() switch
+    {
+        "PB" => "planta baja",
+        "P1" => "planta alta",
+        var x => x,
+    };
+
+    private static string NombreTipo(string tipo) => tipo switch
+    {
+        "terreno" => "Terreno",
+        "zona" => "Ambiente / zona",
+        "techo" => "Donde empieza el techo",
+        "porton" => "Portón",
+        "puerta" => "Puerta",
+        "ventana" => "Ventana",
+        "ventanal" => "Ventanal",
+        "rack" => "Rack",
+        "montacargas" => "Montacargas",
+        "sillas" => "Pilas de sillas",
+        "vehiculo" => "Vehículo",
+        "contenedor" => "Contenedor",
+        "escritorio" => "Escritorio",
+        "pc" => "PC",
+        "mesa" => "Mesa",
+        "pallet" => "Pallet",
+        "heladera" => "Heladera",
+        "texto" => "Texto",
+        _ => "Mueble",
+    };
+
+    private static string Titulo(PlanoElementoDto e)
+        => !string.IsNullOrWhiteSpace(e.Nombre) ? e.Nombre!
+         : e.Tipo == "rack" ? $"Rack {e.Codigo}"
+         : NombreTipo(e.Tipo);
+
+    public async ValueTask DisposeAsync()
+    {
+        ctsBusca?.Cancel();
+        if (jsListo) { try { await JS.InvokeVoidAsync("planoDeposito.dispose", svgRef); } catch { } }
+        refJs?.Dispose();
+    }
+}
