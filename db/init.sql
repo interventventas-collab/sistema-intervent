@@ -9343,3 +9343,9 @@ BEGIN
     ('PB','rack','C',N'Rack C',0,27.6,1.1,2.55,3,4,NULL,NULL,N'largo y niveles a confirmar',83,N'semilla');
 END
 GO
+
+-- 26/11/2026: PLANO DEL DEPÓSITO — "Estilo" (JSON chico: dónde va el nombre y de qué tamaño).
+-- ⚠ En PROD correr a mano.
+IF OBJECT_ID('Deposito_PlanoElementos','U') IS NOT NULL AND COL_LENGTH('Deposito_PlanoElementos','Estilo') IS NULL
+    ALTER TABLE Deposito_PlanoElementos ADD Estilo NVARCHAR(400) NULL;
+GO
