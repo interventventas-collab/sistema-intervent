@@ -126,23 +126,23 @@
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Sueldo base ($)</label>
-                        <input class="form-input" type="number" step="0.01" min="0" @bind="formSueldoBase" />
+                        <input class="form-input" type="text" inputmode="decimal" data-monto @bind="FormSueldoBaseMontoTxt" />
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">Valor por hora ($)</label>
-                        <input class="form-input" type="number" step="0.01" min="0" @bind="formValorHora" />
+                        <input class="form-input" type="text" inputmode="decimal" data-monto @bind="FormValorHoraMontoTxt" />
                         <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Se usa para calcular las horas extra.</p>
                     </div>
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">☕ Comisión por kg de café ($)</label>
-                        <input class="form-input" type="number" step="0.01" min="0" @bind="formComisionPorKg" placeholder="Ej: 200" />
+                        <input class="form-input" type="text" inputmode="decimal" data-monto @bind="FormComisionPorKgMontoTxt" placeholder="Ej: 200" />
                         <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Se multiplica por los kg vendidos en la liquidación.</p>
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group" style="flex: 1;">
                         <label class="form-label">🎁 Bono fijo mensual ($)</label>
-                        <input class="form-input" type="number" step="0.01" min="0" @bind="formBonoFijo" placeholder="Ej: 100000 — dejar en 0 si no tiene bono fijo" />
+                        <input class="form-input" type="text" inputmode="decimal" data-monto @bind="FormBonoFijoMontoTxt" placeholder="Ej: 100000 — dejar en 0 si no tiene bono fijo" />
                         <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Se pre-carga en "Bonos" cada vez que crees una liquidación nueva del empleado. Podés sobrescribir el monto en la liquidación si un mes es distinto.</p>
                     </div>
                 </div>
@@ -162,7 +162,7 @@
                         {
                             <div class="form-group" style="flex: 1;">
                                 <label class="form-label">💵 Jornal diario ($)</label>
-                                <input class="form-input" type="number" step="0.01" min="0" @bind="formJornalDiario" placeholder="Ej: 50000" />
+                                <input class="form-input" type="text" inputmode="decimal" data-monto @bind="FormJornalDiarioMontoTxt" placeholder="Ej: 50000" />
                                 <p style="font-size: 0.75rem; color: #6b7280; margin: 0.2rem 0 0;">Lo que cobra por día trabajado. En la liquidación: días × jornal = sueldo.</p>
                             </div>
                         }
@@ -329,13 +329,23 @@
     private string formPuesto = "";
     private DateTime formFechaIngreso = DateTime.Today;
     private decimal formSueldoBase;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string FormSueldoBaseMontoTxt { get => MontoInput.Formato(formSueldoBase); set { MontoInput.TryParse(value, out var v); formSueldoBase = v; } }
     private decimal formValorHora;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string FormValorHoraMontoTxt { get => MontoInput.Formato(formValorHora); set { MontoInput.TryParse(value, out var v); formValorHora = v; } }
     private decimal? formComisionPct;
     private decimal formComisionPorKg;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string FormComisionPorKgMontoTxt { get => MontoInput.Formato(formComisionPorKg); set { MontoInput.TryParse(value, out var v); formComisionPorKg = v; } }
     private decimal formBonoFijo;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string FormBonoFijoMontoTxt { get => MontoInput.Formato(formBonoFijo); set { MontoInput.TryParse(value, out var v); formBonoFijo = v; } }
     // 2026-06-08: modalidad de pago + jornal diario
     private string formModalidadSueldo = "mensual";
     private decimal formJornalDiario;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string FormJornalDiarioMontoTxt { get => MontoInput.Formato(formJornalDiario); set { MontoInput.TryParse(value, out var v); formJornalDiario = v; } }
     private bool formIsActive = true;
     private string formEstado { get => formIsActive ? "activo" : "inactivo"; set => formIsActive = value == "activo"; }
     // 2026-07-31: datos personales / administrativos

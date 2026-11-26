@@ -2402,7 +2402,7 @@
                             </div>
                             <div class="form-group" style="flex: 1;">
                                 <label class="form-label" style="font-size: 0.75rem;">Precio U. sin IVA</label>
-                                <input class="form-input" type="number" step="0.01" min="0" @bind="addServicioPrecio"
+                                <input class="form-input" type="text" inputmode="decimal" data-monto @bind="AddServicioPrecioMontoTxt"
                                        placeholder="(usa precio del catálogo)" title="Dejar vacío usa el precio del catálogo. Cargar acá lo pisa." />
                             </div>
                             <div class="form-group" style="flex: 1;">
@@ -2433,7 +2433,7 @@
                             </div>
                             <div class="form-group" style="flex: 1;">
                                 <label class="form-label" style="font-size: 0.75rem;">Precio U. sin IVA *</label>
-                                <input class="form-input" type="number" step="0.01" min="0" @bind="addLibrePrecio" placeholder="0,00" />
+                                <input class="form-input" type="text" inputmode="decimal" data-monto @bind="AddLibrePrecioMontoTxt" placeholder="0,00" />
                             </div>
                             <div class="form-group" style="flex: 1;">
                                 <label class="form-label" style="font-size: 0.75rem;">Cant.</label>
@@ -2923,9 +2923,9 @@
                                                     </div>
                                                 </td>
                                                 <td style="text-align: right;">
-                                                    <input class="form-input" type="number" step="0.01" min="0"
+                                                    <input class="form-input" type="text" inputmode="decimal" data-monto
                                                            style="width: 110px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.85rem; font-weight: 700; @(hayPrecioOverride ? "background:#fef3c7; border-color:#d97706;" : "")"
-                                                           value="@precioUnitCombo.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                                                           value="@MontoInput.Formato(precioUnitCombo)"
                                                            @onchange="@(e => OnComboPrecioChanged(cid, e.Value?.ToString()))"
                                                            title="Precio unitario del combo. Si lo modificás, se distribuye proporcionalmente entre los componentes." />
                                                     @if (hayPrecioOverride)
@@ -3165,11 +3165,12 @@
                                             </td>
                                             <td style="text-align: right;">
                                                 @* Precio unitario editable: input + indicador si está overridado.
+                                                   26/11/2026: ahora es texto con puntos de miles (data-monto + MontoInput); lo de abajo es historia.
                                                    IMPORTANTE: formatear con InvariantCulture (punto decimal) — los <input type="number">
                                                    no aceptan coma como separador, y en es-AR Razor lo renderizaba "36000,00" → input quedaba vacío.  *@
-                                                <input class="form-input" type="number" step="0.01" min="0"
+                                                <input class="form-input" type="text" inputmode="decimal" data-monto
                                                        style="width: 110px; text-align: right; padding: 0.25rem 0.4rem; font-size: 0.85rem; font-weight: 700; @(formItem.PrecioUnitarioOverride.HasValue ? "background:#fef3c7; border-color:#d97706;" : "")"
-                                                       value="@ci.PrecioUnitario.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)"
+                                                       value="@MontoInput.Formato(ci.PrecioUnitario)"
                                                        @onchange="@(e => OnItemPrecioOverrideChanged(i, e.Value?.ToString()))"
                                                        title="@(formItem.PrecioUnitarioOverride.HasValue ? "Precio modificado manualmente — click derecho o ✕ para volver al precio del catálogo" : "Precio del catálogo. Editá el valor para pisarlo manualmente.")" />
                                                 @* 2026-09-08: avisa que el número no salió de la lista sino de un precio
@@ -3844,7 +3845,7 @@
                     <div class="nv-res-linea"><span>Subtotal</span><strong>$@FormatMoney(cotizacion.Subtotal)</strong></div>
                     <div class="nv-res-linea">
                         <span>Descuento</span>
-                        <input class="form-input" type="number" step="0.01" tabindex="-1" @bind="formDescuento" @bind:after="Cotizar"
+                        <input class="form-input" type="text" inputmode="decimal" data-monto tabindex="-1" @bind="FormDescuentoMontoTxt" @bind:after="Cotizar"
                                style="text-align: right; width: 90px; font-weight: 600; padding: 0.2rem 0.45rem; font-size: 0.85rem;" />
                     </div>
                     @if (mostrarIvaT)
@@ -5251,7 +5252,7 @@
 
                 <div class="form-group">
                     <label>Monto que cobrás <span style="color:#dc2626;">*</span></label>
-                    <input type="number" step="0.01" class="form-input" @bind="cobroOcasionalMonto" @bind:event="oninput" />
+                    <input type="text" inputmode="decimal" data-monto class="form-input" @bind="CobroOcasionalMontoMontoTxt" @bind:event="onchange" />
                     <small style="color:#6b7280;">Por default cargamos el saldo total. Podés cobrar parcial.</small>
                 </div>
 
@@ -5435,10 +5436,10 @@
                 {
                     <div>
                         <label style="font-size:0.78rem; color:#374151; font-weight:600;">Precio U. (opcional, pisa el del catálogo)</label>
-                        <input type="number" step="0.01" min="0" class="form-input"
+                        <input type="text" inputmode="decimal" data-monto class="form-input"
                                style="width:100%; padding:0.4rem 0.6rem; font-size:1rem; margin-top:0.15rem;"
                                placeholder="(usa precio del catálogo)"
-                               @bind="addItemModalPrecioOverride" />
+                               @bind="AddItemModalPrecioOverrideMontoTxt" />
                     </div>
                 }
             </div>
@@ -5698,6 +5699,8 @@
     private CafeVentaDto? cobroOcasionalVenta;
     private decimal cobroOcasionalSaldo;
     private decimal cobroOcasionalMonto;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string CobroOcasionalMontoMontoTxt { get => MontoInput.Formato(cobroOcasionalMonto); set { MontoInput.TryParse(value, out var v); cobroOcasionalMonto = v; } }
     private int cobroOcasionalCajaId;
     private DateTime cobroOcasionalFecha = DateTimeExt.AhoraAr().Date;
     private string cobroOcasionalNota = "";
@@ -6778,6 +6781,8 @@
     // despues de las 19hs hora Argentina salia fechada MANANA y ARCA rebotaba la factura.
     private DateTime formFecha = DateTimeExt.AhoraAr().Date;
     private decimal formDescuento;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string FormDescuentoMontoTxt { get => MontoInput.Formato(formDescuento); set { MontoInput.TryParse(value, out var v); formDescuento = v; } }
     private string formObservaciones = "";
     private string formTipoComprobante = "X";
     private string formCondicionIva = "CF";
@@ -7016,12 +7021,16 @@
     // Inputs del tab "Concepto libre"
     private string addLibreDescripcion = "";
     private decimal addLibrePrecio = 0m;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string AddLibrePrecioMontoTxt { get => MontoInput.Formato(addLibrePrecio); set { MontoInput.TryParse(value, out var v); addLibrePrecio = v; } }
     private int addLibreCantidad = 1;
 
     // 2026-06-05: Catalogo de servicios + inputs del tab "Servicio"
     private List<CafeServicioDto>? catalogoServicios;
     private int addServicioId = 0;
     private decimal? addServicioPrecio = null;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string AddServicioPrecioMontoTxt { get => addServicioPrecio is decimal v ? MontoInput.Formato(v) : ""; set => addServicioPrecio = MontoInput.TryParse(value, out var v) ? v : null; }
     private int addServicioCantidad = 1;
 
     private async Task CargarServiciosSiHaceFalta()
@@ -11136,6 +11145,8 @@
     private string addItemModalMolienda = "EN GRANOS";
     private string addItemModalEnvase = "NEGRO";
     private decimal? addItemModalPrecioOverride;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string AddItemModalPrecioOverrideMontoTxt { get => addItemModalPrecioOverride is decimal v ? MontoInput.Formato(v) : ""; set => addItemModalPrecioOverride = MontoInput.TryParse(value, out var v) ? v : null; }
     // 2026-09-17: descuento % cargado de antemano en "Agregar producto" (Osmar: "ya poder cargar el
     // descuento por adelantado"). Texto y no number: con type=number una coma deja el campo vacío.
     private string addItemModalDescuento = "";
@@ -11606,8 +11617,7 @@
     {
         if (idx < 0 || idx >= formItems.Count || cotizacion is null || idx >= cotizacion.Items.Count) return;
         if (!string.IsNullOrWhiteSpace(value)
-            && decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out var v) && v >= 0m)
+            && MontoInput.TryParse(value, out var v) && v >= 0m)
         {
             // Si el valor que tipeó coincide con el del catálogo, NO lo marcamos como override
             // (no hay nada que pisar). Si difiere, sí.
@@ -11723,8 +11733,7 @@
         var idxs = GetIndicesGrupoCombo(comboId);
         if (idxs.Count == 0 || cotizacion is null) return;
         if (string.IsNullOrWhiteSpace(value)
-            || !decimal.TryParse(value.Replace(",", "."), System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out var nuevoPU) || nuevoPU < 0m)
+            || !MontoInput.TryParse(value, out var nuevoPU) || nuevoPU < 0m)
             return;
         var cantPacks = Math.Max(1, formItems[idxs[0]].Cantidad);
         var nuevoTotalCombo = Math.Round(nuevoPU * cantPacks, 2, MidpointRounding.AwayFromZero);
