@@ -198,6 +198,7 @@ else
             <div class="c-prod">
                 <div class="om-quien">
                     <b>@o.Comprador</b> · @o.Tipo
+                    @if (o.CafeListo) { <span style="background:#16a34a; color:#fff; border-radius:999px; padding:0 7px; font-size:.75rem; font-weight:700;" title="El tostadero ya preparó el café de esta venta">☕ Café listo</span> }
                     @if (!string.IsNullOrEmpty(o.Cuenta)) { <text> · @o.Cuenta</text> }
                     · <span class="@(o.EstadoClave == "cancelada" ? "om-cancel" : "")">@o.Estado</span>
                     @if (o.NumeroVenta > 0) { <text> · venta @o.NumeroVenta</text> }

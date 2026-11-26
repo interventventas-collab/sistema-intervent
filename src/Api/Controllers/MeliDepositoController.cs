@@ -141,6 +141,10 @@ public class MeliDepositoController : ControllerBase
         var repartidores = repIds.Count == 0 ? new Dictionary<int, string>()
             : await _db.CafeRepartidores.AsNoTracking().Where(r => repIds.Contains(r.Id))
                 .ToDictionaryAsync(r => r.Id, r => r.Nombre);
+        // 2026-11-26: el tostadero ya tocó "Café listo" en su tablet para estos envíos.
+        var numsGrupos = grupos.Select(g => g.numero).ToList();
+        var cafeListos = (await _db.TostaderoCafeListos.AsNoTracking()
+            .Where(t => t.Tipo == "MELI" && numsGrupos.Contains(t.Ref)).Select(t => t.Ref).ToListAsync()).ToHashSet();
         static DateTime? Ar(DateTime? utc) => utc?.AddHours(-3);
         string? Rep(int? id) => id.HasValue && repartidores.TryGetValue(id.Value, out var n) ? n : null;
 
@@ -166,6 +170,7 @@ public class MeliDepositoController : ControllerBase
                     enRuta = d?.InternalStatus == "en_ruta",
                     lleva = Rep(d?.RepartidorAsignadoId),
                     entrego = Rep(d?.EntregadoPorRepartidorId),
+                    cafeListo = cafeListos.Contains(g.numero),
                 };
             })
         });

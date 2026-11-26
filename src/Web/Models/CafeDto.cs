@@ -817,6 +817,8 @@ public class CafePreparacionVentaDto
     public DateTime? CambioAt { get; set; }
     /// <summary>2026-06-05: true cuando la venta no se pudo subir a Drive. La card muestra chip rojo "SIN DRIVE".</summary>
     public bool SinDrive { get; set; }
+    /// <summary>2026-11-26: cuándo el tostadero marcó "Café listo" (null = todavía no).</summary>
+    public DateTime? CafeListoAt { get; set; }
     public List<CafePreparacionItemDto> Items { get; set; } = new();
 }
 

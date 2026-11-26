@@ -9230,3 +9230,20 @@ BEGIN
     );
 END
 GO
+
+-- ============================================================
+-- 26/11/2026: tablet del tostadero — "Café listo" por pedido (VENTA = CafeVentas.Id,
+-- MELI = numero de envío/pack/orden). El depósito lo ve en su tarjeta. ⚠ En PROD correr a mano.
+-- ============================================================
+IF OBJECT_ID('Tostadero_CafeListo','U') IS NULL
+BEGIN
+    CREATE TABLE Tostadero_CafeListo (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Tipo NVARCHAR(10) NOT NULL,
+        Ref BIGINT NOT NULL,
+        ListoAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        Quien NVARCHAR(60) NULL
+    );
+    CREATE UNIQUE INDEX UX_Tostadero_CafeListo ON Tostadero_CafeListo(Tipo, Ref);
+END
+GO
