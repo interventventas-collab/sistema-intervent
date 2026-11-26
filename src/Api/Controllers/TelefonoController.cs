@@ -15,7 +15,7 @@ namespace Api.Controllers;
 ///                                    211-215 = "busca a ALEXIS/WALTER/..." en esas compus)
 ///   - operador OSMAR/GERMAN/GABRIEL (PIN) -> 201/202/203
 ///   - cualquier otro (ej. contadora) -> sin telefono
-///   - repartidores desde el celu (link con token) -> 220, llaman a Oficina (200), Deposito (210) u Osmar (201)
+///   - repartidores desde el celu (link con token) -> 220, llaman a Oficina (200), Deposito (210), Osmar (201) o al Telefono fijo (101)
 /// 2026-11-26 (3a vuelta): registro de llamadas -> llamadas perdidas; mensajes programados.
 /// </summary>
 [ApiController]
@@ -238,8 +238,8 @@ public class TelefonoController : ControllerBase
         var rep = await _db.CafeRepartidores.AsNoTracking().FirstOrDefaultAsync(x => x.PublicToken == token && x.IsActive);
         if (rep == null || string.IsNullOrWhiteSpace(TelefonoCentralService.Secreto) || string.IsNullOrWhiteSpace(WsUrl))
             return new TelefonoConfigDto(false, "", "", "", "", "", new());
-        // 2026-11-26: en el celu aparecen en este orden: Oficina (todos), Deposito, Osmar
-        var oficina = new List<InternoDto> { new("Oficina", "200", ""), new("Depósito", "210", ""), new("Osmar", "201", "") };
+        // 2026-11-26: en el celu aparecen en este orden: Oficina (todos), Deposito, Osmar, Telefono fijo
+        var oficina = new List<InternoDto> { new("Oficina", "200", ""), new("Depósito", "210", ""), new("Osmar", "201", ""), new("Teléfono fijo", "101", "") };
         return new TelefonoConfigDto(true, WsUrl, Dominio, "220", TelefonoCentralService.Clave("220"), rep.Nombre, oficina);
     }
 
