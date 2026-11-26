@@ -9247,3 +9247,101 @@ BEGIN
     CREATE UNIQUE INDEX UX_Tostadero_CafeListo ON Tostadero_CafeListo(Tipo, Ref);
 END
 GO
+
+-- ============================================================
+-- 26/11/2026: PLANO DEL DEPÓSITO — elementos dibujados (terreno, zonas, puertas, ventanas,
+-- vehículos, racks...) en metros (X desde la pared izquierda 0..10, Y desde la calle 0..42.1)
+-- y qué producto hay en cada estante de un rack (rack + posición + nivel, ej. "B-3-2").
+-- Racks con Rotacion 0: si Largo ≥ Ancho las posiciones corren sobre Y (posición 1 = la punta
+-- más cerca de la calle); si no, sobre X (posición 1 = X más chica). Nivel 1 = el piso.
+-- Trae la planta baja (PB) cargada como semilla. ⚠ En PROD correr a mano.
+-- ============================================================
+IF OBJECT_ID('Deposito_PlanoElementos','U') IS NULL
+BEGIN
+    CREATE TABLE Deposito_PlanoElementos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Planta NVARCHAR(10) NOT NULL,
+        Tipo NVARCHAR(20) NOT NULL,
+        Codigo NVARCHAR(10) NULL,
+        Nombre NVARCHAR(100) NULL,
+        X DECIMAL(7,2) NOT NULL,
+        Y DECIMAL(7,2) NOT NULL,
+        Ancho DECIMAL(7,2) NOT NULL,
+        Largo DECIMAL(7,2) NOT NULL,
+        Alto DECIMAL(5,2) NULL,
+        Rotacion INT NOT NULL DEFAULT 0,
+        Posiciones INT NULL,
+        Niveles INT NULL,
+        Color NVARCHAR(9) NULL,
+        Puntos NVARCHAR(MAX) NULL,
+        Notas NVARCHAR(300) NULL,
+        Orden INT NOT NULL DEFAULT 0,
+        CreadoAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        ModificadoAt DATETIME2 NULL,
+        ModificadoPor NVARCHAR(100) NULL
+    );
+    CREATE INDEX IX_Deposito_PlanoElementos_Planta ON Deposito_PlanoElementos(Planta, Orden);
+END
+GO
+-- Filtered index: requiere QUOTED_IDENTIFIER ON.
+SET QUOTED_IDENTIFIER ON;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_Deposito_PlanoElementos_RackCodigo')
+    CREATE UNIQUE INDEX UX_Deposito_PlanoElementos_RackCodigo ON Deposito_PlanoElementos(Codigo)
+        WHERE Tipo = 'rack' AND Codigo IS NOT NULL;
+GO
+IF OBJECT_ID('Deposito_EstanteProductos','U') IS NULL
+BEGIN
+    CREATE TABLE Deposito_EstanteProductos (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ElementoId INT NOT NULL CONSTRAINT FK_Deposito_EstanteProductos_Elemento REFERENCES Deposito_PlanoElementos(Id),
+        Posicion INT NOT NULL,
+        Nivel INT NOT NULL,
+        ProductoId INT NOT NULL CONSTRAINT FK_Deposito_EstanteProductos_Producto REFERENCES Cafe_Productos(Id),
+        Cantidad NVARCHAR(50) NULL,
+        Nota NVARCHAR(200) NULL,
+        At DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        Por NVARCHAR(100) NULL
+    );
+    CREATE UNIQUE INDEX UX_Deposito_EstanteProductos ON Deposito_EstanteProductos(ElementoId, Posicion, Nivel, ProductoId);
+    CREATE INDEX IX_Deposito_EstanteProductos_Producto ON Deposito_EstanteProductos(ProductoId);
+END
+GO
+-- Semilla: planta baja (solo si el plano está vacío). Orden = orden de dibujo (el fondo primero).
+IF NOT EXISTS (SELECT 1 FROM Deposito_PlanoElementos)
+BEGIN
+    INSERT INTO Deposito_PlanoElementos (Planta, Tipo, Codigo, Nombre, X, Y, Ancho, Largo, Posiciones, Niveles, Color, Puntos, Notas, Orden, ModificadoPor) VALUES
+    ('PB','terreno',NULL,N'Terreno',0,0,10,42.1,NULL,NULL,NULL,NULL,NULL,0,N'semilla'),
+    ('PB','zona',NULL,N'Coches',0,0,5.15,7.55,NULL,NULL,'#EAF3DE',N'[[0,0],[5.15,0],[5.15,6.3],[3,6.3],[3,7.55],[0,7.55]]',NULL,10,N'semilla'),
+    ('PB','zona',NULL,N'Casa (mamá · aparte)',3,0,7,21.3,NULL,NULL,'#E4E2DA',N'[[5.15,0],[10,0],[10,21.3],[3,21.3],[3,6.3],[5.15,6.3]]',N'aparte',11,N'semilla'),
+    ('PB','zona',NULL,N'Pasillo techado',0,7.55,3,23.75,NULL,NULL,'#FFFFFF',NULL,N'arriba planta alta',12,N'semilla'),
+    ('PB','zona',NULL,N'Pasillo',3,21.3,7,1.5,NULL,NULL,NULL,NULL,NULL,13,N'semilla'),
+    ('PB','zona',NULL,N'Oficina',3,22.8,7,5.75,NULL,NULL,'#E1F5EE',N'[[3,22.8],[10,22.8],[10,28.55],[7.5,28.55],[7.5,26.3],[3,26.3]]',NULL,14,N'semilla'),
+    ('PB','zona',NULL,N'Baño',7.9,22.8,2.1,1.7,NULL,NULL,NULL,NULL,NULL,15,N'semilla'),
+    ('PB','zona',NULL,N'Taller máquinas',3,26.3,1,2.25,NULL,NULL,'#FAEEDA',NULL,NULL,16,N'semilla'),
+    ('PB','zona',NULL,N'Habitación',4,26.3,3.5,2.25,NULL,NULL,'#F1EFE8',NULL,NULL,17,N'semilla'),
+    ('PB','zona',NULL,N'Cocina',7.5,26.3,2.5,2.25,NULL,NULL,'#FBEAF0',NULL,NULL,18,N'semilla'),
+    ('PB','zona',NULL,N'Tostadero',3,28.55,7,2.75,NULL,NULL,'#FAECE7',NULL,NULL,19,N'semilla'),
+    ('PB','zona',NULL,N'Depósito',0,31.3,10,10.8,NULL,NULL,'#EEEDFE',NULL,NULL,20,N'semilla'),
+    ('PB','techo',NULL,N'Empieza el techo',0,7.55,3,0.05,NULL,NULL,NULL,NULL,NULL,30,N'semilla'),
+    ('PB','porton',NULL,N'Portón negro',0.05,8.43,2.9,0.24,NULL,NULL,NULL,NULL,NULL,31,N'semilla'),
+    ('PB','puerta',NULL,N'Casa → pasillo techado',2.93,13.5,0.15,0.8,NULL,NULL,NULL,NULL,NULL,40,N'semilla'),
+    ('PB','puerta',NULL,N'Casa → pasillo',8.5,21.23,0.8,0.15,NULL,NULL,NULL,NULL,NULL,41,N'semilla'),
+    ('PB','puerta',NULL,N'Pasillo techado → oficina',2.93,25.0,0.15,0.8,NULL,NULL,NULL,NULL,NULL,42,N'semilla'),
+    ('PB','puerta',NULL,N'Baño → oficina',8.5,24.43,0.8,0.15,NULL,NULL,NULL,NULL,NULL,43,N'semilla'),
+    ('PB','puerta',NULL,N'Habitación → cocina',7.43,26.8,0.15,0.8,NULL,NULL,NULL,NULL,NULL,44,N'semilla'),
+    ('PB','ventana',NULL,N'Ventana casa',2.93,12.3,0.15,0.9,NULL,NULL,NULL,NULL,NULL,50,N'semilla'),
+    ('PB','ventana',NULL,N'Ventana oficina',2.93,22.95,0.15,0.9,NULL,NULL,NULL,NULL,NULL,51,N'semilla'),
+    ('PB','ventana',NULL,N'Ventana cocina → tostadero',8.6,28.48,1.0,0.15,NULL,NULL,NULL,NULL,NULL,52,N'semilla'),
+    ('PB','ventanal',NULL,N'Ventanal transparente',2.93,28.6,0.15,2.65,NULL,NULL,NULL,NULL,NULL,53,N'semilla'),
+    ('PB','vehiculo',NULL,N'Camioneta',0.63,0.65,1.35,2.7,NULL,NULL,NULL,NULL,NULL,60,N'semilla'),
+    ('PB','vehiculo',NULL,N'Camioneta',2.93,0.6,1.35,2.7,NULL,NULL,NULL,NULL,NULL,61,N'semilla'),
+    ('PB','vehiculo',NULL,N'Camioneta',0.73,4.05,1.35,2.7,NULL,NULL,NULL,NULL,NULL,62,N'semilla'),
+    ('PB','contenedor',NULL,N'Contenedor de residuos',3.45,5.0,1.4,1.05,NULL,NULL,NULL,NULL,NULL,63,N'semilla'),
+    ('PB','sillas',NULL,N'Sillas · 2 filas de 13 pilas',0.06,8.85,1.0,7.95,NULL,NULL,NULL,NULL,NULL,70,N'semilla'),
+    ('PB','rack','A',N'Rack A',0,16.8,1.1,2.55,3,4,NULL,NULL,N'niveles a confirmar',80,N'semilla'),
+    ('PB','montacargas',NULL,N'Montacargas',0,20.8,1.1,2.1,NULL,NULL,NULL,NULL,NULL,81,N'semilla'),
+    ('PB','rack','B',N'Rack B',0,24.2,1.1,3.4,4,4,NULL,NULL,N'largo y niveles a confirmar',82,N'semilla'),
+    ('PB','rack','C',N'Rack C',0,27.6,1.1,2.55,3,4,NULL,NULL,N'largo y niveles a confirmar',83,N'semilla');
+END
+GO

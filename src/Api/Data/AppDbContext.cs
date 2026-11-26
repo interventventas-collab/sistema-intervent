@@ -182,6 +182,9 @@ public class AppDbContext : DbContext
     public DbSet<CafeProducto> CafeProductos => Set<CafeProducto>();
     // 2026-09-24: zonas del depósito (código corto + nombre largo) para la ubicación de productos
     public DbSet<CafeUbicacionZona> CafeUbicacionZonas => Set<CafeUbicacionZona>();
+    // 2026-11-26: plano del depósito (zonas, puertas, racks...) y qué producto hay en cada estante
+    public DbSet<DepositoPlanoElemento> DepositoPlanoElementos => Set<DepositoPlanoElemento>();
+    public DbSet<DepositoEstanteProducto> DepositoEstanteProductos => Set<DepositoEstanteProducto>();
     public DbSet<DepTarea> DepTareas => Set<DepTarea>();
     public DbSet<DepTareaItem> DepTareaItems => Set<DepTareaItem>();
     // 2026-08-05: estado de la foto por producto (aprobada / reportada errónea) — a nivel sistema

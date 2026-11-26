@@ -1,0 +1,187 @@
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@* 2026-11-26: "Guardar un producto acá" — se usa en el plano (vista de frente del rack) y en la
+   pantalla del celu que abre el QR del estante. Busca por nombre o código (mismo buscador del
+   plano), cantidad en texto libre ("12 cajas", "media caja"). En el celu suma el lector de
+   código de barras con la cámara. *@
+
+<style>
+    .eap { display: flex; flex-direction: column; gap: 0.45rem; }
+    .eap-in { width: 100%; border: 1px solid #d1d5db; border-radius: 8px; padding: 0.5rem 0.65rem; font: inherit; font-size: 0.92rem; background: #fff; }
+    .eap.grande .eap-in { font-size: 1.05rem; padding: 0.75rem 0.8rem; }
+    .eap-res { border: 1px solid #e5e7eb; border-radius: 8px; max-height: 260px; overflow-y: auto; }
+    .eap-res button { display: block; width: 100%; text-align: left; border: none; border-bottom: 1px solid #f3f4f6; background: #fff; padding: 0.45rem 0.6rem; font: inherit; font-size: 0.88rem; cursor: pointer; }
+    .eap.grande .eap-res button { padding: 0.75rem 0.8rem; font-size: 1rem; }
+    .eap-res button:last-child { border-bottom: none; }
+    .eap-res button:hover { background: #f9fafb; }
+    .eap-sku { font-family: monospace; color: #6b7280; font-size: 0.8em; }
+    .eap-gris { color: #6b7280; font-size: 0.85rem; }
+    .eap-elegido { border: 1px solid #111827; border-radius: 8px; padding: 0.45rem 0.6rem; display: flex; align-items: center; gap: 0.5rem; }
+    .eap-elegido b { flex: 1; }
+    .eap-x { border: none; background: none; font-size: 1rem; cursor: pointer; color: #6b7280; padding: 0.2rem 0.4rem; }
+    .eap-btn { border: 1px solid #d1d5db; border-radius: 8px; padding: 0.5rem 0.9rem; font: inherit; font-weight: 700; font-size: 0.9rem; background: #fff; cursor: pointer; }
+    .eap-btn.prim { background: #111827; color: #fff; border-color: #111827; }
+    .eap-btn:disabled { opacity: 0.5; cursor: default; }
+    .eap.grande .eap-btn { padding: 0.85rem 1rem; font-size: 1.05rem; width: 100%; }
+    .eap-lector { background: #000; border-radius: 10px; overflow: hidden; }
+</style>
+
+<div class="eap @(Grande ? "grande" : "")">
+    @if (elegido is null)
+    {
+        <input class="eap-in" placeholder="Buscar producto (nombre o código)" value="@busca"
+               @oninput="OnBuscar" />
+        @if (ConEscaner)
+        {
+            @if (escaneando)
+            {
+                <div id="eap-lector" class="eap-lector"></div>
+                <button class="eap-btn" @onclick="DejarDeEscanear">Cerrar cámara</button>
+            }
+            else
+            {
+                <button class="eap-btn" @onclick="Escanear">📷 Escanear código de barras</button>
+            }
+            @if (errorCamara is not null) { <div class="eap-gris" style="color:#b91c1c">@errorCamara</div> }
+        }
+        @if (buscando) { <div class="eap-gris">Buscando…</div> }
+        else if (resultados.Count > 0)
+        {
+            <div class="eap-res">
+                @foreach (var r in resultados.Take(12))
+                {
+                    <button @onclick="() => Elegir(r)">
+                        @r.Nombre <span class="eap-sku">@r.Sku</span>
+                        @if (r.Lugares.Count > 0)
+                        {
+                            <br /><span class="eap-gris">ya está en @string.Join(" · ", r.Lugares.Select(l => l.Codigo))</span>
+                        }
+                    </button>
+                }
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(busca) && buscado)
+        {
+            <div class="eap-gris">No encontré productos con “@busca”.</div>
+        }
+    }
+    else
+    {
+        <div class="eap-elegido">
+            <b>@elegido.Nombre <span class="eap-sku">@elegido.Sku</span></b>
+            <button class="eap-x" title="Elegir otro" @onclick="() => elegido = null">✕</button>
+        </div>
+        <input class="eap-in" placeholder="Cantidad (ej. 12 cajas) · opcional" @bind="cantidad" />
+        <button class="eap-btn prim" disabled="@guardando" @onclick="Guardar">
+            @(guardando ? "Guardando…" : $"Guardar en {Codigo}")
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Codigo { get; set; } = "";
+    [Parameter] public EventCallback OnGuardado { get; set; }
+    [Parameter] public bool Grande { get; set; }
+    [Parameter] public bool ConEscaner { get; set; }
+
+    private string busca = "";
+    private bool buscando, buscado, guardando;
+    private List<PlanoBuscarDto> resultados = new();
+    private PlanoBuscarDto? elegido;
+    private string? cantidad;
+    private CancellationTokenSource? ctsBusca;
+
+    private async Task OnBuscar(ChangeEventArgs e)
+    {
+        busca = e.Value?.ToString() ?? "";
+        ctsBusca?.Cancel();
+        var cts = ctsBusca = new CancellationTokenSource();
+        try { await Task.Delay(300, cts.Token); } catch (TaskCanceledException) { return; }
+        await Buscar(busca, cts.Token);
+    }
+
+    private async Task<List<PlanoBuscarDto>> Buscar(string q, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2) { resultados = new(); buscado = false; StateHasChanged(); return resultados; }
+        buscando = true; StateHasChanged();
+        try
+        {
+            var r = await Api.BuscarEnPlanoAsync(q.Trim());
+            if (ct.IsCancellationRequested) return resultados;
+            resultados = r; buscado = true;
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { buscando = false; StateHasChanged(); }
+        return resultados;
+    }
+
+    private void Elegir(PlanoBuscarDto r) { elegido = r; cantidad = null; }
+
+    private async Task Guardar()
+    {
+        if (elegido is null) return;
+        guardando = true;
+        try
+        {
+            await Api.GuardarProductoEnEstanteAsync(Codigo, elegido.ProductoId,
+                string.IsNullOrWhiteSpace(cantidad) ? null : cantidad.Trim(), null);
+            ToastService.Success($"Guardado en {Codigo}: {elegido.Nombre}");
+            elegido = null; cantidad = null; busca = ""; resultados = new(); buscado = false;
+            await OnGuardado.InvokeAsync();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardando = false; }
+    }
+
+    // ───── Lector de código de barras con la cámara (mismo que el escáner del depósito) ─────
+    private bool escaneando;
+    private string? errorCamara;
+    private DotNetObjectReference<EstanteAgregarProducto>? refJs;
+
+    private async Task Escanear()
+    {
+        errorCamara = null;
+        refJs ??= DotNetObjectReference.Create(this);
+        escaneando = true;
+        StateHasChanged();
+        await Task.Yield(); // que el cuadro del lector entre a la pantalla
+        try { await JS.InvokeVoidAsync("scannerBarcode.start", "eap-lector", refJs); }
+        catch { errorCamara = "No se pudo abrir la cámara."; escaneando = false; }
+    }
+
+    private async Task DejarDeEscanear()
+    {
+        escaneando = false;
+        try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { }
+    }
+
+    [JSInvokable]
+    public async Task OnScanDetected(string text, string format)
+    {
+        if (string.IsNullOrWhiteSpace(text) || !escaneando) return;
+        await DejarDeEscanear();
+        busca = text.Trim();
+        var r = await Buscar(busca);
+        if (r.Count == 1) elegido = r[0];
+        else if (r.Count == 0) ToastService.Warning($"No encontré ningún producto con el código {busca}");
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnScanError(string message)
+    {
+        errorCamara = message;
+        escaneando = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ctsBusca?.Cancel();
+        if (escaneando) { try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { } }
+        refJs?.Dispose();
+    }
+}

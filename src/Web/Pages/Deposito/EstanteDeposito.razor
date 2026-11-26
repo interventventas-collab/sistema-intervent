@@ -1,0 +1,108 @@
+@page "/deposito/estante/{Codigo}"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject ToastService ToastService
+@inject IJSRuntime JS
+
+@* 2026-11-26: lo que abre el QR pegado en cada estante (etiquetas del "Plano del depósito").
+   Pensado para el celu: arriba el código grande, abajo lo que hay guardado en ese estante
+   (con ✕ para sacarlo) y "+ Guardar un producto acá" (buscando o escaneando el código de barras). *@
+
+<style>
+    .ed { max-width: 560px; margin: 0 auto; padding: 0.5rem 0.25rem 2rem; }
+    .ed-cod { font-family: monospace; font-size: 2.6rem; font-weight: 900; color: #78350f; line-height: 1.1; }
+    .ed-sub { color: #4b5563; font-size: 1rem; margin-top: 2px; }
+    .ed-lbl { font-size: 0.78rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin: 1.4rem 0 0.5rem; }
+    .ed-prod { display: flex; align-items: center; gap: 0.6rem; padding: 0.8rem 0; border-bottom: 1px solid #f3f4f6; font-size: 1.02rem; }
+    .ed-prod > div { flex: 1; min-width: 0; }
+    .ed-sku { font-family: monospace; color: #6b7280; font-size: 0.82rem; }
+    .ed-gris { color: #6b7280; font-size: 0.88rem; }
+    .ed-x { border: 1px solid #e5e7eb; background: #fff; border-radius: 10px; width: 44px; height: 44px; font-size: 1.1rem; color: #6b7280; cursor: pointer; flex-shrink: 0; }
+    .ed-link { display: inline-block; margin-top: 1.6rem; font-weight: 700; color: #1d4ed8; text-decoration: none; font-size: 1rem; }
+</style>
+
+<div class="ed">
+    @if (cargando)
+    {
+        <div class="ed-gris">Cargando…</div>
+    }
+    else if (est is null)
+    {
+        <div class="ed-cod">@Codigo</div>
+        <div class="ed-sub">No encontré este estante en el plano. Puede que el rack se haya borrado o cambiado de letra.</div>
+        <a class="ed-link" href="/deposito/plano">Ver el plano del depósito</a>
+    }
+    else
+    {
+        <div class="ed-cod">@est.Codigo</div>
+        <div class="ed-sub">@RackTexto(est) · posición @est.Posicion · nivel @est.Nivel@(PlantaTexto(est.Planta))</div>
+
+        <div class="ed-lbl">Lo que hay acá</div>
+        @if (est.Productos.Count == 0)
+        {
+            <div class="ed-gris">Este estante está vacío.</div>
+        }
+        @foreach (var p in est.Productos)
+        {
+            var pp = p;
+            <div class="ed-prod">
+                <div>
+                    <b>@p.Nombre</b> <span class="ed-sku">@p.Sku</span>
+                    @if (!string.IsNullOrWhiteSpace(p.Cantidad)) { <div>@p.Cantidad</div> }
+                    @if (!string.IsNullOrWhiteSpace(p.Nota)) { <div class="ed-gris">@p.Nota</div> }
+                </div>
+                <button class="ed-x" title="Sacar de este estante" @onclick="@(() => Sacar(pp))">✕</button>
+            </div>
+        }
+
+        <div class="ed-lbl">+ Guardar un producto acá</div>
+        <EstanteAgregarProducto Codigo="@est.Codigo" Grande="true" ConEscaner="true" OnGuardado="Cargar" />
+
+        <a class="ed-link" href="@($"/deposito/plano?estante={Uri.EscapeDataString(est.Codigo)}")">🗺 Ver en el plano</a>
+    }
+</div>
+
+@code {
+    [Parameter] public string Codigo { get; set; } = "";
+
+    private PlanoEstanteDetalleDto? est;
+    private bool cargando = true;
+
+    protected override async Task OnParametersSetAsync() => await Cargar();
+
+    private async Task Cargar()
+    {
+        try { est = await Api.GetEstantePlanoAsync(Codigo.Trim().ToUpperInvariant()); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { cargando = false; }
+    }
+
+    private async Task Sacar(PlanoAsignacionDto p)
+    {
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", $"¿Sacar «{p.Nombre}» de {est?.Codigo}?"); } catch { ok = false; }
+        if (!ok) return;
+        try
+        {
+            await Api.SacarProductoDeEstanteAsync(p.Id);
+            ToastService.Success("Listo, lo saqué del estante");
+            await Cargar();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private static string RackTexto(PlanoEstanteDetalleDto e)
+    {
+        var r = e.Rack?.Trim();
+        if (string.IsNullOrEmpty(r)) { var i = e.Codigo.IndexOf('-'); r = i > 0 ? e.Codigo[..i] : e.Codigo; }
+        return r.StartsWith("rack", StringComparison.OrdinalIgnoreCase) ? r : "Rack " + r;
+    }
+
+    private static string PlantaTexto(string? p) => (p ?? "").ToUpperInvariant() switch
+    {
+        "P1" => " · planta alta",
+        "PB" => " · planta baja",
+        "" => "",
+        var x => " · " + x,
+    };
+}
