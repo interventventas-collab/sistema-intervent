@@ -140,7 +140,7 @@
             }
 
             <label class="pm-label">Importe</label>
-            <input class="pm-input pm-input-monto" type="text" inputmode="decimal" placeholder="$ 0"
+            <input class="pm-input pm-input-monto" type="text" inputmode="decimal" data-monto placeholder="$ 0"
                    value="@montoTxt" @oninput="@(e => montoTxt = e.Value?.ToString() ?? "")" />
 
             <label class="pm-label">Forma de pago</label>

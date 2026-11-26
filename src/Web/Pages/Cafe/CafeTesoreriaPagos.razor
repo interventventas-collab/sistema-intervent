@@ -223,7 +223,7 @@
                                             <td style="text-align:right;">$@p.Saldo.ToString("N2")</td>
                                             <td style="text-align:right;">
                                                 @* 2026-08-18: idem Cobranzas — texto con punto de miles (antes quedaba vacio) *@
-                                                <input class="form-input" type="text" inputmode="decimal" style="text-align:right; width:120px; display:inline-block;"
+                                                <input class="form-input" type="text" inputmode="decimal" data-monto style="text-align:right; width:120px; display:inline-block;"
                                                        @bind="imputaciones[clave].ImporteTexto" @bind:event="onchange" @bind:after="@(() => OnImputeAfter(clave))" />
                                             </td>
                                         </tr>
@@ -234,7 +234,7 @@
                         <div style="display:flex; align-items:center; gap:0.5rem;">
                             <label class="form-check"><input type="checkbox" @bind="aCuentaActivo" @bind:after="RecalcularTotal" /> A cuenta:</label>
                             @* 2026-08-28: idem Cobranzas — type=number vaciaba el casillero. *@
-                            <input class="form-input" type="text" inputmode="decimal" style="width:140px;"
+                            <input class="form-input" type="text" inputmode="decimal" data-monto style="width:140px;"
                                    @bind="ACuentaImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" disabled="@(!aCuentaActivo)" />
                         </div>
                         <div style="margin-top:0.5rem; text-align:right; font-weight:700;">
@@ -289,10 +289,10 @@
                                     }
                                 </select>
                                 @* 2026-08-28: idem Cobranzas — type=number vaciaba el casillero. *@
-                                <input class="form-input" type="text" inputmode="decimal" placeholder="Importe"
+                                <input class="form-input" type="text" inputmode="decimal" data-monto placeholder="Importe"
                                        @bind="m.ImporteTexto" @bind:event="onchange" @bind:after="RecalcularTotal" disabled="@(m.ChequeExistenteId.HasValue || m.ChequeBancoId.HasValue)" />
                                 <input class="form-input" placeholder="Referencia" @bind="m.Referencia" />
-                                <button class="btn-icon" @onclick="() => formMedios.RemoveAt(idx)">🗑</button>
+                                <button class="btn-icon" @onclick="() => { formMedios.RemoveAt(idx); RecalcularTotal(); }">🗑</button>
                             </div>
                             @if (m.ChequeBancoId.HasValue)
                             {
@@ -323,7 +323,7 @@
                     @* --- Retenciones --- *@
                     <div class="form-group">
                         <label class="form-label">Retenciones (si te aplicaron alguna)</label>
-                        <input class="form-input" type="text" inputmode="decimal" @bind="FormRetencionesTexto" @bind:event="onchange" @bind:after="RecalcularTotal" />
+                        <input class="form-input" type="text" inputmode="decimal" data-monto @bind="FormRetencionesTexto" @bind:event="onchange" @bind:after="RecalcularTotal" />
                     </div>
 
                     @* --- Observaciones --- *@
@@ -455,11 +455,14 @@
         public int CajaId { get; set; }
         public string TipoCaja { get; set; } = "";
         public decimal Importe { get; set; }
+        /// <summary>26/11/2026: el importe lo puso el sistema (lo que falta cubrir) y se sigue
+        /// acomodando solo cuando se tildan facturas. Apenas el usuario lo escribe, queda fijo.</summary>
+        public bool ImporteAuto { get; set; }
         /// <summary>2026-08-18: importe como texto con puntos de miles (ver MontoInput).</summary>
         public string ImporteTexto
         {
             get => MontoInput.Formato(Importe);
-            set { MontoInput.TryParse(value, out var v); Importe = v; }
+            set { MontoInput.TryParse(value, out var v); Importe = v; ImporteAuto = false; }
         }
         public string? Referencia { get; set; }
         public int? ChequeExistenteId { get; set; }
@@ -687,7 +690,17 @@
             formMedios[idx].TipoCaja = cajas?.FirstOrDefault(c => c.Id == cajaId)?.Tipo ?? "";
             if (formMedios[idx].TipoCaja != "CHEQUES_CARTERA")
                 formMedios[idx].ChequeExistenteId = null;
+            // 26/11/2026: al elegir la forma de pago, el importe aparece solo con lo que falta
+            // cubrir de lo tildado arriba. Un cheque de cartera trae su propio importe.
+            var med = formMedios[idx];
+            if (med.TipoCaja == "CHEQUES_CARTERA" || med.ChequeBancoId.HasValue) med.ImporteAuto = false;
+            else if (cajaId > 0 && (med.Importe <= 0m || med.ImporteAuto))
+            {
+                foreach (var otro in formMedios) otro.ImporteAuto = false;
+                med.ImporteAuto = true;
+            }
         }
+        RecalcularTotal();
     }
 
     private void OnChequeEndosoChange(int idx, string? value)
@@ -697,7 +710,7 @@
             formMedios[idx].ChequeExistenteId = chId;
             // Auto-completar importe con el del cheque
             var ch = chequesEnCartera?.FirstOrDefault(x => x.Id == chId);
-            if (ch is not null) formMedios[idx].Importe = ch.Importe;
+            if (ch is not null) { formMedios[idx].Importe = ch.Importe; formMedios[idx].ImporteAuto = false; }
             RecalcularTotal();
         }
         else
@@ -746,7 +759,17 @@
         RecalcularTotal();
     }
 
-    private void RecalcularTotal() => StateHasChanged();
+    private void RecalcularTotal()
+    {
+        // 26/11/2026: la forma de pago que se cargó sola sigue lo que falta cubrir.
+        var auto = formMedios.FirstOrDefault(x => x.ImporteAuto && x.CajaId > 0);
+        if (auto is not null)
+        {
+            var resto = TotalImputado - formRetenciones - formMedios.Where(x => x != auto).Sum(x => x.Importe);
+            auto.Importe = Math.Max(0m, Math.Round(resto, 2));
+        }
+        StateHasChanged();
+    }
 
     private async Task GuardarPago()
     {
