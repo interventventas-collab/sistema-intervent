@@ -3785,6 +3785,15 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // 2026-11-26: el usuario de la tablet del tostadero solo tiene su pantalla (/tostadero,
+        // sin este menú). Si cae acá (inicio, enlace viejo, dirección a mano) lo mandamos allá antes
+        // de que el layout pida nada: la API igual le cierra todo lo demás (TostaderoScopeMiddleware).
+        var userTost = await AuthService.GetUserAsync();
+        if (string.Equals(userTost?.Role, "tostadero", StringComparison.OrdinalIgnoreCase))
+        {
+            Navigation.NavigateTo("/tostadero", replace: true);
+            return;
+        }
         Pantalla.Cambio += RepintarPorPantalla;
         Pantalla.PedirChatEquipo += AbrirChatDesdePastillas;
         Pantalla.PedirWhatsApp += AbrirWhatsAppDesdePastillas;

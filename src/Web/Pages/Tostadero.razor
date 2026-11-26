@@ -1,0 +1,422 @@
+@page "/tostadero"
+@attribute [AllowAnonymous]
+@layout Web.Layout.LoginLayout
+@implements IDisposable
+@inject HttpClient Http
+@inject AuthService AuthService
+@inject IJSRuntime JS
+@using System.Net
+@using System.Net.Http.Json
+
+@* 2026-11-26: tablet fija del tostadero (pedido de Osmar, maqueta Tostadero_tablet_PROPUESTA aprobada).
+   Muestra el mismo tablero de armado (/api/cafe/ventas/preparacion) pero con el café primero:
+   a la izquierda todo el café sumado, a la derecha los pedidos con el café grande y lo demás en gris.
+   Solo mira, no cambia nada. Entra con el usuario "tostadero", que la API encierra
+   (TostaderoScopeMiddleware) para que solo pueda leer este tablero.
+   La propia pantalla tiene el login y recuerda usuario/clave en la tablet, así cuando vence la
+   sesión (24 h) vuelve a entrar sola sin que nadie tenga que tipear. *@
+
+<HeadContent>
+    <link rel="manifest" href="/manifest-tostadero.json" />
+    <meta name="theme-color" content="#111827" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Tostadero" />
+    <link rel="apple-touch-icon" href="/img/tostadero-icon.png" />
+    <title>Tostadero · Pedidos</title>
+</HeadContent>
+
+<style>
+    body { background:#f3f4f6; margin:0; }
+    .login-page:has(.ts) { display:block !important; padding:0 !important; background:#f3f4f6 !important; min-height:100vh; }
+    .ts { font-family: "Segoe UI", Roboto, Arial, sans-serif; color:#111827; min-height:100vh; }
+    .ts-cab { display:flex; align-items:center; gap:14px; background:#fff; border-bottom:1px solid #e5e7eb; padding:10px 18px; min-height:60px; flex-wrap:wrap; position:sticky; top:0; z-index:5; }
+    .ts-cab h1 { margin:0; font-size:1.35rem; white-space:nowrap; }
+    .ts-cnt { color:#4b5563; font-size:.95rem; } .ts-cnt b { font-size:1.15rem; color:#111827; }
+    .ts-tog { margin-left:auto; display:flex; border:1px solid #d1d5db; border-radius:999px; overflow:hidden; }
+    .ts-tog button { border:0; background:#fff; padding:8px 18px; font:inherit; font-weight:700; font-size:.95rem; cursor:pointer; color:#111827; }
+    .ts-tog button.on { background:#111827; color:#fff; }
+    .ts-reloj { font-weight:700; font-size:1.1rem; color:#374151; }
+    .ts-ref { border:1px solid #d1d5db; background:#fff; border-radius:8px; font-size:1.1rem; padding:4px 10px; cursor:pointer; }
+    .ts-wrap { display:grid; grid-template-columns:400px minmax(0,1fr); gap:14px; padding:14px; align-items:start; }
+    @@media (max-width: 900px) { .ts-wrap { grid-template-columns:minmax(0,1fr); } }
+    .ts-panel { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; position:sticky; top:76px; max-height:calc(100vh - 92px); overflow:auto; }
+    .ts-panel h2 { margin:0 0 2px; font-size:1.1rem; }
+    .ts-sub { color:#6b7280; font-size:.85rem; margin-bottom:8px; }
+    .ts-cafe { border-top:1px solid #f0f0f0; padding:10px 0; }
+    .ts-cafe .n { font-weight:800; font-size:1.12rem; }
+    .ts-cafe .kg { float:right; font-weight:800; font-size:1.1rem; margin-left:8px; }
+    .ts-det { margin-top:5px; font-size:1rem; color:#374151; display:flex; gap:14px; flex-wrap:wrap; }
+    .ts-t { display:inline-block; min-width:44px; text-align:center; border-radius:6px; padding:1px 6px; font-weight:800; font-size:.85rem; margin-right:4px; background:#e5e7eb; color:#111827; }
+    .ts-t.m { background:#ede9fe; color:#6d28d9; }
+    .ts-t.c { background:#e0f2fe; color:#0369a1; }
+    .ts-mol { color:#92400e; font-size:.85rem; }
+    .ts-tot { border-top:2px solid #111827; margin-top:6px; padding-top:8px; font-weight:800; font-size:1.1rem; display:flex; justify-content:space-between; }
+    .ts-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:12px; align-content:start; }
+    .ts-card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; }
+    .ts-ch { background:#fef3c7; padding:8px 12px; display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+    .ts-ch.prep { background:#fed7aa; }
+    .ts-ch .num { font-family:monospace; font-weight:800; color:#374151; }
+    .ts-ch .cl { font-weight:700; font-size:1.02rem; }
+    .ts-ch .hr { margin-left:auto; color:#6b7280; font-size:.8rem; }
+    .ts-cb { padding:8px 12px; }
+    .ts-ln { font-size:1.08rem; padding:4px 0; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .ts-ln .q { font-weight:800; min-width:26px; }
+    .ts-ln.chico { font-size:.92rem; color:#4b5563; padding:2px 0; }
+    .ts-otros { color:#9ca3af; font-size:.85rem; border-top:1px dashed #e5e7eb; margin-top:6px; padding-top:6px; }
+    .ts-otros.solo { border:0; margin:0; padding:0; }
+    .ts-ver { background:none; border:0; padding:0 0 0 6px; color:#6b7280; text-decoration:underline; font:inherit; cursor:pointer; }
+    .ts-nota { margin-top:6px; font-size:.85rem; color:#78350f; background:#fffbeb; border-radius:6px; padding:4px 8px; }
+    .ts-sin { opacity:.6; } .ts-sin .ts-ch { background:#f3f4f6; }
+    .ts-sep { grid-column:1/-1; color:#6b7280; font-size:.85rem; font-weight:700; margin-top:4px; border-top:1px solid #d1d5db; padding-top:8px; }
+    .ts-vacio { padding:2rem; text-align:center; color:#6b7280; font-size:1.1rem; grid-column:1/-1; }
+    .ts-err { margin:14px; padding:10px 14px; background:#fef2f2; color:#991b1b; border-radius:8px; }
+    .ts-login { max-width:360px; margin:12vh auto 0; background:#fff; border-radius:14px; padding:28px; box-shadow:0 6px 24px rgba(0,0,0,.08); }
+    .ts-login h1 { margin:0 0 16px; font-size:1.4rem; text-align:center; }
+    .ts-login label { display:block; font-size:.9rem; color:#374151; margin:10px 0 4px; }
+    .ts-login input { width:100%; box-sizing:border-box; padding:12px; font-size:1.1rem; border:1px solid #d1d5db; border-radius:8px; }
+    .ts-login button { width:100%; margin-top:18px; padding:13px; font-size:1.1rem; font-weight:700; border:0; border-radius:8px; background:#111827; color:#fff; cursor:pointer; }
+    .ts-login .err { color:#b91c1c; margin-top:10px; font-size:.9rem; text-align:center; }
+</style>
+
+<div class="ts">
+    @if (pidiendoLogin)
+    {
+        <form class="ts-login" @onsubmit="Entrar" @onsubmit:preventDefault="true">
+            <h1>☕ Tostadero</h1>
+            <label>Usuario</label>
+            <input @bind="usuario" autocomplete="username" autocapitalize="none" />
+            <label>Clave</label>
+            <input type="password" @bind="clave" autocomplete="current-password" />
+            <button type="submit" disabled="@entrando">@(entrando ? "Entrando…" : "Entrar")</button>
+            @if (!string.IsNullOrEmpty(errorLogin)) { <div class="err">@errorLogin</div> }
+        </form>
+    }
+    else
+    {
+        <div class="ts-cab">
+            <h1>☕ TOSTADERO · Pedidos para armar</h1>
+            @if (lista is not null)
+            {
+                <span class="ts-cnt">Con café <b>@ConCafe.Count</b> · Sin café <b>@SinCafe.Count</b></span>
+            }
+            <div class="ts-tog">
+                <button class="@(primeroCafe ? "on" : "")" @onclick="() => CambiarModo(true)">Primero café</button>
+                <button class="@(!primeroCafe ? "on" : "")" @onclick="() => CambiarModo(false)">Todo igual</button>
+            </div>
+            <span class="ts-reloj">@AhoraAr.ToString("HH:mm")</span>
+            <button class="ts-ref" @onclick="Cargar" title="Actualizar (igual se actualiza solo cada 20 segundos)">↻</button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="ts-err">@error</div>
+        }
+
+        @if (lista is null)
+        {
+            <div class="ts-vacio">Cargando…</div>
+        }
+        else
+        {
+            <div class="ts-wrap">
+                <div class="ts-panel">
+                    <h2>Café que hay que preparar</h2>
+                    <div class="ts-sub">Sumado de todos los pedidos para armar</div>
+                    @if (Resumen.Count == 0)
+                    {
+                        <div class="ts-sub" style="padding:1rem 0;">No hay café en los pedidos de ahora.</div>
+                    }
+                    @foreach (var r in Resumen)
+                    {
+                        <div class="ts-cafe">
+                            @if (r.Kg > 0) { <span class="kg">@Kg(r.Kg)</span> }
+                            <div class="n">@r.Nombre</div>
+                            <div class="ts-det">
+                                @foreach (var f in r.PorFormato)
+                                {
+                                    <span><span class="ts-t @ClaseFormato(f.Key)">@EtiquetaFormato(f.Key)</span>×@f.Value</span>
+                                }
+                            </div>
+                            @if (r.PorMolienda.Count > 0)
+                            {
+                                <div class="ts-mol">@string.Join(" · ", r.PorMolienda.Select(m => $"{m.Key} ×{m.Value}"))</div>
+                            }
+                        </div>
+                    }
+                    @if (Resumen.Count > 0)
+                    {
+                        <div class="ts-tot"><span>Total</span><span>@Kg(Resumen.Sum(r => r.Kg))</span></div>
+                    }
+                </div>
+
+                <div class="ts-grid">
+                    @if (lista.Count == 0)
+                    {
+                        <div class="ts-vacio">No hay pedidos para armar 🎉</div>
+                    }
+                    else if (primeroCafe)
+                    {
+                        @foreach (var v in ConCafe) { @Card(v, false) }
+                        @if (SinCafe.Count > 0)
+                        {
+                            <div class="ts-sep">Sin café (para que igual los vean)</div>
+                            @foreach (var v in SinCafe) { @Card(v, true) }
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var v in lista) { @CardTodo(v) }
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private const string CredKey = "tostadero-cred";
+    private List<CafePreparacionVentaDto>? lista;
+    private string? error;
+    private bool pidiendoLogin;
+    private string usuario = "";
+    private string clave = "";
+    private bool entrando;
+    private string? errorLogin;
+    private bool primeroCafe = true;
+    private readonly HashSet<int> abiertos = new();
+    private System.Threading.Timer? timer;
+    private bool cargando;
+
+    private static DateTime AhoraAr => DateTime.UtcNow.AddHours(-3);
+
+    private static bool EsCafe(CafePreparacionItemDto i) => i.Categoria == "CAFE" && !i.EsConceptoLibre;
+    private static bool TieneCafe(CafePreparacionVentaDto v) => v.Items.Any(EsCafe);
+    private List<CafePreparacionVentaDto> ConCafe => (lista ?? new()).Where(TieneCafe).ToList();
+    private List<CafePreparacionVentaDto> SinCafe => (lista ?? new()).Where(v => !TieneCafe(v)).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var modo = await JS.InvokeAsync<string?>("localStorage.getItem", "tostadero-modo");
+            primeroCafe = modo != "todo";
+        }
+        catch { }
+        await Cargar();
+        timer = new System.Threading.Timer(async _ =>
+        {
+            if (pidiendoLogin) return;
+            await InvokeAsync(async () => { await Cargar(); StateHasChanged(); });
+        }, null, TimeSpan.FromSeconds(20), TimeSpan.FromSeconds(20));
+    }
+
+    private async Task Cargar()
+    {
+        if (cargando) return;
+        cargando = true;
+        try
+        {
+            var resp = await Http.GetAsync("/api/cafe/ventas/preparacion?dias=7");
+            if (resp.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                // Venció la sesión (o nunca se entró): si la tablet ya tiene guardado usuario y clave,
+                // vuelve a entrar sola.
+                if (await ReentrarSola())
+                    resp = await Http.GetAsync("/api/cafe/ventas/preparacion?dias=7");
+                else { pidiendoLogin = true; return; }
+            }
+            if (!resp.IsSuccessStatusCode)
+            {
+                error = "No se pudieron traer los pedidos. Se vuelve a intentar solo en unos segundos.";
+                return;
+            }
+            lista = await resp.Content.ReadFromJsonAsync<List<CafePreparacionVentaDto>>() ?? new();
+            error = null;
+        }
+        catch
+        {
+            error = "Sin conexión con el sistema. Se vuelve a intentar solo en unos segundos.";
+        }
+        finally { cargando = false; }
+    }
+
+    private async Task<bool> ReentrarSola()
+    {
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("localStorage.getItem", CredKey);
+            if (string.IsNullOrEmpty(raw)) return false;
+            var partes = raw.Split('\n', 2);
+            if (partes.Length != 2) return false;
+            await AuthService.LoginAsync(partes[0], partes[1]);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    private async Task Entrar()
+    {
+        errorLogin = null;
+        entrando = true;
+        try
+        {
+            await AuthService.LoginAsync(usuario.Trim(), clave);
+            await JS.InvokeVoidAsync("localStorage.setItem", CredKey, usuario.Trim() + "\n" + clave);
+            pidiendoLogin = false;
+            clave = "";
+            await Cargar();
+        }
+        catch (Exception ex) { errorLogin = ex.Message; }
+        finally { entrando = false; }
+    }
+
+    private async Task CambiarModo(bool cafe)
+    {
+        primeroCafe = cafe;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "tostadero-modo", cafe ? "cafe" : "todo"); } catch { }
+    }
+
+    private void Toggle(int id) { if (!abiertos.Remove(id)) abiertos.Add(id); }
+
+    // ── formatos ──
+    private static string Fmt(string? f) => (f ?? "").Trim().ToUpperInvariant() switch
+    {
+        "1KG" or "1 KG" => "1KG",
+        "MEDIO" or "1/2 KG" or "½ KG" => "MEDIO",
+        "CUARTO" or "1/4 KG" or "¼ KG" => "CUARTO",
+        var x => x
+    };
+    private static int OrdenFormato(string f) => f switch { "1KG" => 0, "MEDIO" => 1, "CUARTO" => 2, _ => 3 };
+    private static decimal KgDe(string f) => f switch { "1KG" => 1m, "MEDIO" => 0.5m, "CUARTO" => 0.25m, _ => 0m };
+    private static string EtiquetaFormato(string f) => f switch
+    {
+        "1KG" => "1 KG", "MEDIO" => "½", "CUARTO" => "¼", "UNIT" or "UNIDAD" or "" => "u.", "BULTO" => "bulto", var x => x
+    };
+    private static string ClaseFormato(string f) => f switch { "MEDIO" => "m", "CUARTO" => "c", _ => "" };
+    private static string Kg(decimal kg) => kg.ToString("0.##", new System.Globalization.CultureInfo("es-AR")) + " kg";
+
+    private class ResumenCafe
+    {
+        public string Nombre = "";
+        public decimal Kg;
+        public List<KeyValuePair<string, int>> PorFormato = new();
+        public List<KeyValuePair<string, int>> PorMolienda = new();
+    }
+
+    private List<ResumenCafe> Resumen => (lista ?? new())
+        .SelectMany(v => v.Items).Where(EsCafe)
+        .GroupBy(i => i.ProductoNombre.Trim())
+        .Select(g => new ResumenCafe
+        {
+            Nombre = g.Key,
+            Kg = g.Sum(i => KgDe(Fmt(i.Formato)) * i.Cantidad),
+            PorFormato = g.GroupBy(i => Fmt(i.Formato)).OrderBy(x => OrdenFormato(x.Key))
+                .Select(x => new KeyValuePair<string, int>(x.Key, x.Sum(i => i.Cantidad))).ToList(),
+            PorMolienda = g.Where(i => !string.IsNullOrWhiteSpace(i.Molienda)).GroupBy(i => i.Molienda!.Trim())
+                .OrderByDescending(x => x.Sum(i => i.Cantidad))
+                .Select(x => new KeyValuePair<string, int>(x.Key, x.Sum(i => i.Cantidad))).ToList(),
+        })
+        .OrderByDescending(r => r.Kg).ThenBy(r => r.Nombre)
+        .ToList();
+
+    private static string Entrega(CafePreparacionVentaDto v)
+    {
+        var partes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(v.EntregaPor)) partes.Add(v.EntregaPor!);
+        if (v.EstadoPreparacion == "EN_PREPARACION") partes.Add("armándose");
+        partes.Add(v.Fecha.AddHours(-3).ToString("dd/MM"));
+        return string.Join(" · ", partes);
+    }
+
+    private static string OtroTexto(CafePreparacionItemDto i)
+    {
+        var f = Fmt(i.Formato);
+        var fmt = f is "" or "UNIT" or "UNIDAD" ? "" : " " + EtiquetaFormato(f);
+        return $"{i.ProductoNombre}{fmt} ×{i.Cantidad}";
+    }
+
+    private RenderFragment LineaCafe(CafePreparacionItemDto i) => __builder =>
+    {
+        var f = Fmt(i.Formato);
+        <div class="ts-ln">
+            <span class="q">@i.Cantidad</span>
+            <span class="ts-t @ClaseFormato(f)">@EtiquetaFormato(f)</span>
+            @i.ProductoNombre
+            @if (!string.IsNullOrWhiteSpace(i.Molienda)) { <span class="ts-mol">@i.Molienda</span> }
+        </div>
+    };
+
+    private RenderFragment Cabecera(CafePreparacionVentaDto v) => __builder =>
+    {
+        <div class="ts-ch @(v.EstadoPreparacion == "EN_PREPARACION" ? "prep" : "")">
+            <span class="num">@v.Numero</span>
+            <span class="cl">@v.ClienteNombre</span>
+            <span class="hr">@Entrega(v)</span>
+        </div>
+    };
+
+    private RenderFragment Nota(CafePreparacionVentaDto v) => __builder =>
+    {
+        var nota = !string.IsNullOrWhiteSpace(v.ComentarioArmado) ? v.ComentarioArmado : v.Observaciones;
+        if (!string.IsNullOrWhiteSpace(nota)) { <div class="ts-nota">💬 @nota</div> }
+    };
+
+    private RenderFragment Card(CafePreparacionVentaDto v, bool sinCafe) => __builder =>
+    {
+        var cafes = v.Items.Where(EsCafe).ToList();
+        var otros = v.Items.Where(i => !EsCafe(i)).ToList();
+        var abierto = abiertos.Contains(v.Id);
+        var vid = v.Id;
+        <div class="ts-card @(sinCafe ? "ts-sin" : "")" @key="v.Id">
+            @Cabecera(v)
+            <div class="ts-cb">
+                @foreach (var i in cafes) { @LineaCafe(i) }
+                @if (otros.Count > 0)
+                {
+                    if (abierto)
+                    {
+                        <div class="ts-otros @(cafes.Count == 0 ? "solo" : "")">
+                            @foreach (var i in otros) { <div class="ts-ln chico"><span class="q">@i.Cantidad</span>@i.ProductoNombre @(Fmt(i.Formato) is "" or "UNIT" or "UNIDAD" ? "" : EtiquetaFormato(Fmt(i.Formato)))</div> }
+                            <button class="ts-ver" @onclick="() => Toggle(vid)">cerrar</button>
+                        </div>
+                    }
+                    else
+                    {
+                        var muestra = string.Join(", ", otros.Take(3).Select(OtroTexto)) + (otros.Count > 3 ? "…" : "");
+                        <div class="ts-otros @(cafes.Count == 0 ? "solo" : "")">
+                            @(cafes.Count > 0 ? $"+ {otros.Count} {(otros.Count == 1 ? "cosa más" : "cosas más")}: " : "")@muestra
+                            <button class="ts-ver" @onclick="() => Toggle(vid)">ver</button>
+                        </div>
+                    }
+                }
+                @Nota(v)
+            </div>
+        </div>
+    };
+
+    private RenderFragment CardTodo(CafePreparacionVentaDto v) => __builder =>
+    {
+        <div class="ts-card" @key="v.Id">
+            @Cabecera(v)
+            <div class="ts-cb">
+                @foreach (var i in v.Items)
+                {
+                    if (EsCafe(i)) { @LineaCafe(i) }
+                    else
+                    {
+                        var f = Fmt(i.Formato);
+                        <div class="ts-ln">
+                            <span class="q">@i.Cantidad</span>
+                            @if (f is not ("" or "UNIT" or "UNIDAD")) { <span class="ts-t">@EtiquetaFormato(f)</span> }
+                            @i.ProductoNombre
+                        </div>
+                    }
+                }
+                @Nota(v)
+            </div>
+        </div>
+    };
+
+    public void Dispose() => timer?.Dispose();
+}
