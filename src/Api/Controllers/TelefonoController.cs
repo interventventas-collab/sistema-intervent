@@ -242,4 +242,30 @@ public class TelefonoController : ControllerBase
         var oficina = new List<InternoDto> { new("Oficina", "200", ""), new("Depósito", "210", ""), new("Osmar", "201", "") };
         return new TelefonoConfigDto(true, WsUrl, Dominio, "220", TelefonoCentralService.Clave("220"), rep.Nombre, oficina);
     }
+
+    // ---------------- agenda del telefono fijo (Grandstream) ----------------
+    // 2026-11-26: el aparato baja esta lista solo (Phonebook XML) y la muestra en la pantalla.
+    // Sin login (el telefono no tiene sesion): la direccion lleva una clave sacada de TEL_SECRET.
+
+    [HttpGet("agenda/{clave}")]
+    [AllowAnonymous]
+    public IActionResult Agenda(string clave)
+    {
+        if (string.IsNullOrWhiteSpace(TelefonoCentralService.Secreto) || clave != TelefonoCentralService.Clave("agenda"))
+            return NotFound();
+        static string SinTildes(string t) => new string(t.Normalize(System.Text.NormalizationForm.FormD)
+            .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
+        var lista = new List<(string nombre, string num)>
+        {
+            ("Oficina (todos)", "200"), ("Osmar", "201"), ("German", "202"), ("Gabriel", "203"), ("Deposito", "210"),
+        };
+        lista.AddRange(Guia.Where(g => g.Numero is "211" or "212" or "213" or "214" or "215")
+            .Select(g => ($"{SinTildes(g.Nombre)} (deposito)", g.Numero)));
+        var sb = new System.Text.StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<AddressBook>\n");
+        foreach (var (nombre, num) in lista)
+            sb.Append($"  <Contact>\n    <FirstName>{System.Security.SecurityElement.Escape(nombre)}</FirstName>\n    <LastName></LastName>\n" +
+                      $"    <Phone type=\"Work\">\n      <phonenumber>{num}</phonenumber>\n      <accountindex>1</accountindex>\n    </Phone>\n  </Contact>\n");
+        sb.Append("</AddressBook>\n");
+        return Content(sb.ToString(), "text/xml", System.Text.Encoding.UTF8);
+    }
 }
