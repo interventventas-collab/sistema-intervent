@@ -10,5 +10,6 @@ for f in /etc/asterisk-plantilla/*.conf; do
       -e "s|__IP_PUBLICA__|${IP_PUBLICA}|g" \
       "$f" > "/etc/asterisk/$(basename "$f")"
 done
+mkdir -p /var/lib/asterisk-db && chown asterisk:asterisk /var/lib/asterisk-db
 mkdir -p /var/log/asterisk /var/spool/asterisk /var/lib/asterisk /var/run/asterisk
 exec asterisk -f -U asterisk -G asterisk -vvv

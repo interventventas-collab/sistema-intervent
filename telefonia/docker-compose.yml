@@ -10,7 +10,12 @@ services:
       - TEL_101_PASS=${TEL_101_PASS}
       - TEL_102_PASS=${TEL_102_PASS}
       - IP_PUBLICA=${TEL_IP_PUBLICA:-179.43.123.134}
+    volumes:
+      - central_db:/var/lib/asterisk-db   # recuerda los internos conectados si se reinicia
     restart: unless-stopped
     logging:
       driver: json-file
       options: { max-size: "5m", max-file: "2" }
+
+volumes:
+  central_db:
