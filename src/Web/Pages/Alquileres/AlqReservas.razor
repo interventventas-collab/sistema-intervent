@@ -814,7 +814,7 @@
                                             @if (formUsarPrecios)
                                             {
                                                 <td>
-                                                    <input class="form-input" type="number" step="0.01" min="0" @bind="it.PrecioUnitario" style="text-align: right; padding: 0.25rem;" />
+                                                    <input class="form-input" type="text" inputmode="decimal" data-monto value="@MontoInput.Formato(it.PrecioUnitario)" @onchange="@(e => { MontoInput.TryParse(e.Value?.ToString(), out var v); it.PrecioUnitario = v; })" style="text-align: right; padding: 0.25rem;" />
                                                 </td>
                                                 @if (formDias > 1)
                                                 {
@@ -876,7 +876,7 @@
                                 </div>
                                 <div class="venta-totals-row">
                                     <span>Descuento ($):</span>
-                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formDescuento"
+                                    <input class="form-input" type="text" inputmode="decimal" data-monto @bind="FormDescuentoMontoTxt"
                                            style="text-align: right; max-width: 130px; font-weight: 700;" />
                                 </div>
                                 <hr style="margin: 0.5rem 0; border: none; border-top: 1px solid #d1d5db;" />
@@ -889,7 +889,7 @@
                             {
                                 <div class="venta-totals-row" style="font-size: 1.15rem; font-weight: 800; color: #059669;">
                                     <span>@(SumaIva ? "NETO sin IVA:" : "TOTAL:")</span>
-                                    <input class="form-input" type="number" step="0.01" min="0" @bind="formTotalManual"
+                                    <input class="form-input" type="text" inputmode="decimal" data-monto @bind="FormTotalManualMontoTxt"
                                            style="text-align: right; max-width: 150px; font-weight: 800; font-size: 1.05rem; color: #059669;" />
                                 </div>
                             }
@@ -2370,6 +2370,8 @@
         finally { emitiendoId = null; }
     }
     private decimal formDescuento;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string FormDescuentoMontoTxt { get => MontoInput.Formato(formDescuento); set { MontoInput.TryParse(value, out var v); formDescuento = v; } }
     // 2026-09-10: de qué PRESUPUESTO viene esta reserva (llega por ?cotizacion=ID desde el chat).
     // Viaja al guardar para que el presupuesto quede marcado y no se pueda pasar dos veces.
     private int? formCotizacionId;
@@ -2383,6 +2385,8 @@
     private decimal formSena;
     private bool formUsarPrecios;
     private decimal formTotalManual;
+    // 26/11/2026: importe con puntos de miles al tipear (data-monto + MontoInput).
+    private string FormTotalManualMontoTxt { get => MontoInput.Formato(formTotalManual); set { MontoInput.TryParse(value, out var v); formTotalManual = v; } }
     private string formEstado = "reservado";
     private string formNotas = "";
     private string formNotasInternas = "";

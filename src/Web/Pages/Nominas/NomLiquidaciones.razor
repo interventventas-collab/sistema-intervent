@@ -437,7 +437,7 @@
                         <div class="form-row" style="align-items: end;">
                             <div class="form-group" style="flex: 1;">
                                 <label class="form-label">Importe del mes ($)</label>
-                                <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" style="font-size: 1.15rem; font-weight: 700; text-align: right;" @bind="FormSueldoBaseTxt" />
+                                <input class="form-input" type="text" inputmode="decimal" data-monto onfocus="this.select()" style="font-size: 1.15rem; font-weight: 700; text-align: right;" @bind="FormSueldoBaseTxt" />
                             </div>
                             @if (formDiasAusencia != 0m)
                             {
@@ -450,7 +450,7 @@
                             {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Otros descuentos ($)</label>
-                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormOtrosTxt" />
+                                    <input class="form-input" type="text" inputmode="decimal" data-monto onfocus="this.select()" @bind="FormOtrosTxt" />
                                 </div>
                             }
                         </div>
@@ -531,14 +531,14 @@
                                 {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">🎁 Bonos ($)</label>
-                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormBonosTxt" />
+                                    <input class="form-input" type="text" inputmode="decimal" data-monto onfocus="this.select()" @bind="FormBonosTxt" />
                                 </div>
                                 }
                                 @if (VerCasilleroViejo(formAguinaldo))
                                 {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">🎄 Aguinaldo ($)</label>
-                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormAguinaldoTxt" />
+                                    <input class="form-input" type="text" inputmode="decimal" data-monto onfocus="this.select()" @bind="FormAguinaldoTxt" />
                                 </div>
                                 }
                             </div>
@@ -547,12 +547,12 @@
                                 {
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">💸 Adelantos ($)</label>
-                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormAdelantosTxt" />
+                                    <input class="form-input" type="text" inputmode="decimal" data-monto onfocus="this.select()" @bind="FormAdelantosTxt" />
                                 </div>
                                 }
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">📝 Otros descuentos ($)</label>
-                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" @bind="FormOtrosTxt" />
+                                    <input class="form-input" type="text" inputmode="decimal" data-monto onfocus="this.select()" @bind="FormOtrosTxt" />
                                 </div>
                             </div>
 
@@ -572,7 +572,7 @@
                                 @if (!EsEmpleadoDiario && isEditing)
                                 {
                                     <span style="display:flex; align-items:center; gap:0.2rem; font-weight:600;">$
-                                        <input type="text" inputmode="decimal" onfocus="this.select()" class="form-input" style="width:130px; padding:0.2rem 0.4rem; text-align:right; font-weight:700;"
+                                        <input type="text" inputmode="decimal" data-monto onfocus="this.select()" class="form-input" style="width:130px; padding:0.2rem 0.4rem; text-align:right; font-weight:700;"
                                                @bind="FormSueldoBaseTxt" />
                                     </span>
                                 }
@@ -745,7 +745,7 @@
                                 }
                                 <div style="display: flex; gap: 0.4rem; align-items: end; flex-wrap: wrap; margin-top: 0.4rem;">
                                     <input class="form-input" type="date" style="max-width: 170px;" @bind="nuevaSueldoFecha" />
-                                    <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()" style="max-width: 160px; text-align: right;" placeholder="Importe" @bind="nuevaSueldoFechaMontoTxt" />
+                                    <input class="form-input" type="text" inputmode="decimal" data-monto onfocus="this.select()" style="max-width: 160px; text-align: right;" placeholder="Importe" @bind="nuevaSueldoFechaMontoTxt" />
                                     <button class="btn btn-secondary" type="button" @onclick="AgregarSueldoFecha">+ Agregar fecha</button>
                                     @if (FaltaPonerFecha > 0.01m)
                                     {
@@ -796,7 +796,7 @@
                                 <div class="form-row" style="margin-top: 0.5rem; align-items: end; grid-template-columns: minmax(160px, 220px) 1fr;">
                                     <div class="form-group">
                                         <label class="form-label" style="font-size: 0.75rem;">Monto ($)</label>
-                                        <input class="form-input" type="text" inputmode="decimal" onfocus="this.select()"
+                                        <input class="form-input" type="text" inputmode="decimal" data-monto onfocus="this.select()"
                                                style="font-size: 1.1rem; font-weight: 700; text-align: right;"
                                                placeholder="0,00" @bind="pagoMontoTxt" />
                                     </div>
@@ -1113,7 +1113,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Monto</label>
-                        <input type="text" inputmode="decimal" onfocus="this.select()" class="form-input" @bind="EditingPagoMontoTxt" />
+                        <input type="text" inputmode="decimal" data-monto onfocus="this.select()" class="form-input" @bind="EditingPagoMontoTxt" />
                     </div>
                 </div>
 
