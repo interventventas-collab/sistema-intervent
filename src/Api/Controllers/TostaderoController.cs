@@ -52,9 +52,9 @@ public class TostaderoController : ControllerBase
     private static string? FormatoDelTitulo(string? titulo)
     {
         var t = (titulo ?? "").ToLowerInvariant().Replace(" ", "");
-        if (t.Contains("1/4kg") || t.Contains("250g") || t.Contains("250gr")) return "CUARTO";
-        if (t.Contains("1/2kg") || t.Contains("500g") || t.Contains("500gr") || t.Contains("medikilo") || t.Contains("mediokilo")) return "MEDIO";
-        if (t.Contains("1kg") || t.Contains("1000g") || t.Contains("1kilo")) return "1KG";
+        if (t.Contains("1/4k") || t.Contains("250g") || t.Contains("cuartokilo")) return "CUARTO";
+        if (t.Contains("1/2k") || t.Contains("500g") || t.Contains("mediokilo") || t.Contains("medikilo")) return "MEDIO";
+        if (t.Contains("1kg") || t.Contains("1kilo") || t.Contains("1000g")) return "1KG";
         return null;
     }
 
@@ -86,9 +86,16 @@ public class TostaderoController : ControllerBase
             .Where(c => itemIds.Contains(c.MeliItemId) && c.Producto != null)
             .Select(c => new { c.MeliItemId, c.MeliVariationId, c.CafeProductoId, c.Cantidad, c.Formato, Nombre = c.Producto!.Nombre, c.Producto.Categoria })
             .ToListAsync();
-        var variaciones = await _db.MeliItems.AsNoTracking()
-            .Where(i => itemIds.Contains(i.MeliItemId) && i.VariationId != null)
-            .Select(i => new { i.MeliItemId, i.VariationId, i.VariationAttributes })
+        // La mayoría de las publis de café NO usan MeliItemComponentes: están vinculadas directo en
+        // MeliItems (CafeProductoId + CafeFormato). Se usan las dos fuentes.
+        var publis = await _db.MeliItems.AsNoTracking()
+            .Where(i => itemIds.Contains(i.MeliItemId))
+            .Select(i => new
+            {
+                i.MeliItemId, i.VariationId, i.VariationAttributes, i.CafeProductoId, i.CafeFormato,
+                Nombre = i.CafeProducto != null ? i.CafeProducto.Nombre : null,
+                Categoria = i.CafeProducto != null ? i.CafeProducto.Categoria : null
+            })
             .ToListAsync();
         var cuentas = await _db.MeliAccounts.AsNoTracking().ToDictionaryAsync(a => a.Id, a => a.Nickname);
 
@@ -112,12 +119,20 @@ public class TostaderoController : ControllerBase
                 var cs = (exactos.Count > 0 ? exactos : delItem.Where(c => c.MeliVariationId == null))
                     .GroupBy(c => new { c.CafeProductoId, c.Formato, c.Cantidad }).Select(x => x.First()).ToList();
                 var cafe = cs.Where(c => c.Categoria == "CAFE").ToList();
-                if (cafe.Count == 0) { otros.Add($"{f.ItemTitle} ×{f.Quantity}"); continue; }
-                var attrs = variaciones.FirstOrDefault(v => v.MeliItemId == f.ItemId && v.VariationId == f.VariationId)?.VariationAttributes;
-                var mol = Molienda(attrs, f.ItemTitle);
-                foreach (var c in cafe)
-                    cafes.Add(new CafeMeliDto(c.Nombre, c.Formato ?? FormatoDelTitulo(f.ItemTitle),
-                        (int)Math.Round(f.Quantity * c.Cantidad), mol));
+                var publi = publis.FirstOrDefault(x => x.MeliItemId == f.ItemId && x.VariationId == f.VariationId)
+                            ?? publis.FirstOrDefault(x => x.MeliItemId == f.ItemId);
+                var mol = Molienda(publi?.VariationAttributes, f.ItemTitle);
+                if (cafe.Count > 0)
+                {
+                    foreach (var c in cafe)
+                        cafes.Add(new CafeMeliDto(c.Nombre, c.Formato ?? publi?.CafeFormato ?? FormatoDelTitulo(f.ItemTitle),
+                            (int)Math.Round(f.Quantity * c.Cantidad), mol));
+                }
+                else if (publi?.Categoria == "CAFE" && publi.Nombre != null)
+                {
+                    cafes.Add(new CafeMeliDto(publi.Nombre, publi.CafeFormato ?? FormatoDelTitulo(f.ItemTitle), f.Quantity, mol));
+                }
+                else otros.Add($"{f.ItemTitle} ×{f.Quantity}");
             }
             if (cafes.Count == 0) continue;
             var p = g.OrderBy(x => x.DateCreated).First();
