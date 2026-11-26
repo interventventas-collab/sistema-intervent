@@ -132,6 +132,15 @@
 		file_server
 	}
 
+	# 2026-11-26: telefono dentro del sistema (WebRTC). El navegador se conecta por
+	# wss://DOMINIO/telefono-ws y Caddy lo pasa a la central telefonica
+	# (container aiml-central-telefonica, red host) que escucha en el gateway de
+	# la red de prod. Para sacarlo: borrar este handle + reload caddy.
+	handle /telefono-ws {
+		rewrite * /ws
+		reverse_proxy 172.19.0.1:8088
+	}
+
 	import app_backend
 }
 

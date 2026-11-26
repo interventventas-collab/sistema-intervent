@@ -60,6 +60,12 @@ public partial class ApiClient
         return await GetAsync<UserDto>("/api/auth/me");
     }
 
+    // 2026-11-26: telefono dentro del sistema (solo admin)
+    public async Task<TelefonoConfig?> GetTelefonoConfigAsync()
+    {
+        return await GetAsync<TelefonoConfig>("/api/telefono/config");
+    }
+
     // --- Users ---
     public async Task<List<UserManageDto>?> GetUsersAsync()
     {
