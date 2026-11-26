@@ -736,6 +736,8 @@ app.UseAuthentication();
 // 2026-08-26: la sesión que entrega la huella del celu solo puede abrir el WhatsApp móvil.
 // Va DESPUÉS de UseAuthentication (necesita saber quién es) y ANTES de UseAuthorization.
 app.UseMiddleware<Api.Middleware.WaMovilScopeMiddleware>();
+// 2026-11-26: el usuario "tostadero" (tablet del tostadero) solo puede leer el tablero de armado.
+app.UseMiddleware<Api.Middleware.TostaderoScopeMiddleware>();
 
 app.UseAuthorization();
 app.MapControllers();

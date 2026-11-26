@@ -35,6 +35,14 @@ BEGIN
 END
 GO
 
+-- 2026-11-26: tablet del tostadero. Solo ve /tostadero (pedidos para armar con el café primero);
+-- la API le cierra todo lo demás (Api/Middleware/TostaderoScopeMiddleware.cs). Sin permisos de menú.
+IF NOT EXISTS (SELECT * FROM Roles WHERE Name = 'tostadero')
+BEGIN
+    INSERT INTO Roles (Name, Description) VALUES ('tostadero', 'Tablet del tostadero: solo ve los pedidos para armar');
+END
+GO
+
 -- Users table
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Users' AND xtype='U')
 BEGIN

@@ -50,6 +50,9 @@
                             || relPath.Equals("escaner", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("alquiler/", StringComparison.OrdinalIgnoreCase)
                             || relPath.Equals("fichador", StringComparison.OrdinalIgnoreCase)
+                            // 2026-11-26: tablet del tostadero; la pantalla tiene su propio login
+                            || relPath.Equals("tostadero", StringComparison.OrdinalIgnoreCase)
+                            || relPath.StartsWith("tostadero?", StringComparison.OrdinalIgnoreCase)
                             || relPath.StartsWith("fichador/", StringComparison.OrdinalIgnoreCase)
                             // 2026-08-26: el WhatsApp del celu entra con la HUELLA, sin pasar antes
                             // por el login del sistema. Sin esto, el router lo mandaba al login y la
