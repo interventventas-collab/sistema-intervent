@@ -45,6 +45,8 @@ public class MeliDepoOrden
     public bool EnRuta { get; set; }
     public string? Lleva { get; set; }
     public string? Entrego { get; set; }
+    /// <summary>2026-11-26: el tostadero ya marcó "Café listo" en su tablet.</summary>
+    public bool CafeListo { get; set; }
 }
 
 public class MeliDepoOrdenProducto

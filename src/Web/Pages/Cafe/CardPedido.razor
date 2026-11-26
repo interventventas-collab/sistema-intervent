@@ -86,6 +86,11 @@
                 {
                     <span class="prep-card-pill" style="background:#dbeafe; color:#1e40af;">🚚 @Venta.EntregaPor</span>
                 }
+                @* 2026-11-26: el tostadero ya preparó el café de este pedido (tablet /tostadero). *@
+                @if (Venta.CafeListoAt.HasValue)
+                {
+                    <span class="prep-card-pill" style="background:#16a34a; color:#fff; font-weight:700;" title="@($"El tostadero marcó el café listo a las {Venta.CafeListoAt.Value.AddHours(-3):HH:mm}")">☕ Café listo</span>
+                }
                 @if (Venta.ImpresaAt.HasValue)
                 {
                     <span class="prep-card-pill prep-card-pill-impresa" title="@($"Impreso {Venta.ImpresaCount} ve{(Venta.ImpresaCount == 1 ? "z" : "ces")}")">✅ Impreso @HaceCuanto(Venta.ImpresaAt)</span>

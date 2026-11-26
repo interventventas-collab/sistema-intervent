@@ -364,6 +364,8 @@ public class AppDbContext : DbContext
     public DbSet<MeliEtiquetaGuardada> MeliEtiquetasGuardadas => Set<MeliEtiquetaGuardada>();   // 2026-11-25: etiqueta original para "Recuperar etiqueta impresa"
     // 2026-11-26: telefono (central de internos): registro de llamadas y mensajes programados
     public DbSet<TelefonoLlamada> TelefonoLlamadas => Set<TelefonoLlamada>();
+    // 2026-11-26: "Café listo" que marca la tablet del tostadero (/tostadero)
+    public DbSet<TostaderoCafeListo> TostaderoCafeListos => Set<TostaderoCafeListo>();
     public DbSet<TelefonoMensaje> TelefonoMensajes => Set<TelefonoMensaje>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

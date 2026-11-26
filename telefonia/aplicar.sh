@@ -18,7 +18,7 @@ for f in /etc/asterisk-plantilla/*.conf; do
       -e "s|__TEL_103_PASS__|${TEL_103_PASS}|g" \
       -e "s|__PASS_201__|$(clave 201)|g" -e "s|__PASS_202__|$(clave 202)|g" -e "s|__PASS_203__|$(clave 203)|g" \
       -e "s|__PASS_210__|$(clave 210)|g" -e "s|__PASS_ARI__|$(clave ari)|g" \
-      -e "s|__PASS_220__|$(clave 220)|g" -e "s|__PASS_CENTRAL__|$(clave central)|g" \
+      -e "s|__PASS_220__|$(clave 220)|g" -e "s|__PASS_230__|$(clave 230)|g" -e "s|__PASS_CENTRAL__|$(clave central)|g" \
       -e "s|__DOMINIO__|${TEL_DOMINIO:-localhost}|g" \
       -e "s|__IP_PUBLICA__|${IP_PUBLICA}|g" \
       "$f" > "/etc/asterisk/$(basename "$f")"

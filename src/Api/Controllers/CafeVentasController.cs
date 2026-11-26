@@ -4639,6 +4639,9 @@ public class CafeVentasController : ControllerBase
                 // 2026-06-05: chip rojo "SIN DRIVE" cuando la venta entro a preparacion pero el PDF
                 // no se pudo subir (token expirado, error transitorio, etc).
                 sinDrive = v.DriveSubidoAt == null,
+                // 2026-11-26: el tostadero ya tocó "Café listo" en su tablet (/tostadero).
+                cafeListoAt = _db.TostaderoCafeListos.Where(t => t.Tipo == "VENTA" && t.Ref == v.Id)
+                    .Select(t => (DateTime?)t.ListoAt).FirstOrDefault(),
                 // Mini impresora: flag por cliente + tracking de impresion (2026-05-28)
                 tieneMiniImpresora = v.ClienteId != null && _db.CafeClientes.Where(c => c.Id == v.ClienteId).Select(c => c.TieneMiniImpresora).FirstOrDefault(),
                 impresaAt = v.ImpresaAt,

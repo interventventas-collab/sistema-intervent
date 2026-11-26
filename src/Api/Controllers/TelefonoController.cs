@@ -44,6 +44,7 @@ public class TelefonoController : ControllerBase
         new("Rodrigo", "213", "Depósito"),
         new("Benjamín", "214", "Depósito"),
         new("Gonzalo", "215", "Depósito"),
+        new("Tostadero", "230", "Depósito"),   // 2026-11-26: tablet del tostadero
     };
 
     private static readonly Dictionary<string, string> InternoDeOperador = new(StringComparer.OrdinalIgnoreCase)
@@ -62,6 +63,7 @@ public class TelefonoController : ControllerBase
     {
         var usuario = (User.Identity?.Name ?? "").Trim();
         if (usuario.Equals("DEPOSITO", StringComparison.OrdinalIgnoreCase)) return "210";
+        if (usuario.Equals("tostadero", StringComparison.OrdinalIgnoreCase)) return "230";
         var operador = Request.Headers["X-Operator-Name"].ToString().Trim();
         return InternoDeOperador.TryGetValue(operador, out var n) ? n : null;
     }
