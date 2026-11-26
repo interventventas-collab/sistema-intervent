@@ -224,7 +224,7 @@
             {
                 <label class="pp-mlabel">Importe</label>
                 @* 2026-08-18: texto con punto de miles — como type=number el importe con coma quedaba vacio *@
-                <input class="pp-minput" type="text" inputmode="decimal" @bind="EditMontoTexto" @bind:event="onchange" />
+                <input class="pp-minput" type="text" inputmode="decimal" data-monto @bind="EditMontoTexto" @bind:event="onchange" />
             }
 
             <label class="pp-mlabel">Medio de pago</label>

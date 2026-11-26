@@ -91,7 +91,7 @@
                         else
                         {
                             <div class="form-group" style="margin:0.5rem 0 0;">
-                                <input class="form-input" type="text" inputmode="decimal" placeholder="$ por mes" @bind="ImporteTexto" />
+                                <input class="form-input" type="text" inputmode="decimal" data-monto placeholder="$ por mes" @bind="ImporteTexto" />
                             </div>
                         }
                         <div class="pp-sub">Próximos: @string.Join(" · ", ProximasFechas(3).Select(f => FechaCorta(f)))@(ProximasFechas(3).Any(f => f.Day != Math.Min(diaMes, DateTime.DaysInMonth(f.Year, f.Month))) ? " (si cae finde, pasa al lunes)" : "")</div>
@@ -121,7 +121,7 @@
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.6rem;">
                     <div class="form-group" style="margin:0;">
                         <label class="form-label">Importe</label>
-                        <input class="form-input" type="text" inputmode="decimal" @bind="ImporteTexto" @bind:after="ArmarPartes" />
+                        <input class="form-input" type="text" inputmode="decimal" data-monto @bind="ImporteTexto" @bind:after="ArmarPartes" />
                     </div>
                     <div class="form-group" style="margin:0;">
                         <label class="form-label">@(partes == 1 ? "Fecha" : "Primera fecha")</label>
@@ -175,7 +175,7 @@
                                 <tr>
                                     <td style="color:#6b7280; width:3.5rem;">@(i + 1) de @lineas.Count</td>
                                     <td><input class="form-input" type="date" style="padding:0.25rem 0.4rem;" @bind="l.Fecha" /></td>
-                                    <td class="num"><input class="form-input" type="text" inputmode="decimal" style="padding:0.25rem 0.4rem; text-align:right; width:9rem;" @bind="l.ImporteTexto" /></td>
+                                    <td class="num"><input class="form-input" type="text" inputmode="decimal" data-monto style="padding:0.25rem 0.4rem; text-align:right; width:9rem;" @bind="l.ImporteTexto" /></td>
                                 </tr>
                             }
                         </table>
