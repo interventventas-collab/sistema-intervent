@@ -120,3 +120,15 @@ public class PlanoLugarDto
     public string? Planta { get; set; }
     public string? Cantidad { get; set; }
 }
+
+/// <summary>2026-11-26: producto con lugar viejo ("PB · TOST") que todavía no está en ningún estante
+/// (lista "Para acomodar" del plano).</summary>
+public class PlanoSinEstanteDto
+{
+    public int ProductoId { get; set; }
+    public string? Sku { get; set; }
+    public string? Nombre { get; set; }
+    public string? Planta { get; set; }
+    public string? Zona { get; set; }
+    public int Stock { get; set; }
+}

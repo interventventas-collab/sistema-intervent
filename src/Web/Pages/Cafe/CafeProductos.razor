@@ -321,12 +321,13 @@
                                     @* 2026-09-24: dónde está en el depósito. Si no tiene, "📍 agregar lugar" abre los
                                        botones PB / P1 / Otro depósito ahí mismo (naranja si "no estaba acá"). *@
                                     @* Los combos (EsCompuestoFake) viven en otra tabla: su Id no es de un producto. *@
+                                    @* 2026-11-26: + "📦 Estante" (rack del plano) y "🗺 Ver en el plano" si está en un estante. *@
                                     @if (!p.EsCompuestoFake)
                                     {
                                         lugares.TryGetValue(p.Id, out var lug);
                                         <div>
                                             <LugarProducto ProductoId="p.Id" Lugar="@lug?.Lugar" Dudoso="@(lug?.DudosaAt is not null)"
-                                                           Editable="true" OfrecerNoEsta="false" PermitirCambiar="true" Tamano="0.75rem" OnCambio="LoadLugares" />
+                                                           Editable="true" OfrecerNoEsta="false" PermitirCambiar="true" ConEstante="true" Tamano="0.75rem" OnCambio="LoadLugares" />
                                         </div>
                                         @* 2026-11-04: vencimientos. La primera fecha es la que sale primero. *@
                                         @if (!p.EsPackFake && vencs.TryGetValue(p.Id, out var vz))
@@ -644,6 +645,11 @@
                         📍 Dónde está: @(lugarProducto ?? "sin lugar todavía")
                         <a href="/cafe/ubicaciones?q=@Uri.EscapeDataString(string.IsNullOrWhiteSpace(formSku) ? formNombre : formSku)"
                            style="margin-left:0.4rem; font-size:0.82rem;">@(lugarProducto is null ? "cargar" : "cambiar")</a>
+                        @* 2026-11-26: si el lugar es un estante del plano (PB · H-1-2), link al plano marcándolo. *@
+                        @if (lugarProducto?.Split(" · ", 2) is { Length: 2 } lp && ApiClient.EsCodigoEstante(lp[1]))
+                        {
+                            <a href="/deposito/plano?estante=@Uri.EscapeDataString(lp[1].Trim())" style="margin-left:0.4rem; font-size:0.82rem;">🗺 Ver en el plano</a>
+                        }
                     </div>
                     @* 2026-11-04: fechas de vencimiento (cantidad + fecha). Ver /cafe/vencimientos. *@
                     <VencimientosProducto ProductoId="editingId.Value" />

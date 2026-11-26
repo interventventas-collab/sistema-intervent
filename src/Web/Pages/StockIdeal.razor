@@ -523,6 +523,12 @@
                                         {
                                             <span class="si-ubi-txt @(f.Ubicacion is null ? "vacia" : "")" title="Tocá para cambiar dónde está en el depósito"
                                                   @onclick="() => AbrirUbicacion(f)">@(f.Ubicacion ?? "sin lugar")</span>
+                                            @* 2026-11-26: si la zona es un estante del plano (H-1-2), link al plano marcándolo. *@
+                                            @if (ApiClient.EsCodigoEstante(f.UbicacionZona))
+                                            {
+                                                <a href="/deposito/plano?estante=@Uri.EscapeDataString(f.UbicacionZona!.Trim())" title="Ver en el plano"
+                                                   style="margin-left:0.3rem; font-size:0.8rem; text-decoration:none;">🗺</a>
+                                            }
                                         }
                                     </td>
                                     <td class="si-com">

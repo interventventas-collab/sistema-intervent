@@ -86,6 +86,23 @@
     [Parameter] public EventCallback OnGuardado { get; set; }
     [Parameter] public bool Grande { get; set; }
     [Parameter] public bool ConEscaner { get; set; }
+    /// <summary>2026-11-26: producto que ya viene elegido ("en mano" desde la lista Para acomodar del
+    /// plano). Sin esto, el formulario arranca con el buscador como siempre.</summary>
+    [Parameter] public PlanoBuscarDto? Preseleccionado { get; set; }
+    /// <summary>2026-11-26: avisa el id del producto que se acaba de guardar (además de OnGuardado).</summary>
+    [Parameter] public EventCallback<int> OnGuardadoProducto { get; set; }
+
+    private int? ultimoPreseleccionado;
+
+    protected override void OnParametersSet()
+    {
+        var id = Preseleccionado?.ProductoId;
+        if (id != ultimoPreseleccionado)
+        {
+            ultimoPreseleccionado = id;
+            if (Preseleccionado is not null) { elegido = Preseleccionado; cantidad = null; }
+        }
+    }
 
     private string busca = "";
     private bool buscando, buscado, guardando;
@@ -129,8 +146,10 @@
             await Api.GuardarProductoEnEstanteAsync(Codigo, elegido.ProductoId,
                 string.IsNullOrWhiteSpace(cantidad) ? null : cantidad.Trim(), null);
             ToastService.Success($"Guardado en {Codigo}: {elegido.Nombre}");
+            var idGuardado = elegido.ProductoId;
             elegido = null; cantidad = null; busca = ""; resultados = new(); buscado = false;
             await OnGuardado.InvokeAsync();
+            await OnGuardadoProducto.InvokeAsync(idGuardado);
         }
         catch (Exception ex) { ToastService.Error(ex.Message); }
         finally { guardando = false; }
