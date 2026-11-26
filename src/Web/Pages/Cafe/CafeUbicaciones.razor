@@ -134,6 +134,11 @@
                                 else
                                 {
                                     <span title="@(p.CargadoPor is null ? "" : $"Cargado por {p.CargadoPor}{(p.CargadoAt is null ? "" : " el " + p.CargadoAt.Value.ToArTime().ToString("dd/MM HH:mm"))}")">📍 @p.Lugar</span>
+                                    @* 2026-11-26: si la zona es un estante del plano (H-1-2), link al plano marcándolo. *@
+                                    @if (ApiClient.EsCodigoEstante(p.Zona))
+                                    {
+                                        <a href="/deposito/plano?estante=@Uri.EscapeDataString(p.Zona!.Trim())" style="margin-left:0.4rem; font-size:0.8rem; color:#6b7280;">🗺 Ver en el plano</a>
+                                    }
                                 }
                                 @if (p.DudosaAt is not null)
                                 {
@@ -156,10 +161,23 @@
                 <b>Poner los @tildados.Count tildados en:</b>
                 @foreach (var pl in resumen?.Plantas ?? new())
                 {
-                    <button class="ub-planta @(nuevaPlanta == pl.Codigo ? "on" : "")" title="@pl.Nombre" @onclick="() => nuevaPlanta = pl.Codigo">
+                    <button class="ub-planta @(!EstanteActivo && nuevaPlanta == pl.Codigo ? "on" : "")" title="@pl.Nombre" @onclick="() => { nuevaPlanta = pl.Codigo; enEstante = false; }">
                         @(pl.Codigo == "OTRO" ? "Otro depósito" : pl.Codigo)
                     </button>
                 }
+                @* 2026-11-26: con UN solo tildado se puede elegir el estante del plano (rack · posición · nivel). *@
+                @if (tildados.Count == 1)
+                {
+                    <button class="ub-planta @(EstanteActivo ? "on" : "")" title="Elegir rack, posición y nivel del plano del depósito" @onclick="() => enEstante = true">📦 Estante</button>
+                }
+                @if (EstanteActivo)
+                {
+                    var unico = tildados.First();
+                    <Web.Pages.Deposito.ElegirEstante @key="unico" ProductoId="unico" Planta="@(productos?.FirstOrDefault(x => x.Id == unico)?.Planta)" OnGuardado="GuardadoEnEstante" />
+                    <button class="ub-link" style="color:#6b7280; margin-left:auto;" @onclick="() => { tildados.Clear(); enEstante = false; }">cancelar</button>
+                }
+                else
+                {
                 <input type="text" class="form-input" style="width:170px;" list="ub-zonas" maxlength="30"
                        placeholder="@(nuevaPlanta == "OTRO" ? "cuál depósito" : "zona (opcional): TOST")"
                        @bind="nuevaZona" @bind:event="oninput" />
@@ -179,6 +197,7 @@
                 </button>
                 <button class="ub-link" style="color:#6b7280;" @onclick="SacarLugar">sacarles el lugar</button>
                 <button class="ub-link" style="color:#6b7280; margin-left:auto;" @onclick="() => tildados.Clear()">cancelar</button>
+                }
             </div>
         }
     </div>
@@ -194,6 +213,8 @@
     private string? busqueda, categoria, lugar;
     private bool ordenPedidos = true;
     private string? nuevaPlanta, nuevaZona, nuevaZonaNombre;
+    private bool enEstante; // 2026-11-26: "📦 Estante" elegido en la barra (solo con 1 tildado)
+    private bool EstanteActivo => enEstante && tildados.Count == 1;
     private System.Threading.Timer? debounce;
 
     private IEnumerable<UbicacionProductoDto> Ordenados => ordenPedidos
@@ -246,6 +267,14 @@
     private async Task ElegirCategoria(string? c) { categoria = c; await CargarProductos(); }
 
     private void Tildar(int id) { if (!tildados.Add(id)) tildados.Remove(id); }
+
+    // 2026-11-26: guardado en un estante del plano (la API ya le puso planta + "H-1-2").
+    private async Task GuardadoEnEstante((string Codigo, string Planta) _)
+    {
+        tildados.Clear();
+        enEstante = false;
+        await Task.WhenAll(CargarResumen(), CargarProductos());
+    }
 
     private void TildarTodos()
     {

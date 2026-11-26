@@ -1,0 +1,124 @@
+@inject ApiClient Api
+@inject ToastService ToastService
+
+@* 2026-11-26: "📦 Estante" — elegir rack, posición y nivel del plano del depósito para UN producto,
+   desde las pantallas de siempre (Productos, Ubicaciones). Guarda con el mismo endpoint del plano
+   (POST /api/deposito/plano/estante/{codigo}/productos), que además le pone al producto la
+   ubicación de siempre (planta del rack + "H-1-2"). Sin desplegables raros: un select para el
+   rack y botoncitos para posición y nivel. *@
+
+<style>
+    .ee { display: inline-flex; flex-direction: column; gap: 0.35rem; font-size: 0.8rem; color: #334155; }
+    .ee-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+    .ee-lbl { color: #64748b; min-width: 3.6rem; }
+    .ee-sel { padding: 0.12rem 0.3rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.8rem; background: #fff; }
+    .ee-n { border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 6px; min-width: 1.7rem; padding: 0.08rem 0.35rem; cursor: pointer; font-size: 0.78rem; }
+    .ee-n.on { background: #1e293b; color: #fff; border-color: #1e293b; }
+    .ee-in { width: 10rem; padding: 0.12rem 0.4rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.78rem; }
+    .ee-cod { font-family: monospace; font-weight: 800; color: #111827; }
+    .ee-btn { border: 1px solid #1e293b; background: #1e293b; color: #fff; border-radius: 6px; padding: 0.12rem 0.6rem; cursor: pointer; font-size: 0.78rem; }
+    .ee-btn:disabled { opacity: 0.4; cursor: default; }
+    .ee-g { color: #94a3b8; }
+</style>
+
+<span class="ee" @onclick:stopPropagation="true">
+    @if (racks is null)
+    {
+        <span class="ee-g">Cargando racks…</span>
+    }
+    else if (racks.Count == 0)
+    {
+        <span class="ee-g">Todavía no hay racks dibujados en el plano.</span>
+    }
+    else
+    {
+        <span class="ee-fila">
+            <span class="ee-lbl">Rack</span>
+            <select class="ee-sel" value="@(rack?.Id.ToString() ?? "")" @onchange="ElegirRack">
+                <option value="">— elegí —</option>
+                @foreach (var r in racks)
+                {
+                    <option value="@r.Id">Rack @r.Codigo · @r.Planta</option>
+                }
+            </select>
+        </span>
+        @if (rack is not null)
+        {
+            <span class="ee-fila">
+                <span class="ee-lbl">Posición</span>
+                @for (var i = 1; i <= (rack.Posiciones ?? 1); i++)
+                {
+                    var n = i;
+                    <button type="button" class="ee-n @(pos == n ? "on" : "")" @onclick="() => pos = n">@n</button>
+                }
+            </span>
+            <span class="ee-fila">
+                <span class="ee-lbl">Nivel</span>
+                @for (var i = 1; i <= (rack.Niveles ?? 1); i++)
+                {
+                    var n = i;
+                    <button type="button" class="ee-n @(nivel == n ? "on" : "")" @onclick="() => nivel = n">@n</button>
+                }
+                <span class="ee-g">(1 = el piso)</span>
+            </span>
+            <span class="ee-fila">
+                <input class="ee-in" @bind="cantidad" @bind:event="oninput" maxlength="50" placeholder="Cantidad (opcional)" />
+                <button type="button" class="ee-btn" disabled="@(Codigo is null || guardando)" @onclick="Guardar">
+                    @(guardando ? "Guardando…" : Codigo is null ? "Elegí posición y nivel" : $"Guardar en {Codigo}")
+                </button>
+            </span>
+        }
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public int ProductoId { get; set; }
+    /// <summary>Si viene (PB / P1), los racks de esa planta salen primero.</summary>
+    [Parameter] public string? Planta { get; set; }
+    /// <summary>Avisa al padre el código del estante donde quedó (ej. "H-1-2") y la planta del rack.</summary>
+    [Parameter] public EventCallback<(string Codigo, string Planta)> OnGuardado { get; set; }
+
+    private List<PlanoElementoDto>? racks;
+    private PlanoElementoDto? rack;
+    private int? pos, nivel;
+    private string? cantidad;
+    private bool guardando;
+
+    private string? Codigo => rack is not null && pos is not null && nivel is not null ? $"{rack.Codigo}-{pos}-{nivel}" : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var planos = await Task.WhenAll(Api.GetPlanoDepositoAsync("PB"), Api.GetPlanoDepositoAsync("P1"));
+            racks = planos.Where(p => p is not null).SelectMany(p => p!.Elementos)
+                .Where(e => e.Tipo == "rack" && !string.IsNullOrWhiteSpace(e.Codigo))
+                .OrderBy(e => string.Equals(e.Planta, Planta, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(e => e.Planta).ThenBy(e => e.Codigo)
+                .ToList();
+        }
+        catch (Exception ex) { ToastService.Error("No pude traer los racks del plano: " + ex.Message); racks = new(); }
+    }
+
+    private void ElegirRack(ChangeEventArgs e)
+    {
+        rack = int.TryParse(e.Value?.ToString(), out var id) ? racks?.FirstOrDefault(r => r.Id == id) : null;
+        pos = rack?.Posiciones == 1 ? 1 : null;
+        nivel = rack?.Niveles == 1 ? 1 : null;
+    }
+
+    private async Task Guardar()
+    {
+        var cod = Codigo;
+        if (cod is null || rack is null) return;
+        guardando = true;
+        try
+        {
+            await Api.GuardarProductoEnEstanteAsync(cod, ProductoId, string.IsNullOrWhiteSpace(cantidad) ? null : cantidad.Trim(), null);
+            ToastService.Success($"Guardado en {cod}");
+            await OnGuardado.InvokeAsync((cod, rack.Planta));
+        }
+        catch (Exception ex) { ToastService.Error("No pude guardarlo en el estante: " + ex.Message); }
+        finally { guardando = false; }
+    }
+}

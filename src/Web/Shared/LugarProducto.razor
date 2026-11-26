@@ -3,7 +3,9 @@
    Editable=true (páginas con login): si no tiene lugar sale "📍 agregar lugar" con un mini editor
    (botones PB / P1 / Otro depósito + zona opcional, SIN desplegables); si tiene lugar sale
    "no está acá" para avisar que fueron a buscarlo y no estaba.
-   Después de guardar muestra el cambio al toque y avisa al padre (OnCambio) por si quiere recargar. *@
+   Después de guardar muestra el cambio al toque y avisa al padre (OnCambio) por si quiere recargar.
+   2026-11-26: ConEstante=true suma el chip "📦 Estante" (rack · posición · nivel del plano del
+   depósito, con ElegirEstante) y "🗺 Ver en el plano" cuando el lugar es un estante (ej. PB · H-1-2). *@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
@@ -18,15 +20,29 @@
     <span style="display:inline-flex; align-items:center; gap:0.3rem; flex-wrap:wrap; font-size:0.78rem;" @onclick:stopPropagation="true">
         @foreach (var (cod, txt) in Plantas)
         {
-            <button type="button" @onclick="() => planta = cod"
-                    style="border:1px solid @(planta == cod ? "#1e293b" : "#cbd5e1"); background:@(planta == cod ? "#1e293b" : "white"); color:@(planta == cod ? "white" : "#334155"); border-radius:999px; padding:0.1rem 0.55rem; cursor:pointer; font-size:0.78rem;">@txt</button>
+            <button type="button" @onclick="() => { planta = cod; enEstante = false; }"
+                    style="border:1px solid @(!enEstante && planta == cod ? "#1e293b" : "#cbd5e1"); background:@(!enEstante && planta == cod ? "#1e293b" : "white"); color:@(!enEstante && planta == cod ? "white" : "#334155"); border-radius:999px; padding:0.1rem 0.55rem; cursor:pointer; font-size:0.78rem;">@txt</button>
         }
-        <input @bind="zona" @bind:event="oninput" placeholder="Zona (opcional, ej. TOST)" maxlength="30"
-               style="width:11.5rem; padding:0.12rem 0.4rem; border:1px solid #cbd5e1; border-radius:6px; font-size:0.78rem;" />
-        <button type="button" @onclick="Guardar" disabled="@(planta is null || guardando)"
-                style="border:1px solid #1e293b; background:#1e293b; color:white; border-radius:6px; padding:0.1rem 0.6rem; cursor:pointer; font-size:0.78rem; opacity:@(planta is null ? "0.4" : "1");">@(guardando ? "Guardando…" : "Guardar")</button>
+        @if (ConEstante)
+        {
+            <button type="button" @onclick="() => enEstante = true" title="Elegir rack, posición y nivel del plano del depósito"
+                    style="border:1px solid @(enEstante ? "#1e293b" : "#cbd5e1"); background:@(enEstante ? "#1e293b" : "white"); color:@(enEstante ? "white" : "#334155"); border-radius:999px; padding:0.1rem 0.55rem; cursor:pointer; font-size:0.78rem;">📦 Estante</button>
+        }
+        @if (!enEstante)
+        {
+            <input @bind="zona" @bind:event="oninput" placeholder="Zona (opcional, ej. TOST)" maxlength="30"
+                   style="width:11.5rem; padding:0.12rem 0.4rem; border:1px solid #cbd5e1; border-radius:6px; font-size:0.78rem;" />
+            <button type="button" @onclick="Guardar" disabled="@(planta is null || guardando)"
+                    style="border:1px solid #1e293b; background:#1e293b; color:white; border-radius:6px; padding:0.1rem 0.6rem; cursor:pointer; font-size:0.78rem; opacity:@(planta is null ? "0.4" : "1");">@(guardando ? "Guardando…" : "Guardar")</button>
+        }
         <button type="button" @onclick="Cerrar"
                 style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:0.78rem; text-decoration:underline;">cancelar</button>
+        @if (enEstante)
+        {
+            <span style="flex-basis:100%;">
+                <Web.Pages.Deposito.ElegirEstante ProductoId="ProductoId!.Value" Planta="@planta" OnGuardado="GuardadoEnEstante" />
+            </span>
+        }
     </span>
 }
 else if (!string.IsNullOrEmpty(lugar))
@@ -37,6 +53,11 @@ else if (!string.IsNullOrEmpty(lugar))
             <span style="color:#b45309; font-weight:600;">· ⚠ no estaba acá</span>
         }
     </span>
+    @if (ConEstante && EstanteDe(lugar) is string est)
+    {
+        <a href="/deposito/plano?estante=@Uri.EscapeDataString(est)" @onclick:stopPropagation="true" title="Abrir el plano del depósito marcando ese estante"
+           style="padding-left:0.4rem; color:#94a3b8; font-size:0.72rem; text-decoration:underline;">🗺 Ver en el plano</a>
+    }
     @if (puedeEditar && PermitirCambiar)
     {
         <button type="button" @onclick="() => Abrir(lugar)" @onclick:stopPropagation="true"
@@ -69,10 +90,13 @@ else if (puedeEditar)
     [Parameter] public bool OfrecerNoEsta { get; set; } = true;
     /// <summary>true = si ya tiene lugar, ofrece "cambiar" (abre el mismo editor con lo actual cargado).</summary>
     [Parameter] public bool PermitirCambiar { get; set; }
+    /// <summary>2026-11-26: true = suma "📦 Estante" al editor y "🗺 Ver en el plano" si el lugar es un estante.</summary>
+    [Parameter] public bool ConEstante { get; set; }
 
     private static readonly (string, string)[] Plantas = { ("PB", "PB"), ("P1", "P1"), ("OTRO", "Otro depósito") };
 
     private bool abierto;
+    private bool enEstante;
     private bool guardando;
     private string? planta;
     private string zona = "";
@@ -86,7 +110,22 @@ else if (puedeEditar)
         if (p != ultimosParametros) { overrideLugar = null; ultimosParametros = p; }
     }
 
-    private void Cerrar() { abierto = false; planta = null; zona = ""; }
+    private void Cerrar() { abierto = false; planta = null; zona = ""; enEstante = false; }
+
+    /// <summary>"PB · H-1-2" → "H-1-2" si la zona es un estante del plano; si no, null.</summary>
+    private static string? EstanteDe(string? lugar)
+    {
+        if (string.IsNullOrEmpty(lugar)) return null;
+        var partes = lugar.Split(" · ", 2);
+        return partes.Length > 1 && ApiClient.EsCodigoEstante(partes[1]) ? partes[1].Trim() : null;
+    }
+
+    private async Task GuardadoEnEstante((string Codigo, string Planta) r)
+    {
+        overrideLugar = ($"{r.Planta} · {r.Codigo}", false);
+        Cerrar();
+        await OnCambio.InvokeAsync();
+    }
 
     /// <summary>Abre el editor; si ya tiene lugar ("PB · TOST") arranca con esa planta y zona.</summary>
     private void Abrir(string? actual)

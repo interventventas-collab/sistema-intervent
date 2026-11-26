@@ -88,6 +88,14 @@
     .pd-rot { display: flex; gap: 4px; }
     .pd-rot button { flex: 1; border: 1px solid #d1d5db; border-radius: 6px; padding: 6px 0; font: inherit; font-size: .85rem; background: #fff; cursor: pointer; color: #111827; }
     .pd-rot button.on { background: #111827; color: #fff; border-color: #111827; }
+    /* 2026-11-26: "Para acomodar" (productos con lugar viejo sin estante) y el producto "en mano" */
+    .pd-mano { background: #eff6ff; border: 1px solid #2563eb; color: #1e3a8a; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; font-size: .88rem; display: flex; gap: 6px; align-items: flex-start; }
+    .pd-mano > div { flex: 1; min-width: 0; }
+    .pd-aco-f { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 5px 8px; font: inherit; font-size: .85rem; margin-bottom: 6px; background: #fff; }
+    .pd-aco { max-height: 55vh; overflow-y: auto; }
+    .pd-aco button { display: block; width: 100%; text-align: left; font: inherit; font-size: .85rem; border: none; border-bottom: 1px solid #f3f4f6; background: none; padding: 6px 2px; cursor: pointer; color: #111827; }
+    .pd-aco button:hover { background: #f9fafb; }
+    .pd-aco button.on { background: #eff6ff; }
     @@media (max-width: 1100px) {
         .pd-main { grid-template-columns: 230px minmax(0, 1fr) 340px; }
     }
@@ -145,10 +153,45 @@
             {
                 var filas = FilasBusqueda();
                 var sinLugar = resultados.Where(r => r.Lugares.Count == 0).ToList();
+                @if (enMano is not null)
+                {
+                    <div class="pd-mano">
+                        <div>Elegí el estante para: <b>@enMano.Nombre</b></div>
+                        <button class="pd-x" title="Cancelar" @onclick="() => enMano = null">✕</button>
+                    </div>
+                }
                 @if (string.IsNullOrWhiteSpace(busca))
                 {
                     <h3>Dónde está</h3>
                     <div class="pd-g">Escribí arriba el nombre o el código de un producto y te marco en qué rack y estante está.</div>
+
+                    @* 2026-11-26: productos que tienen el lugar viejo (PB · TOST) pero no están en ningún
+                       estante. Se toca uno, queda "en mano", y se lo guarda tocando el estante. *@
+                    @if (sinEstante is { Count: > 0 })
+                    {
+                        var lista = FiltrarSinEstante().ToList();
+                        <h3 style="margin-top:18px">Para acomodar · @sinEstante.Count @(sinEstante.Count == 1 ? "producto" : "productos") con lugar viejo sin estante</h3>
+                        <input class="pd-aco-f" placeholder="Filtrar (nombre, código o zona)" value="@filtroSinEstante"
+                               @oninput="e => filtroSinEstante = e.Value?.ToString() ?? string.Empty" />
+                        <div class="pd-aco">
+                            @foreach (var x in lista.Take(200))
+                            {
+                                var xx = x;
+                                <button class="@(enMano?.ProductoId == xx.ProductoId ? "on" : "")" @onclick="() => TomarEnMano(xx)">
+                                    @xx.Nombre
+                                    <br /><span class="pd-g">@(string.IsNullOrWhiteSpace(xx.Sku) ? "" : xx.Sku + " · ")@xx.Planta@(string.IsNullOrWhiteSpace(xx.Zona) ? "" : " · " + xx.Zona) · stock @xx.Stock</span>
+                                </button>
+                            }
+                            @if (lista.Count == 0)
+                            {
+                                <div class="pd-g">Nada con “@filtroSinEstante”.</div>
+                            }
+                            else if (lista.Count > 200)
+                            {
+                                <div class="pd-g" style="padding-top:6px">Se ven los primeros 200: afiná el filtro.</div>
+                            }
+                        </div>
+                    }
                 }
                 else if (buscando)
                 {
@@ -668,8 +711,13 @@
                             }
                         }
                         <div style="font-weight:700;font-size:.88rem;margin:10px 0 6px">+ Guardar un producto acá</div>
-                        <EstanteAgregarProducto @key="celdaSel" Codigo="@celdaSel" OnGuardado="RecargarRack" />
+                        <EstanteAgregarProducto @key="celdaSel" Codigo="@celdaSel" OnGuardado="RecargarRack"
+                                                Preseleccionado="@PreselEnMano" OnGuardadoProducto="ProductoAcomodado" />
                     </div>
+                }
+                else if (enMano is not null)
+                {
+                    <div class="pd-nota">Tocá el estante donde va <b>@enMano.Nombre</b>.</div>
                 }
                 else
                 {
@@ -685,6 +733,10 @@
                 <div class="pd-sub">@NombreTipo(infoSel.Tipo)</div>
                 <div>Medidas: @M(Largo(infoSel)) × @M(Ancho(infoSel)) m@(infoSel.Alto is decimal al2 ? $" · {M(al2)} m de alto" : "")</div>
                 @if (!string.IsNullOrWhiteSpace(infoSel.Notas)) { <div class="pd-nota">@infoSel.Notas</div> }
+            }
+            else if (enMano is not null && !editar)
+            {
+                <div class="pd-g">Tocá en el plano el rack donde va <b>@enMano.Nombre</b> y después el estante.</div>
             }
             else
             {
@@ -721,6 +773,11 @@
     private List<PlanoBuscarDto> resultados = new();
     private int? lugarSel;
     private CancellationTokenSource? ctsBusca;
+
+    // 2026-11-26: "Para acomodar" — productos con lugar viejo sin estante, y el que está "en mano"
+    private List<PlanoSinEstanteDto>? sinEstante;
+    private string filtroSinEstante = "";
+    private PlanoSinEstanteDto? enMano;
 
     // modo editar
     private PlanoElementoDto? sel;
@@ -786,6 +843,40 @@
         catch (Exception ex) { ToastService.Error(ex.Message); elementos = new(); }
         finally { cargando = false; encuadrarPendiente = true; }
         StateHasChanged();
+        await CargarSinEstante();
+    }
+
+    // ───────────── para acomodar (lugar viejo sin estante) ─────────────
+    private async Task CargarSinEstante()
+    {
+        try { sinEstante = await Api.GetProductosSinEstanteAsync(planta); }
+        catch { sinEstante = null; } // si falla, el plano anda igual sin la lista
+        StateHasChanged();
+    }
+
+    private IEnumerable<PlanoSinEstanteDto> FiltrarSinEstante()
+    {
+        var palabras = ClienteSearch.Normalizar(filtroSinEstante).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (palabras.Length == 0) return sinEstante ?? new();
+        return (sinEstante ?? new()).Where(x =>
+        {
+            var t = ClienteSearch.Normalizar($"{x.Nombre} {x.Sku} {x.Zona}");
+            return palabras.All(t.Contains);
+        });
+    }
+
+    private void TomarEnMano(PlanoSinEstanteDto x)
+        => enMano = enMano?.ProductoId == x.ProductoId ? null : x;
+
+    private PlanoBuscarDto? PreselEnMano => enMano is null ? null
+        : new PlanoBuscarDto { ProductoId = enMano.ProductoId, Sku = enMano.Sku, Nombre = enMano.Nombre };
+
+    /// <summary>Se guardó un producto en un estante: sale de "Para acomodar" y, si era el que
+    /// estaba en mano, se suelta.</summary>
+    private void ProductoAcomodado(int productoId)
+    {
+        sinEstante?.RemoveAll(x => x.ProductoId == productoId);
+        if (enMano?.ProductoId == productoId) enMano = null;
     }
 
     private async Task CambiarPlanta(string p)

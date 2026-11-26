@@ -396,6 +396,37 @@ public class DepositoPlanoController : ControllerBase
         return NoContent();
     }
 
+    // ───────────────────────── Para acomodar ─────────────────────────
+
+    /// <summary>2026-11-26: productos activos que tienen la ubicación vieja (planta y a veces zona,
+    /// ej. "PB · TOST") pero no están guardados en ningún estante del plano. El plano los lista
+    /// para irlos acomodando de a uno. Sin planta = todas. Ordenados por zona y nombre, máx. 500.</summary>
+    [HttpGet("sin-estante")]
+    public async Task<IActionResult> SinEstante([FromQuery] string? planta = null)
+    {
+        var q = _db.CafeProductos.AsNoTracking().Where(p => p.IsActive && p.UbicacionPlanta != null);
+        if (!string.IsNullOrWhiteSpace(planta))
+        {
+            var pl = planta.Trim().ToUpperInvariant();
+            q = q.Where(p => p.UbicacionPlanta == pl);
+        }
+        var lista = await q
+            .Where(p => !_db.DepositoEstanteProductos.Any(a => a.ProductoId == p.Id))
+            .OrderBy(p => p.UbicacionZona == null).ThenBy(p => p.UbicacionZona).ThenBy(p => p.Nombre)
+            .Take(500)
+            .Select(p => new
+            {
+                productoId = p.Id,
+                sku = p.Sku,
+                nombre = p.Nombre,
+                planta = p.UbicacionPlanta,
+                zona = p.UbicacionZona,
+                stock = p.StockUnidades
+            })
+            .ToListAsync();
+        return Ok(lista);
+    }
+
     // ───────────────────────── Buscar ─────────────────────────
 
     /// <summary>Busca productos activos por nombre (sin importar tildes), SKU o código de barras y
