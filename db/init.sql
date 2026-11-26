@@ -9182,3 +9182,43 @@ BEGIN
     CREATE INDEX IX_Meli_EtiquetasGuardadas_GuardadaAt ON Meli_EtiquetasGuardadas(GuardadaAt);
 END
 GO
+
+-- ============================================================
+-- 26/11/2026 — Telefono (central de internos, carpeta telefonia/).
+-- Telefono_Llamadas: la central avisa cada llamada al cortar (llamadas perdidas del 📞).
+-- Telefono_Mensajes: mensajes programados que el sistema llama y lee en voz alta.
+-- ⚠ PROD: correr a mano ANTES de publicar la API.
+-- ============================================================
+IF OBJECT_ID('Telefono_Llamadas','U') IS NULL
+BEGIN
+    CREATE TABLE Telefono_Llamadas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        De NVARCHAR(10) NOT NULL,
+        DeNombre NVARCHAR(60) NULL,
+        A NVARCHAR(10) NOT NULL,
+        Busca NVARCHAR(30) NULL,
+        Estado NVARCHAR(20) NOT NULL,
+        Segundos INT NOT NULL DEFAULT 0,
+        FechaUtc DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        Vista BIT NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IX_Telefono_Llamadas_A_Fecha ON Telefono_Llamadas(A, FechaUtc);
+END
+GO
+IF OBJECT_ID('Telefono_Mensajes','U') IS NULL
+BEGIN
+    CREATE TABLE Telefono_Mensajes (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        Texto NVARCHAR(500) NOT NULL,
+        Destino NVARCHAR(10) NOT NULL,
+        Hora NVARCHAR(5) NOT NULL,
+        Dias NVARCHAR(7) NOT NULL DEFAULT '',
+        Fecha DATETIME2 NULL,
+        Activo BIT NOT NULL DEFAULT 1,
+        UltimoEnvioAr DATETIME2 NULL,
+        UltimoEscuchadoAr DATETIME2 NULL,
+        CreadoPor NVARCHAR(50) NULL,
+        CreadoUtc DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO

@@ -389,6 +389,9 @@ builder.Services.AddHostedService<EnvioComprobanteBackgroundService>();
 // el robot que cada minuto manda los que ya cumplieron la hora.
 builder.Services.AddScoped<WhatsAppProgramadosService>();
 builder.Services.AddHostedService<WhatsAppProgramadosBackgroundService>();
+// 2026-11-26: telefono (central de internos): estado, llamar y leer, y el robot de mensajes programados.
+builder.Services.AddScoped<TelefonoCentralService>();
+builder.Services.AddHostedService<TelefonoMensajesBackgroundService>();
 // 2026-09-29: plan de bonificación por cliente + avisos por WhatsApp a los internos (Gabriel).
 builder.Services.AddScoped<CafeBonificacionService>();
 builder.Services.AddScoped<ClienteAvisosWaService>();

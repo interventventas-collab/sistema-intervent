@@ -362,6 +362,9 @@ public class AppDbContext : DbContext
     public DbSet<Me1CpDistancia> Me1CpDistancias => Set<Me1CpDistancia>();
     public DbSet<MeliAlertaPausada> MeliAlertasPausadas => Set<MeliAlertaPausada>();
     public DbSet<MeliEtiquetaGuardada> MeliEtiquetasGuardadas => Set<MeliEtiquetaGuardada>();   // 2026-11-25: etiqueta original para "Recuperar etiqueta impresa"
+    // 2026-11-26: telefono (central de internos): registro de llamadas y mensajes programados
+    public DbSet<TelefonoLlamada> TelefonoLlamadas => Set<TelefonoLlamada>();
+    public DbSet<TelefonoMensaje> TelefonoMensajes => Set<TelefonoMensaje>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
