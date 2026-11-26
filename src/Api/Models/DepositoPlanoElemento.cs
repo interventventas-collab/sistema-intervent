@@ -55,6 +55,11 @@ public class DepositoPlanoElemento
     [MaxLength(300)]
     public string? Notas { get; set; }
 
+    /// <summary>2026-11-26: cómo se ve, en JSON chico (ej. {"lx":0.5,"ly":-1,"ls":1.4} = el nombre corrido
+    /// y más grande). Lo arma y lo lee la pantalla; la API solo lo guarda.</summary>
+    [MaxLength(400)]
+    public string? Estilo { get; set; }
+
     public int Orden { get; set; }
     public DateTime CreadoAt { get; set; } = DateTime.UtcNow;
     public DateTime? ModificadoAt { get; set; }

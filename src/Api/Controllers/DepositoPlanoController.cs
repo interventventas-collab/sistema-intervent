@@ -42,7 +42,7 @@ public class DepositoPlanoController : ControllerBase
         int Id, string Planta, string Tipo, string? Codigo, string? Nombre,
         decimal X, decimal Y, decimal Ancho, decimal Largo, decimal? Alto,
         int Rotacion, int? Posiciones, int? Niveles, string? Color, string? Puntos,
-        string? Notas, int Orden, int Productos);
+        string? Notas, int Orden, int Productos, string? Estilo);
 
     public class ElementoRequest
     {
@@ -62,6 +62,8 @@ public class DepositoPlanoController : ControllerBase
         public string? Puntos { get; set; }
         public string? Notas { get; set; }
         public int Orden { get; set; }
+        // 2026-11-26: cómo se ve (JSON chico): dónde va el nombre, de qué tamaño, etc.
+        public string? Estilo { get; set; }
     }
 
     public record AsignacionDto(int Id, int ProductoId, string? Sku, string Nombre,
@@ -78,7 +80,7 @@ public class DepositoPlanoController : ControllerBase
 
     private static ElementoDto ADto(DepositoPlanoElemento e, int productos) => new(
         e.Id, e.Planta, e.Tipo, e.Codigo, e.Nombre, e.X, e.Y, e.Ancho, e.Largo, e.Alto,
-        e.Rotacion, e.Posiciones, e.Niveles, e.Color, e.Puntos, e.Notas, e.Orden, productos);
+        e.Rotacion, e.Posiciones, e.Niveles, e.Color, e.Puntos, e.Notas, e.Orden, productos, e.Estilo);
 
     private static bool EsRack(string? tipo) => string.Equals(tipo, "rack", StringComparison.OrdinalIgnoreCase);
 
@@ -149,6 +151,8 @@ public class DepositoPlanoController : ControllerBase
         r.Nombre = Recortar(r.Nombre, 100);
         r.Notas = Recortar(r.Notas, 300);
         r.Color = Recortar(r.Color, 9);
+        r.Estilo = string.IsNullOrWhiteSpace(r.Estilo) ? null : r.Estilo.Trim();
+        if (r.Estilo is { Length: > 400 }) return "El estilo es demasiado largo.";
         r.Puntos = string.IsNullOrWhiteSpace(r.Puntos) ? null : r.Puntos.Trim();
 
         if (EsRack(r.Tipo))
@@ -173,6 +177,7 @@ public class DepositoPlanoController : ControllerBase
         e.X = r.X; e.Y = r.Y; e.Ancho = r.Ancho; e.Largo = r.Largo; e.Alto = r.Alto;
         e.Rotacion = r.Rotacion; e.Posiciones = r.Posiciones; e.Niveles = r.Niveles;
         e.Color = r.Color; e.Puntos = r.Puntos; e.Notas = r.Notas; e.Orden = r.Orden;
+        e.Estilo = r.Estilo;
     }
 
     [HttpPost("elementos")]

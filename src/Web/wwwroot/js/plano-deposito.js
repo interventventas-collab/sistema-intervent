@@ -55,6 +55,13 @@ window.planoDeposito = (function () {
       var g = e.target && e.target.closest ? e.target.closest('[data-id]') : null;
       var mat = svg.getScreenCTM().inverse();
       var p0 = aSvg(svg, e.clientX, e.clientY, mat);
+      // 2026-11-26: en modo editar, el NOMBRE de una zona/pasillo se arrastra solo (sin mover la zona)
+      var lab = (st.editar && e.target && e.target.closest) ? e.target.closest('[data-etiqueta]') : null;
+      if (lab) {
+        st.modo = { tipo: 'etiqueta', g: lab, id: parseInt(lab.getAttribute('data-etiqueta'), 10),
+          cx: e.clientX, cy: e.clientY, mat: mat, p0: p0, movio: false, dx: 0, dy: 0 };
+        return;
+      }
       st.modo = {
         tipo: (st.editar && g && g.getAttribute('data-fijo') !== '1') ? 'arrastre' : 'mover',
         g: g, id: g ? parseInt(g.getAttribute('data-id'), 10) : null,
@@ -85,6 +92,10 @@ window.planoDeposito = (function () {
       var p = aSvg(svg, e.clientX, e.clientY, m.mat);
       if (m.tipo === 'mover') {
         setVb(svg, { x: m.vb0.x - (p.x - m.p0.x), y: m.vb0.y - (p.y - m.p0.y), w: m.vb0.w, h: m.vb0.h });
+      } else if (m.tipo === 'etiqueta' && m.g) {
+        // corrimiento del nombre en metros de PANTALLA, de a 5 cm
+        m.dx = Math.round((p.x - m.p0.x) * 20) / 20; m.dy = Math.round((p.y - m.p0.y) * 20) / 20;
+        m.g.setAttribute('transform', 'translate(' + m.dx + ' ' + m.dy + ')');
       } else if (m.tipo === 'arrastre' && m.g) {
         // pantalla X = plano Y ; pantalla Y = ancho − plano X (la pared izquierda va abajo).
         // Se acomoda a la cuadrícula de 10 cm.
@@ -114,6 +125,13 @@ window.planoDeposito = (function () {
         else st.ref.invokeMethodAsync('FondoTocado');
         return;
       }
+      if (m.tipo === 'etiqueta' && m.g) {
+        var gl = m.g;
+        if (m.dx === 0 && m.dy === 0) { gl.removeAttribute('transform'); return; }
+        st.ref.invokeMethodAsync('EtiquetaMovida', m.id, m.dx, m.dy)
+          .then(function () { gl.removeAttribute('transform'); }, function () { gl.removeAttribute('transform'); });
+        return;
+      }
       if (m.tipo === 'arrastre' && m.g) {
         var g = m.g;
         var nx = snap(m.x0 + m.dy), ny = snap(m.y0 + m.dx);
@@ -127,6 +145,7 @@ window.planoDeposito = (function () {
     function cancelarArrastre(m) {
       m = m || st.modo;
       if (m && m.tipo === 'arrastre' && m.g) limpiar(m.g);
+      if (m && m.tipo === 'etiqueta' && m.g) m.g.removeAttribute('transform');
     }
 
     function wheel(e) {

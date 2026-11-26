@@ -30,6 +30,8 @@ public class PlanoElementoDto
     public string? Notas { get; set; }
     public int Orden { get; set; }
     public int Productos { get; set; }
+    /// <summary>2026-11-26: JSON con dónde va el nombre y de qué tamaño (ver PlanoDeposito.razor).</summary>
+    public string? Estilo { get; set; }
 
     public PlanoElementoDto Copia() => (PlanoElementoDto)MemberwiseClone();
 }
@@ -53,13 +55,14 @@ public class PlanoElementoGuardarDto
     public string? Puntos { get; set; }
     public string? Notas { get; set; }
     public int Orden { get; set; }
+    public string? Estilo { get; set; }
 
     public static PlanoElementoGuardarDto De(PlanoElementoDto e) => new()
     {
         Planta = e.Planta, Tipo = e.Tipo, Codigo = e.Codigo, Nombre = e.Nombre,
         X = e.X, Y = e.Y, Ancho = e.Ancho, Largo = e.Largo, Alto = e.Alto, Rotacion = e.Rotacion,
         Posiciones = e.Posiciones, Niveles = e.Niveles, Color = e.Color, Puntos = e.Puntos,
-        Notas = e.Notas, Orden = e.Orden,
+        Notas = e.Notas, Orden = e.Orden, Estilo = e.Estilo,
     };
 }
 

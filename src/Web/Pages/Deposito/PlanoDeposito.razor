@@ -49,6 +49,11 @@
     .pd-svg.editar [data-fijo="1"] { cursor: pointer; }
     .pd-svg:not(.editar) [data-tipo="rack"] { cursor: pointer; }
     .pd-arrastrando { opacity: .75; }
+    .pd-etq-ed { cursor: move; }
+    .pd-colfila { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .pd-muestra { width: 22px; height: 22px; border-radius: 5px; border: 1px solid #9ca3af; padding: 0; cursor: pointer; }
+    .pd-chico { border: 1px solid #d1d5db; border-radius: 6px; background: #fff; padding: 3px 9px; font-size: .82rem; font-weight: 600; cursor: pointer; }
+    .pd-chico.on { background: #111827; color: #fff; border-color: #111827; }
     .pd-zoom { position: absolute; right: 16px; top: 14px; display: flex; flex-direction: column; gap: 4px; }
     .pd-zoom button { width: 30px; height: 30px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; cursor: pointer; padding: 0; color: #111827; }
     .pd-vacio { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #4b5563; pointer-events: none; text-align: center; padding: 1rem; }
@@ -242,11 +247,7 @@
                                     }
                                     if (!string.IsNullOrWhiteSpace(e.Nombre))
                                     {
-                                        var (zx, zy) = CentroZona(e, r);
-                                        var vert = r.H > r.W * 1.6;
-                                        var fs = Math.Clamp(Math.Min(r.W, r.H) * 0.16, 0.3, 0.9);
-                                        <g><text x="@F(zx)" y="@F(zy + fs * 0.35)" font-size="@F(fs)" font-weight="700" fill="#374151" text-anchor="middle"
-                                              transform="@(vert ? $"rotate(-90 {F(zx)} {F(zy)})" : null)" pointer-events="none">@e.Nombre</text></g>
+
                                     }
                                     break;
                                 case "techo":
@@ -290,7 +291,7 @@
                                     }
                                     break;
                                 case "rack":
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#FCD34D" stroke="#633806" stroke-width="0.06" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@Col(e, "#FCD34D")" stroke="#633806" stroke-width="0.06" />
                                     var npos = Math.Max(1, e.Posiciones ?? 1);
                                     var aLoLargo = Largo(e) >= Ancho(e); // posiciones a lo largo del fondo (X de pantalla)
                                     @for (var i = 1; i < npos; i++)
@@ -308,7 +309,7 @@
                                     <g><text x="@F(r.CX)" y="@F(r.CY + lfs * 0.35)" font-size="@F(lfs)" font-weight="800" fill="#78350f" text-anchor="middle" pointer-events="none">@e.Codigo</text></g>
                                     break;
                                 case "montacargas":
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#d6d3d1" stroke="#111" stroke-width="0.05" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@Col(e, "#d6d3d1")" stroke="#111" stroke-width="0.05" />
                                     <line x1="@F(r.X)" y1="@F(r.Y)" x2="@F(r.X + r.W)" y2="@F(r.Y + r.H)" stroke="#111" stroke-width="0.04" />
                                     <line x1="@F(r.X + r.W)" y1="@F(r.Y)" x2="@F(r.X)" y2="@F(r.Y + r.H)" stroke="#111" stroke-width="0.04" />
                                     break;
@@ -337,19 +338,19 @@
                                     <rect x="@F(caja.X)" y="@F(caja.Y)" width="@F(caja.W)" height="@F(caja.H)" fill="#c8c5c2" stroke="#444" stroke-width="0.04" />
                                     break;
                                 case "contenedor":
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#3b6d11" stroke="#27500a" stroke-width="0.05" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@Col(e, "#3b6d11")" stroke="#27500a" stroke-width="0.05" />
                                     break;
                                 case "escritorio":
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="0.05" fill="#e7e5e4" stroke="#57534e" stroke-width="0.04" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="0.05" fill="@Col(e, "#e7e5e4")" stroke="#57534e" stroke-width="0.04" />
                                     break;
                                 case "pc":
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="0.03" fill="#1f2937" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="0.03" fill="@Col(e, "#1f2937")" />
                                     break;
                                 case "mesa":
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="@F(r.Corto / 2)" fill="#e7e5e4" stroke="#57534e" stroke-width="0.04" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="@F(r.Corto / 2)" fill="@Col(e, "#e7e5e4")" stroke="#57534e" stroke-width="0.04" />
                                     break;
                                 case "pallet":
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#d6b48a" stroke="#7c5a2c" stroke-width="0.04" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@Col(e, "#d6b48a")" stroke="#7c5a2c" stroke-width="0.04" />
                                     @foreach (var t in new[] { 1.0 / 3, 2.0 / 3 })
                                     {
                                         @if (r.Horiz)
@@ -363,11 +364,11 @@
                                     }
                                     break;
                                 case "heladera":
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#f8fafc" stroke="#57534e" stroke-width="0.04" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@Col(e, "#f8fafc")" stroke="#57534e" stroke-width="0.04" />
                                     <line x1="@F(r.X)" y1="@F(r.Y + r.H * 0.3)" x2="@F(r.X + r.W)" y2="@F(r.Y + r.H * 0.3)" stroke="#57534e" stroke-width="0.03" />
                                     break;
                                 case "pasillo":
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#f9fafb" fill-opacity="0.85" stroke="#9ca3af" stroke-width="0.04" stroke-dasharray="0.25 0.15" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@Col(e, "#f9fafb")" fill-opacity="0.85" stroke="#9ca3af" stroke-width="0.04" stroke-dasharray="0.25 0.15" />
                                     @if (r.Horiz)
                                     {
                                         <line x1="@F(r.X + 0.2)" y1="@F(r.CY)" x2="@F(r.X + r.W - 0.2)" y2="@F(r.CY)" stroke="#d1d5db" stroke-width="0.04" stroke-dasharray="0.4 0.3" />
@@ -376,19 +377,10 @@
                                     {
                                         <line x1="@F(r.CX)" y1="@F(r.Y + 0.2)" x2="@F(r.CX)" y2="@F(r.Y + r.H - 0.2)" stroke="#d1d5db" stroke-width="0.04" stroke-dasharray="0.4 0.3" />
                                     }
-                                    var pfs = Math.Clamp(r.Corto * 0.28, 0.18, 0.42);
-                                    var ptx = $"{(string.IsNullOrWhiteSpace(e.Nombre) ? "Pasillo" : e.Nombre)} · {M((decimal)r.Corto)} m";
-                                    @if (r.Horiz)
-                                    {
-                                        <g><text x="@F(r.CX)" y="@F(r.CY - pfs * 0.4)" font-size="@F(pfs)" fill="#6b7280" text-anchor="middle" pointer-events="none">@ptx</text></g>
-                                    }
-                                    else
-                                    {
-                                        <g transform="rotate(-90 @F(r.CX) @F(r.CY))"><text x="@F(r.CX)" y="@F(r.CY - pfs * 0.4)" font-size="@F(pfs)" fill="#6b7280" text-anchor="middle" pointer-events="none">@ptx</text></g>
-                                    }
+
                                     break;
                                 case "escalera":
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#e5e7eb" stroke="#374151" stroke-width="0.05" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@Col(e, "#e5e7eb")" stroke="#374151" stroke-width="0.05" />
                                     @foreach (var t in Cortes(r.Largo, 0.25))
                                     {
                                         @if (r.Horiz)
@@ -400,9 +392,7 @@
                                             <line x1="@F(r.X)" y1="@F(r.Y + t)" x2="@F(r.X + r.W)" y2="@F(r.Y + t)" stroke="#374151" stroke-width="0.025" />
                                         }
                                     }
-                                    var efs = Math.Clamp(r.Corto * 0.25, 0.18, 0.4);
-                                    <rect x="@F(r.CX - efs * 2.4)" y="@F(r.CY - efs * 0.75)" width="@F(efs * 4.8)" height="@F(efs * 1.2)" rx="0.05" fill="#fff" fill-opacity="0.9" pointer-events="none" />
-                                    <g><text x="@F(r.CX)" y="@F(r.CY + efs * 0.3)" font-size="@F(efs)" font-weight="700" fill="#374151" text-anchor="middle" pointer-events="none">@(string.IsNullOrWhiteSpace(e.Nombre) ? "Escalera" : e.Nombre)</text></g>
+
                                     break;
                                 case "texto":
                                     <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="transparent"
@@ -411,15 +401,19 @@
                                     <g><text x="@F(r.CX)" y="@F(r.CY + tfs * 0.35)" font-size="@F(tfs)" font-weight="700" fill="#374151" text-anchor="middle" pointer-events="none">@e.Nombre</text></g>
                                     break;
                                 default:
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="0.06" fill="#f3f4f6" stroke="#9ca3af" stroke-width="0.04" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="0.06" fill="@Col(e, "#f3f4f6")" stroke="#9ca3af" stroke-width="0.04" />
                                     @if (!string.IsNullOrWhiteSpace(e.Nombre))
                                     {
-                                        var mfs = Math.Clamp(Math.Min(r.W, r.H) * 0.3, 0.15, 0.45);
-                                        <g><text x="@F(r.CX)" y="@F(r.CY + mfs * 0.35)" font-size="@F(mfs)" fill="#4b5563" text-anchor="middle" pointer-events="none">@e.Nombre</text></g>
+                                        @* el nombre va en la capa de nombres, arriba de todo *@
                                     }
                                     break;
                             }
                         </g>
+                    }
+                    @* 2026-11-26: los nombres (ambientes, pasillos, escaleras, muebles) en una capa arriba de todo, así no los tapa nada *@
+                    @foreach (var e in Ordenados())
+                    {
+                        @EtiquetaArriba(e)
                     }
                     @* el borde del terreno arriba de todo (las zonas lo tapaban) *@
                     @foreach (var t in elementos.Where(x => x.Tipo == "terreno"))
@@ -527,10 +521,39 @@
                                 </div>
                             </div>
                         </div>
-                        @if (s.Tipo == "zona")
+                        @* 2026-11-26: color para cualquier pieza (racks, escritorios, pasillos, zonas...) *@
+                        @if (AceptaColor(s))
                         {
                             <label>Color</label>
-                            <input type="color" value="@(string.IsNullOrWhiteSpace(s.Color) ? "#f3f4f6" : s.Color)" @onchange="@(ev => Cambiar(el => el.Color = Txt(ev)))" />
+                            <div class="pd-colfila">
+                                <input type="color" value="@(string.IsNullOrWhiteSpace(s.Color) ? ColorBase(s.Tipo) : s.Color)" @onchange="@(ev => Cambiar(el => el.Color = Txt(ev)))" />
+                                @foreach (var c in new[] { "#FCD34D", "#F87171", "#93C5FD", "#86EFAC", "#D1D5DB", "#4B5563", "#C4B5FD", "#FDBA74" })
+                                {
+                                    var cc = c;
+                                    <button class="pd-muestra" style="background:@cc" title="@cc" @onclick="@(() => Cambiar(el => el.Color = cc))"></button>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(s.Color))
+                                {
+                                    <button class="pd-chico" @onclick="@(() => Cambiar(el => el.Color = null))">Color de siempre</button>
+                                }
+                            </div>
+                        }
+                        @* 2026-11-26: el nombre se agarra y se arrastra en el plano; acá se agranda/achica o se para *@
+                        @if (TieneNombreMovible(s))
+                        {
+                            var es = Est(s);
+                            <label>Nombre en el plano · arrastralo para correrlo</label>
+                            <div class="pd-colfila">
+                                <button class="pd-chico" @onclick="@(() => CambiarEstilo(x => x with { Ls = Math.Max(0.3, Math.Round(x.Ls - 0.2, 1)) }))">A−</button>
+                                <span class="pd-g">@((int)Math.Round(es.Ls * 100))%</span>
+                                <button class="pd-chico" @onclick="@(() => CambiarEstilo(x => x with { Ls = Math.Min(4, Math.Round(x.Ls + 0.2, 1)) }))">A+</button>
+                                <button class="pd-chico @(es.Lv == false ? "on" : "")" @onclick="@(() => CambiarEstilo(x => x with { Lv = false }))">Acostado</button>
+                                <button class="pd-chico @(es.Lv == true ? "on" : "")" @onclick="@(() => CambiarEstilo(x => x with { Lv = true }))">Parado</button>
+                                @if (s.Estilo is not null)
+                                {
+                                    <button class="pd-chico" @onclick="@(() => CambiarEstilo(_ => new EstiloEl(0, 0, 1, null)))">Volver al medio</button>
+                                }
+                            </div>
                         }
                         <label>Notas</label>
                         <textarea rows="2" value="@s.Notas" @onchange="@(ev => Cambiar(el => el.Notas = Txt(ev)))"></textarea>
@@ -922,6 +945,112 @@
         StateHasChanged();
         await Guardar(e);
     }
+
+    // ───────────── 2026-11-26: nombre movible / de otro tamaño y color de cada pieza ─────────────
+    /// <summary>Lo que se guarda en Estilo (JSON): lx/ly = corrimiento del nombre en metros de pantalla,
+    /// ls = tamaño (1 = normal), lv = nombre parado (true) / acostado (false) / automático (null).</summary>
+    private record EstiloEl(double Lx, double Ly, double Ls, bool? Lv);
+
+    private static EstiloEl Est(PlanoElementoDto e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Estilo)) return new(0, 0, 1, null);
+        try
+        {
+            using var d = System.Text.Json.JsonDocument.Parse(e.Estilo);
+            var r = d.RootElement;
+            double N(string k, double def) => r.TryGetProperty(k, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetDouble() : def;
+            bool? B(string k) => r.TryGetProperty(k, out var v) ? v.ValueKind switch { System.Text.Json.JsonValueKind.True => true, System.Text.Json.JsonValueKind.False => false, _ => null } : null;
+            return new(N("lx", 0), N("ly", 0), Math.Clamp(N("ls", 1), 0.3, 4), B("lv"));
+        }
+        catch { return new(0, 0, 1, null); }
+    }
+
+    private static string? EstJson(EstiloEl x)
+    {
+        if (x.Lx == 0 && x.Ly == 0 && Math.Abs(x.Ls - 1) < 0.001 && x.Lv is null) return null;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var partes = new List<string>
+        {
+            $"\"lx\":{Math.Round(x.Lx, 2).ToString(inv)}", $"\"ly\":{Math.Round(x.Ly, 2).ToString(inv)}",
+            $"\"ls\":{Math.Round(x.Ls, 2).ToString(inv)}"
+        };
+        if (x.Lv is bool b) partes.Add($"\"lv\":{(b ? "true" : "false")}");
+        return "{" + string.Join(",", partes) + "}";
+    }
+
+    private static string ColorBase(string tipo) => tipo switch
+    {
+        "rack" => "#FCD34D", "montacargas" => "#d6d3d1", "contenedor" => "#3b6d11", "pc" => "#1f2937",
+        "pallet" => "#d6b48a", "heladera" => "#f8fafc", "pasillo" => "#f9fafb", "escalera" => "#e5e7eb",
+        "escritorio" or "mesa" => "#e7e5e4", _ => "#f3f4f6",
+    };
+
+    private static string Col(PlanoElementoDto e, string def) => string.IsNullOrWhiteSpace(e.Color) ? def : e.Color!;
+
+    /// <summary>Nombre dibujado en el plano. En modo editar se agarra y se arrastra (lo mueve plano-deposito.js).</summary>
+    private RenderFragment Etiqueta(PlanoElementoDto e, double cx, double cy, double fs, bool vertAuto, string texto, string color, string peso, bool fondo = false)
+    {
+        var est = Est(e);
+        var x = cx + est.Lx; var y = cy + est.Ly; var f = fs * est.Ls;
+        var vert = est.Lv ?? vertAuto;
+        var rot = vert ? $"rotate(-90 {F(x)} {F(y)})" : null;
+        var ancho = texto.Length * f * 0.56 + f * 0.6;
+        // el corrimiento al arrastrar va en el <g> de afuera; el giro en el de adentro (si no, se pisan)
+        return @<g data-etiqueta="@e.Id" class="@(editar ? "pd-etq-ed" : null)"><g transform="@rot">
+            @if (fondo || editar)
+            {
+                <rect x="@F(x - ancho / 2)" y="@F(y - f * 0.62)" width="@F(ancho)" height="@F(f * 1.25)" rx="0.05"
+                      fill="#fff" fill-opacity="@(fondo ? "0.9" : "0.01")" stroke="@(editar ? "#93c5fd" : "none")" stroke-width="0.02" stroke-dasharray="0.08 0.05"
+                      pointer-events="@(editar ? "all" : "none")" />
+            }
+            <text x="@F(x)" y="@F(y + f * 0.35)" font-size="@F(f)" font-weight="@peso" fill="@color" text-anchor="middle"
+                  pointer-events="@(editar ? "all" : "none")">@texto</text>
+        </g></g>;
+    }
+
+    private RenderFragment? EtiquetaArriba(PlanoElementoDto e)
+    {
+        var r = Rect(e);
+        switch (e.Tipo)
+        {
+            case "zona":
+                if (string.IsNullOrWhiteSpace(e.Nombre)) return null;
+                var (zx, zy) = CentroZona(e, r);
+                return Etiqueta(e, zx, zy, Math.Clamp(Math.Min(r.W, r.H) * 0.16, 0.3, 0.9), r.H > r.W * 1.6, e.Nombre!, "#374151", "700");
+            case "pasillo":
+                var ptx = $"{(string.IsNullOrWhiteSpace(e.Nombre) ? "Pasillo" : e.Nombre)} · {M((decimal)r.Corto)} m";
+                return Etiqueta(e, r.CX, r.CY, Math.Clamp(r.Corto * 0.28, 0.18, 0.42), !r.Horiz, ptx, "#6b7280", "400");
+            case "escalera":
+                return Etiqueta(e, r.CX, r.CY, Math.Clamp(r.Corto * 0.25, 0.18, 0.4), false,
+                    string.IsNullOrWhiteSpace(e.Nombre) ? "Escalera" : e.Nombre!, "#374151", "700", fondo: true);
+            case "mueble":
+                if (string.IsNullOrWhiteSpace(e.Nombre)) return null;
+                return Etiqueta(e, r.CX, r.CY, Math.Clamp(Math.Min(r.W, r.H) * 0.3, 0.15, 0.45), false, e.Nombre!, "#4b5563", "400");
+            default:
+                return null;
+        }
+    }
+
+    [JSInvokable]
+    public async Task EtiquetaMovida(int id, double dx, double dy)
+    {
+        var e = elementos.FirstOrDefault(x => x.Id == id);
+        if (e is null) return;
+        var est = Est(e);
+        // el corrimiento se guarda en pantalla; si el nombre está parado, el giro no afecta: se mueve el grupo entero
+        e.Estilo = EstJson(est with { Lx = est.Lx + dx, Ly = est.Ly + dy });
+        sel = e;
+        await Guardar(e);
+        StateHasChanged();
+    }
+
+    private Task CambiarEstilo(Func<EstiloEl, EstiloEl> f) => Cambiar(el => el.Estilo = EstJson(f(Est(el))));
+
+    private static bool TieneNombreMovible(PlanoElementoDto e)
+        => e.Tipo is "zona" or "pasillo" or "escalera" || (e.Tipo == "mueble" && !string.IsNullOrWhiteSpace(e.Nombre));
+
+    private static bool AceptaColor(PlanoElementoDto e)
+        => e.Tipo is not ("terreno" or "puerta" or "ventana" or "ventanal" or "techo" or "porton" or "vehiculo" or "sillas" or "texto");
 
     // ───────────── modo editar ─────────────
     private async Task EntrarEditar()
