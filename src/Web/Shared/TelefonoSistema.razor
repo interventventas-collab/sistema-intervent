@@ -1,5 +1,6 @@
 @inject ApiClient Api
 @inject IJSRuntime JS
+@inject OperatorService Operador
 @implements IAsyncDisposable
 
 @*
@@ -8,7 +9,10 @@
    - Al tocarlo: ventanita con los internos (Oficina 101, Notebook 102) y un teclado.
    - Llamada entrante: cartel con Atender / Cortar, suena con el parlante de la compu.
    - Hablando: cartel chico abajo a la derecha con el tiempo, Silenciar y Cortar.
-   Por ahora solo lo ve el usuario admin (MainLayout).
+   2026-11-26 (2a vuelta): un interno por persona (lo decide la API segun el usuario y el PIN):
+   Osmar 201, German 202, Gabriel 203, Deposito 210 (+ 211-215 "busca a ALEXIS..." en las
+   compus del deposito). La lista muestra un puntito verde en quien esta conectado ahora.
+   Si cambia el PIN, el telefono se reconecta con el interno de la persona nueva.
 *@
 
 @if (config is { Habilitado: true })
@@ -24,16 +28,24 @@
         <div class="tel-win">
             <div class="tel-wh">
                 <b>Teléfono</b>
-                <span>soy el 103 · @(estado == "conectado" ? "conectado" : estado == "conectando" ? "conectando…" : "desconectado")</span>
+                <span>@config.MiNombre · @config.Usuario · @(estado == "conectado" ? "conectado" : estado == "conectando" ? "conectando…" : "desconectado")</span>
                 <button class="tel-x" @onclick="() => abierto = false" title="Cerrar">✕</button>
             </div>
-            @foreach (var i in config.Internos)
-            {
-                <div class="tel-row">
-                    <b>@i.Nombre</b><i>@i.Numero</i>
-                    <button class="tel-call" disabled="@(estado != "conectado")" @onclick="() => Llamar(i.Numero)"><i class="fa-solid fa-phone"></i> Llamar</button>
-                </div>
-            }
+            <div class="tel-lista">
+                @foreach (var grupo in config.Internos.Where(x => x.Numero != config.Usuario).GroupBy(x => x.Grupo))
+                {
+                    <div class="tel-grupo">@grupo.Key</div>
+                    @foreach (var i in grupo)
+                    {
+                        var on = conectados.Contains(i.Numero);
+                        <div class="tel-row @(on ? "" : "tel-off")">
+                            <span class="tel-pres @(on ? "on" : "")" title="@(on ? "Conectado" : "No conectado")"></span>
+                            <b>@i.Nombre</b><i>@i.Numero</i>
+                            <button class="tel-call" disabled="@(estado != "conectado" || !on)" @onclick="() => Llamar(i.Numero)"><i class="fa-solid fa-phone"></i> Llamar</button>
+                        </div>
+                    }
+                }
+            </div>
             <div class="tel-num">
                 <input @bind="numero" @bind:event="oninput" placeholder="Número" @onkeydown="TeclaInput" />
                 <div class="tel-pad">
@@ -54,9 +66,18 @@
     @if (modo == Modo.Entrante)
     {
         <div class="tel-card tel-centro">
-            <small>Te están llamando</small>
-            <div class="tel-who">@NombreDe(otroNum, otroNom)</div>
-            <small>interno @otroNum</small>
+            @if (!string.IsNullOrEmpty(busca))
+            {
+                <small>Te están llamando</small>
+                <div class="tel-who">@NombreDe(otroNum, otroNom) busca a</div>
+                <div class="tel-busca">@busca</div>
+            }
+            else
+            {
+                <small>Te están llamando</small>
+                <div class="tel-who">@NombreDe(otroNum, otroNom)</div>
+                <small>interno @otroNum</small>
+            }
             <div class="tel-btns">
                 <button class="tel-ok" @onclick="Atender">Atender</button>
                 <button class="tel-no" @onclick="Cortar">Cortar</button>
@@ -92,9 +113,15 @@
     .tel-wh b { flex: 1; }
     .tel-wh span { color: #6b7280; font-size: 12px; }
     .tel-x { border: 0; background: transparent; color: #9ca3af; cursor: pointer; font-size: 14px; }
-    .tel-row { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid #f3f4f6; }
+    .tel-lista { max-height: 340px; overflow-y: auto; }
+    .tel-grupo { padding: 8px 14px 2px; font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: .05em; }
+    .tel-row { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-bottom: 1px solid #f3f4f6; }
+    .tel-row.tel-off b { color: #9ca3af; }
+    .tel-pres { width: 8px; height: 8px; border-radius: 50%; background: #d1d5db; flex: none; }
+    .tel-pres.on { background: #10b981; }
+    .tel-busca { font-size: 30px; font-weight: 800; letter-spacing: .02em; margin: 2px 0 4px; }
     .tel-row b { flex: 1; font-weight: 500; }
-    .tel-row i { font-style: normal; color: #9ca3af; font-size: 12px; margin-right: 12px; }
+    .tel-row i { font-style: normal; color: #9ca3af; font-size: 12px; margin-right: 6px; }
     .tel-call { border: 1px solid #d1d5db; border-radius: 8px; padding: 4px 10px; font-size: 13px; background: #fff; cursor: pointer; }
     .tel-call:disabled, .tel-go:disabled { opacity: .45; cursor: default; }
     .tel-num { padding: 10px 14px; }
@@ -126,7 +153,10 @@
     private bool abierto;
     private Modo modo = Modo.Libre;
     private string numero = "";
-    private string otroNum = "", otroNom = "";
+    private string otroNum = "", otroNom = "", busca = "";
+    private HashSet<string> conectados = new();
+    private System.Threading.Timer? sondeo;
+    private string? usuarioActual;
     private string aviso = "";
     private bool silenciado;
     private DateTime? desde;
@@ -135,21 +165,57 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
-        try { config = await Api.GetTelefonoConfigAsync(); } catch { config = null; }
-        if (config is not { Habilitado: true }) return;
-        yo = DotNetObjectReference.Create(this);
+        Operador.OnChange += AlCambiarOperador;
+        await Conectar();
+        sondeo = new System.Threading.Timer(async _ => await InvokeAsync(Sondear), null, 2000, 10000);
+    }
+
+    // Pide a la API que interno le toca a esta compu (segun usuario y PIN) y se conecta.
+    private async Task Conectar()
+    {
+        TelefonoConfig? nueva;
+        try { nueva = await Api.GetTelefonoConfigAsync(); } catch { return; }
+        if (nueva is not { Habilitado: true })
+        {
+            if (usuarioActual != null) { try { await JS.InvokeVoidAsync("telefono.apagar"); } catch { } }
+            usuarioActual = null; config = nueva; StateHasChanged();
+            return;
+        }
+        config = nueva;
+        yo ??= DotNetObjectReference.Create(this);
+        if (usuarioActual != config.Usuario)
+        {
+            usuarioActual = config.Usuario;
+            estado = "conectando";
+            try
+            {
+                await JS.InvokeVoidAsync("telefono.init", new
+                {
+                    wsUrl = config.WsUrl,
+                    dominio = config.Dominio,
+                    usuario = config.Usuario,
+                    clave = config.Clave,
+                    nombre = config.MiNombre
+                }, yo);
+            }
+            catch { estado = "desconectado"; }
+        }
         StateHasChanged();
+    }
+
+    private void AlCambiarOperador() => InvokeAsync(Conectar);
+
+    private async Task Sondear()
+    {
+        // todavia sin interno (ej. recien entrado, sin PIN): volver a preguntar
+        if (config is not { Habilitado: true }) { await Conectar(); return; }
         try
         {
-            await JS.InvokeVoidAsync("telefono.init", new
-            {
-                wsUrl = config.WsUrl,
-                dominio = config.Dominio,
-                usuario = config.Usuario,
-                clave = config.Clave
-            }, yo);
+            var e = await Api.GetTelefonoEstadoAsync();
+            conectados = e?.Conectados.ToHashSet() ?? new();
+            StateHasChanged();
         }
-        catch { estado = "desconectado"; StateHasChanged(); }
+        catch { }
     }
 
     private string NombreDe(string num, string nom)
@@ -167,7 +233,7 @@
         return $"{(int)t.TotalMinutes:00}:{t.Seconds:00}";
     }
 
-    private void Alternar() { abierto = !abierto; aviso = ""; }
+    private async Task Alternar() { abierto = !abierto; aviso = ""; if (abierto) await Sondear(); }
 
     private async Task Llamar(string num)
     {
@@ -194,15 +260,15 @@
     // ---- avisos desde telefono.js ----
     [JSInvokable] public void OnEstado(string e) { estado = e; InvokeAsync(StateHasChanged); }
 
-    [JSInvokable] public void OnEntrante(string num, string nom)
+    [JSInvokable] public void OnEntrante(string num, string nom, string? quien)
     {
-        otroNum = num; otroNom = nom; modo = Modo.Entrante; abierto = false;
+        otroNum = num; otroNom = nom; busca = quien ?? ""; modo = Modo.Entrante; abierto = false;
         InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable] public void OnLlamando(string num, string nom)
     {
-        otroNum = num; otroNom = nom; modo = Modo.Llamando; abierto = false;
+        otroNum = num; otroNom = nom; busca = ""; modo = Modo.Llamando; abierto = false;
         InvokeAsync(StateHasChanged);
     }
 
@@ -226,6 +292,7 @@
             aviso = causa switch
             {
                 "Busy" => "Está ocupado",
+                "Temporarily Unavailable" => "No está conectado",
                 "Unavailable" or "Not Found" => "No está conectado",
                 "No Answer" => "No atendió",
                 "User Denied Media Access" => "El navegador no dejó usar el micrófono",
@@ -238,6 +305,8 @@
 
     public async ValueTask DisposeAsync()
     {
+        Operador.OnChange -= AlCambiarOperador;
+        sondeo?.Dispose();
         reloj?.Dispose();
         try { await JS.InvokeVoidAsync("telefono.apagar"); } catch { }
         yo?.Dispose();

@@ -2052,11 +2052,9 @@
                    2026-11-16: vuelve a verse siempre (pedido del dueño "volver la bolsita"). *@
                 <CobranzasPendientesBell />
             }
-            @* 2026-11-26: telefono dentro del sistema (interno 103). Por ahora solo el admin. *@
-            @if (string.Equals(username, "admin", StringComparison.OrdinalIgnoreCase))
-            {
-                <TelefonoSistema />
-            }
+            @* 2026-11-26: telefono dentro del sistema. Se muestra solo si la API le da un interno
+               a esta compu (Osmar/German/Gabriel por PIN, o usuario DEPOSITO). *@
+            <TelefonoSistema />
             <ChatBell />
             <MeliQuestionsBell OnTotal="PreguntasContadas" />
             @if (!IsRoleWithCustomSidebar())

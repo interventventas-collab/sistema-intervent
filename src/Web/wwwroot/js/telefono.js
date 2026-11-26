@@ -83,7 +83,7 @@
         }
     }
 
-    function nuevaSesion(s, entrante) {
+    function nuevaSesion(s, entrante, req) {
         if (sesion) { // ya hay una llamada: rechazar la nueva como "ocupado"
             if (entrante) s.terminate({ status_code: 486 });
             return;
@@ -109,14 +109,20 @@
         };
         s.on('ended', fin);
         s.on('failed', fin);
-        if (entrante) { timbreOn(); avisar('OnEntrante', num, nom); }
+        if (entrante) {
+            // 211-215: la central manda a quien buscan en el deposito (X-Busca: WALTER)
+            let busca = '';
+            try { busca = (req && req.getHeader('X-Busca')) || ''; } catch (e) { }
+            timbreOn(); avisar('OnEntrante', num, nom, busca);
+        }
         else avisar('OnLlamando', num, nom);
     }
 
     window.telefono = {
         init: async function (config, dotnetRef) {
+            if (ua && cfg && cfg.usuario === config.usuario) { dotnet = dotnetRef; return; }
+            if (ua) { try { ua.stop(); } catch (e) { } ua = null; sesion = null; }
             dotnet = dotnetRef; cfg = config;
-            if (ua) return;
             try { await cargarLib(); } catch (e) { avisar('OnEstado', 'error'); return; }
             JsSIP.debug.disable('JsSIP:*');
             const socket = new JsSIP.WebSocketInterface(cfg.wsUrl);
@@ -124,7 +130,7 @@
                 sockets: [socket],
                 uri: 'sip:' + cfg.usuario + '@' + cfg.dominio,
                 password: cfg.clave,
-                display_name: 'Sistema',
+                display_name: cfg.nombre || 'Sistema',
                 register: true,
                 register_expires: 120,
                 session_timers: false,
@@ -135,7 +141,7 @@
             ua.on('unregistered', () => avisar('OnEstado', 'desconectado'));
             ua.on('registrationFailed', () => avisar('OnEstado', 'desconectado'));
             ua.on('disconnected', () => avisar('OnEstado', 'desconectado'));
-            ua.on('newRTCSession', ev => nuevaSesion(ev.session, ev.originator === 'remote'));
+            ua.on('newRTCSession', ev => nuevaSesion(ev.session, ev.originator === 'remote', ev.request));
             avisar('OnEstado', 'conectando');
             ua.start();
         },
