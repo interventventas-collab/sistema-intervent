@@ -1,6 +1,7 @@
 @inject ApiClient Api
 @inject IJSRuntime JS
 @inject OperatorService Operador
+@inject AuthenticationStateProvider AuthState
 @implements IAsyncDisposable
 
 @*
@@ -21,6 +22,10 @@
             title="@(estado == "conectado" ? "Teléfono · conectado, te pueden llamar" : estado == "conectando" ? "Teléfono · conectando…" : "Teléfono · desconectado")">
         <i class="fa-solid fa-phone"></i>
         <span class="tel-dot @(estado == "conectado" ? "on" : estado == "conectando" ? "wait" : "off")"></span>
+        @if (perdidas.Count > 0)
+        {
+            <span class="tel-badge" title="Llamadas perdidas">@perdidas.Count</span>
+        }
     </button>
 
     @if (abierto && modo == Modo.Libre)
@@ -29,10 +34,27 @@
             <div class="tel-wh">
                 <b>Teléfono</b>
                 <span>@config.MiNombre · @config.Usuario · @(estado == "conectado" ? "conectado" : estado == "conectando" ? "conectando…" : "desconectado")</span>
-                <button class="tel-x" @onclick="() => abierto = false" title="Cerrar">✕</button>
+                <button class="tel-x" @onclick="Cerrar" title="Cerrar">✕</button>
             </div>
+            @if (perdidasVistas.Count > 0)
+            {
+                <div class="tel-perd">
+                    <div class="tel-grupo tel-grupo-perd">Llamadas perdidas</div>
+                    @foreach (var p in perdidasVistas)
+                    {
+                        <div class="tel-row">
+                            <b>@p.Nombre@(string.IsNullOrEmpty(p.Busca) ? "" : $" buscaba a {p.Busca}")</b>
+                            <i>@(p.FechaAr.Date == DateTime.UtcNow.AddHours(-3).Date ? p.FechaAr.ToString("HH:mm") : p.FechaAr.ToString("dd/MM HH:mm"))</i>
+                            @if (config.Internos.Any(x => x.Numero == p.De))
+                            {
+                                <button class="tel-call" disabled="@(estado != "conectado")" @onclick="() => Llamar(p.De)"><i class="fa-solid fa-phone"></i> Devolver</button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
             <div class="tel-lista">
-                @foreach (var grupo in config.Internos.Where(x => x.Numero != config.Usuario).GroupBy(x => x.Grupo))
+                @foreach (var grupo in config.Internos.Where(x => x.Numero != config.Usuario && !(x.Numero == "200" && EsDeLaOficina)).GroupBy(x => x.Grupo))
                 {
                     <div class="tel-grupo">@grupo.Key</div>
                     @foreach (var i in grupo)
@@ -60,6 +82,91 @@
                     <div class="tel-aviso">@aviso</div>
                 }
             </div>
+            @if (esAdmin)
+            {
+                <button class="tel-link" @onclick="AbrirMensajes">🗓 Mensajes programados</button>
+            }
+        </div>
+    }
+
+    @if (verMensajes)
+    {
+        <div class="tel-fondo" @onclick="() => verMensajes = false"></div>
+        <div class="tel-msgs">
+            <div class="tel-wh"><b>Mensajes programados</b><span>el sistema llama y lo lee en voz alta</span><button class="tel-x" @onclick="() => verMensajes = false">✕</button></div>
+            @if (editando is null)
+            {
+                <div class="tel-msg-lista">
+                    @if (mensajes.Count == 0)
+                    {
+                        <div class="tel-vacio">Todavía no hay mensajes programados.</div>
+                    }
+                    @foreach (var m in mensajes)
+                    {
+                        <div class="tel-msg @(m.Activo ? "" : "tel-off")">
+                            <div class="tel-msg-txt">@m.Texto</div>
+                            <div class="tel-msg-meta">
+                                @NombreDestino(m.Destino) · @m.Hora · @DiasTexto(m)
+                                @if (!m.Activo) { <span> · pausado</span> }
+                                @if (m.UltimoEscuchadoAr is { } esc) { <span> · escuchado @esc.ToString("dd/MM HH:mm")</span> }
+                                else if (m.UltimoEnvioAr is { } env) { <span> · llamó @env.ToString("dd/MM HH:mm"), nadie atendió</span> }
+                            </div>
+                            <div class="tel-msg-acc">
+                                <button @onclick="() => Editar(m)">Editar</button>
+                                <button @onclick="() => Borrar(m)">Borrar</button>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="tel-msg-pie"><button class="tel-go" @onclick="Nuevo">+ Nuevo mensaje</button></div>
+            }
+            else
+            {
+                <div class="tel-form">
+                    <label>Mensaje (lo lee en voz alta, dos veces)</label>
+                    <textarea rows="3" maxlength="500" @bind="editando.Texto" @bind:event="oninput" placeholder="Ej: Buen día, hoy hay 12 envíos Flex, salen a las 11."></textarea>
+                    <div class="tel-form-fila">
+                        <div>
+                            <label>A quién</label>
+                            <select @bind="editando.Destino">
+                                <option value="todos">Todos los conectados</option>
+                                @foreach (var i in config.Internos.Where(x => x.Numero is not ("200" or "211" or "212" or "213" or "214" or "215")))
+                                {
+                                    <option value="@i.Numero">@i.Nombre</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label>Hora</label>
+                            <input type="time" value="@editando.Hora" @onchange="e => { if (editando != null) editando.Hora = e.Value?.ToString() ?? editando.Hora; }" />
+                        </div>
+                    </div>
+                    <label>Días</label>
+                    <div class="tel-dias">
+                        @foreach (var d in "LMXJVSD")
+                        {
+                            var letra = d.ToString();
+                            <button class="@(editando.Dias.Contains(d) ? "on" : "")" @onclick="() => AlternarDia(letra)">@letra</button>
+                        }
+                        <span class="tel-o">o una sola vez el</span>
+                        <input type="date" value="@(editando.Fecha?.ToString("yyyy-MM-dd"))" @onchange="CambiarFecha" disabled="@(editando.Dias.Length > 0)" />
+                    </div>
+                    <label class="tel-check"><input type="checkbox" @bind="editando.Activo" /> Activo</label>
+                    @if (!string.IsNullOrEmpty(errorMsg))
+                    {
+                        <div class="tel-error">@errorMsg</div>
+                    }
+                    @if (!string.IsNullOrEmpty(okMsg))
+                    {
+                        <div class="tel-aviso">@okMsg</div>
+                    }
+                    <div class="tel-form-btns">
+                        <button class="tel-sec" @onclick="() => editando = null">Volver</button>
+                        <button class="tel-sec" @onclick="Probar">▶ Probar ahora</button>
+                        <button class="tel-go" @onclick="Guardar">Guardar</button>
+                    </div>
+                </div>
+            }
         </div>
     }
 
@@ -104,6 +211,37 @@
 
 <style>
     .tel-btn { position: relative; }
+    .tel-badge { position: absolute; left: 0.1rem; top: 0.05rem; background: #ef4444; color: #fff; font-size: 0.62rem; font-weight: 700; border-radius: 999px; min-width: 1rem; padding: 0.05rem 0.3rem; line-height: 1.2; }
+    .tel-perd { border-bottom: 1px solid #e5e7eb; }
+    .tel-grupo-perd { color: #ef4444; }
+    .tel-link { width: 100%; border: 0; border-top: 1px solid #e5e7eb; background: #fafafa; padding: 9px; font-size: 13px; color: #374151; cursor: pointer; }
+    .tel-link:hover { background: #f3f4f6; }
+    .tel-fondo { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 3002; }
+    .tel-msgs { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); width: 520px; max-width: 96vw; max-height: 80vh; display: flex; flex-direction: column; background: #fff; border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,.25); z-index: 3003; color: #111827; font-size: 14px; overflow: hidden; }
+    .tel-msg-lista { overflow-y: auto; flex: 1; }
+    .tel-vacio { padding: 24px; text-align: center; color: #6b7280; }
+    .tel-msg { padding: 10px 14px; border-bottom: 1px solid #f3f4f6; }
+    .tel-msg.tel-off .tel-msg-txt { color: #9ca3af; }
+    .tel-msg-txt { white-space: pre-wrap; }
+    .tel-msg-meta { font-size: 12px; color: #6b7280; margin-top: 3px; }
+    .tel-msg-acc { margin-top: 6px; display: flex; gap: 6px; }
+    .tel-msg-acc button, .tel-sec { border: 1px solid #d1d5db; background: #fff; border-radius: 8px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+    .tel-msg-pie { padding: 10px 14px; border-top: 1px solid #e5e7eb; }
+    .tel-msg-pie .tel-go { margin-top: 0; }
+    .tel-form { padding: 12px 14px; overflow-y: auto; }
+    .tel-form label { display: block; font-size: 12px; color: #6b7280; margin: 10px 0 4px; }
+    .tel-form textarea, .tel-form select, .tel-form input[type=time], .tel-form input[type=date] { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 8px; padding: 7px 9px; font-size: 14px; font-family: inherit; }
+    .tel-form-fila { display: flex; gap: 10px; }
+    .tel-form-fila > div { flex: 1; }
+    .tel-dias { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    .tel-dias button { width: 32px; height: 32px; border-radius: 50%; border: 1px solid #d1d5db; background: #fff; cursor: pointer; font-weight: 600; }
+    .tel-dias button.on { background: #111827; color: #fff; border-color: #111827; }
+    .tel-dias input[type=date] { width: auto; }
+    .tel-o { font-size: 12px; color: #6b7280; margin: 0 4px 0 8px; }
+    .tel-check { display: flex !important; align-items: center; gap: 6px; color: #111827 !important; font-size: 14px !important; }
+    .tel-error { margin-top: 8px; color: #ef4444; font-size: 13px; }
+    .tel-form-btns { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
+    .tel-form-btns .tel-go { width: auto; flex: 1; margin-top: 0; }
     .tel-dot { position: absolute; right: 0.25rem; top: 0.2rem; width: 9px; height: 9px; border-radius: 50%; border: 2px solid #fff; }
     .tel-dot.on { background: #10b981; }
     .tel-dot.wait { background: #d1d5db; }
@@ -155,6 +293,14 @@
     private string numero = "";
     private string otroNum = "", otroNom = "", busca = "";
     private HashSet<string> conectados = new();
+    private List<TelefonoPerdida> perdidas = new();       // las no vistas (numerito rojo)
+    private List<TelefonoPerdida> perdidasVistas = new(); // las que se muestran en la ventanita abierta
+    private bool esAdmin;
+    private bool verMensajes;
+    private List<TelefonoMensaje> mensajes = new();
+    private TelefonoMensaje? editando;
+    private string errorMsg = "", okMsg = "";
+    private bool EsDeLaOficina => config?.Usuario is "201" or "202" or "203";
     private System.Threading.Timer? sondeo;
     private string? usuarioActual;
     private string aviso = "";
@@ -166,6 +312,7 @@
     {
         if (!firstRender) return;
         Operador.OnChange += AlCambiarOperador;
+        try { esAdmin = (await AuthState.GetAuthenticationStateAsync()).User.IsInRole("admin"); } catch { }
         await Conectar();
         sondeo = new System.Threading.Timer(async _ => await InvokeAsync(Sondear), null, 2000, 10000);
     }
@@ -213,6 +360,7 @@
         {
             var e = await Api.GetTelefonoEstadoAsync();
             conectados = e?.Conectados.ToHashSet() ?? new();
+            perdidas = await Api.GetTelefonoPerdidasAsync();
             StateHasChanged();
         }
         catch { }
@@ -233,7 +381,92 @@
         return $"{(int)t.TotalMinutes:00}:{t.Seconds:00}";
     }
 
-    private async Task Alternar() { abierto = !abierto; aviso = ""; if (abierto) await Sondear(); }
+    private async Task Alternar()
+    {
+        if (abierto) { await Cerrar(); return; }
+        abierto = true; aviso = "";
+        await Sondear();
+        perdidasVistas = perdidas.ToList();
+    }
+
+    // al cerrar la ventanita, las perdidas que se mostraron quedan vistas
+    private async Task Cerrar()
+    {
+        abierto = false;
+        if (perdidasVistas.Count > 0)
+        {
+            perdidasVistas.Clear(); perdidas.Clear();
+            await Api.MarcarTelefonoPerdidasVistasAsync();
+        }
+    }
+
+    // ---- mensajes programados ----
+    private async Task AbrirMensajes()
+    {
+        abierto = false; verMensajes = true; editando = null;
+        mensajes = await Api.GetTelefonoMensajesAsync();
+    }
+
+    private void Nuevo()
+    {
+        errorMsg = okMsg = "";
+        editando = new TelefonoMensaje { Destino = "todos", Hora = "09:00", Dias = "LMXJV", Activo = true };
+    }
+
+    private void Editar(TelefonoMensaje m)
+    {
+        errorMsg = okMsg = "";
+        editando = new TelefonoMensaje { Id = m.Id, Texto = m.Texto, Destino = m.Destino, Hora = m.Hora, Dias = m.Dias, Fecha = m.Fecha, Activo = m.Activo };
+    }
+
+    private async Task Borrar(TelefonoMensaje m)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "¿Borrar este mensaje programado?")) return;
+        await Api.BorrarTelefonoMensajeAsync(m.Id);
+        mensajes = await Api.GetTelefonoMensajesAsync();
+    }
+
+    private void AlternarDia(string d)
+    {
+        if (editando is null) return;
+        editando.Dias = editando.Dias.Contains(d) ? editando.Dias.Replace(d, "") : new string("LMXJVSD".Where(c => editando.Dias.Contains(c) || c.ToString() == d).ToArray());
+        if (editando.Dias.Length > 0) editando.Fecha = null;
+    }
+
+    private void CambiarFecha(ChangeEventArgs e)
+    {
+        if (editando is null) return;
+        editando.Fecha = DateTime.TryParse(e.Value?.ToString(), out var f) ? f : null;
+    }
+
+    private async Task Guardar()
+    {
+        if (editando is null) return;
+        errorMsg = okMsg = "";
+        var (ok, err) = await Api.GuardarTelefonoMensajeAsync(editando);
+        if (!ok) { errorMsg = err ?? "No se pudo guardar"; return; }
+        editando = null;
+        mensajes = await Api.GetTelefonoMensajesAsync();
+    }
+
+    private async Task Probar()
+    {
+        if (editando is null) return;
+        errorMsg = okMsg = "";
+        var (ok, err) = await Api.ProbarTelefonoMensajeAsync(editando);
+        if (ok) okMsg = "Llamando… atendé para escucharlo."; else errorMsg = err ?? "No se pudo probar";
+    }
+
+    private string NombreDestino(string d) => d == "todos" ? "Todos los conectados" : config?.Internos.FirstOrDefault(i => i.Numero == d)?.Nombre ?? d;
+
+    private static string DiasTexto(TelefonoMensaje m)
+    {
+        if (string.IsNullOrEmpty(m.Dias)) return m.Fecha is { } f ? "una vez, el " + f.ToString("dd/MM") : "una vez";
+        if (m.Dias == "LMXJVSD") return "todos los días";
+        if (m.Dias == "LMXJV") return "lunes a viernes";
+        if (m.Dias == "LMXJVS") return "lunes a sábado";
+        return string.Join(" ", m.Dias.ToCharArray());
+    }
 
     private async Task Llamar(string num)
     {

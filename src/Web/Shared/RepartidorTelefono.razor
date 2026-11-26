@@ -1,0 +1,153 @@
+@inject HttpClient Http
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@*
+   2026-11-26: boton 📞 en el celu de los repartidores (Mis pedidos). Llama a la oficina
+   (interno 200: suena el fijo y las compus de Osmar/German/Gabriel) o al deposito (210),
+   por internet (datos del celu, sin gastar credito). Se conecta a la central como interno 220
+   recien cuando tocan el boton. Solo llamar: para llamarlos a ellos sigue el WhatsApp.
+*@
+
+@if (config is not { Habilitado: false })
+{
+    @if (modo == "libre")
+    {
+        <div class="rt-fila">
+            <button type="button" class="rt-btn" @onclick="() => Llamar(200)" disabled="@ocupado"><i class="fa-solid fa-phone"></i> Llamar a la oficina</button>
+            <button type="button" class="rt-btn rt-sec" @onclick="() => Llamar(210)" disabled="@ocupado">Depósito</button>
+        </div>
+        @if (!string.IsNullOrEmpty(aviso))
+        {
+            <div class="rt-aviso">@aviso</div>
+        }
+    }
+    else
+    {
+        <div class="rt-card">
+            <div class="rt-txt">@(modo == "llamando" ? $"Llamando a {destinoNombre}…" : $"Hablando con {destinoNombre}")</div>
+            @if (modo == "hablando")
+            {
+                <div class="rt-timer">@Tiempo()</div>
+            }
+            <button type="button" class="rt-cortar" @onclick="Cortar">Cortar</button>
+        </div>
+    }
+}
+
+<style>
+    .rt-fila { display: flex; gap: 0.5rem; margin-top: 0.7rem; }
+    .rt-btn { flex: 1; border: 0; border-radius: 12px; padding: 0.7rem; font-size: 1rem; font-weight: 700; background: #10b981; color: #fff; }
+    .rt-btn.rt-sec { flex: 0 0 auto; background: rgba(255,255,255,.18); color: inherit; font-weight: 600; }
+    .rt-btn:disabled { opacity: .6; }
+    .rt-aviso { margin-top: 0.4rem; font-size: 0.85rem; opacity: .9; }
+    .rt-card { margin-top: 0.7rem; background: #fff; color: #111827; border-radius: 12px; padding: 0.8rem; text-align: center; }
+    .rt-txt { font-weight: 700; font-size: 1.05rem; }
+    .rt-timer { font-size: 1.6rem; font-variant-numeric: tabular-nums; margin-top: 0.2rem; }
+    .rt-cortar { margin-top: 0.6rem; width: 100%; border: 0; border-radius: 10px; padding: 0.7rem; background: #ef4444; color: #fff; font-weight: 700; font-size: 1rem; }
+</style>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private class Cfg
+    {
+        public bool Habilitado { get; set; }
+        public string WsUrl { get; set; } = "";
+        public string Dominio { get; set; } = "";
+        public string Usuario { get; set; } = "";
+        public string Clave { get; set; } = "";
+        public string MiNombre { get; set; } = "";
+    }
+
+    private Cfg? config;
+    private DotNetObjectReference<RepartidorTelefono>? yo;
+    private string modo = "libre";   // libre | llamando | hablando
+    private bool ocupado;
+    private bool conectado;
+    private int? pendiente;
+    private string destinoNombre = "";
+    private string aviso = "";
+    private DateTime? desde;
+    private System.Threading.Timer? reloj;
+
+    private async Task Llamar(int numero)
+    {
+        aviso = "";
+        destinoNombre = numero == 210 ? "el depósito" : "la oficina";
+        if (config is null)
+        {
+            ocupado = true;
+            try { config = await Http.GetFromJsonAsync<Cfg>($"api/telefono/repartidor/{Uri.EscapeDataString(Token)}"); }
+            catch { config = null; }
+            if (config is not { Habilitado: true }) { ocupado = false; aviso = "El teléfono no está disponible ahora."; return; }
+        }
+        if (!conectado)
+        {
+            ocupado = true; pendiente = numero; modo = "llamando";
+            yo ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("telefono.init", new
+            {
+                wsUrl = config.WsUrl, dominio = config.Dominio, usuario = config.Usuario,
+                clave = config.Clave, nombre = config.MiNombre
+            }, yo);
+            return;   // llama cuando avise que se conecto (OnEstado)
+        }
+        modo = "llamando";
+        if (!await JS.InvokeAsync<bool>("telefono.llamar", numero.ToString())) { modo = "libre"; aviso = "No se pudo llamar."; }
+    }
+
+    private async Task Cortar() => await JS.InvokeVoidAsync("telefono.cortar");
+
+    private string Tiempo()
+    {
+        if (desde is null) return "00:00";
+        var t = DateTime.UtcNow - desde.Value;
+        return $"{(int)t.TotalMinutes:00}:{t.Seconds:00}";
+    }
+
+    [JSInvokable] public async Task OnEstado(string e)
+    {
+        conectado = e == "conectado";
+        if (conectado && pendiente is int n)
+        {
+            pendiente = null; ocupado = false;
+            if (!await JS.InvokeAsync<bool>("telefono.llamar", n.ToString())) { modo = "libre"; aviso = "No se pudo llamar."; }
+        }
+        else if (e == "desconectado" && pendiente is not null)
+        {
+            pendiente = null; ocupado = false; modo = "libre"; aviso = "Sin conexión con la oficina. Probá de nuevo.";
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable] public void OnEntrante(string num, string nom, string? busca) { /* no reciben llamadas */ }
+    [JSInvokable] public void OnLlamando(string num, string nom) { modo = "llamando"; InvokeAsync(StateHasChanged); }
+
+    [JSInvokable] public void OnHablando(string num, string nom)
+    {
+        modo = "hablando"; desde = DateTime.UtcNow;
+        reloj?.Dispose();
+        reloj = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, 1000, 1000);
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable] public void OnFin(string causa)
+    {
+        reloj?.Dispose(); reloj = null;
+        var eraLlamando = modo == "llamando";
+        modo = "libre"; desde = null; ocupado = false;
+        if (eraLlamando && causa != "Canceled")
+            aviso = causa is "Unavailable" or "Temporarily Unavailable" or "Not Found" ? "No hay nadie conectado ahora. Probá por WhatsApp."
+                  : causa == "No Answer" ? "No atendieron." : causa == "Busy" ? "Está ocupado."
+                  : causa == "User Denied Media Access" ? "Tenés que dejar usar el micrófono." : "La llamada terminó.";
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        reloj?.Dispose();
+        try { await JS.InvokeVoidAsync("telefono.apagar"); } catch { }
+        yo?.Dispose();
+    }
+}

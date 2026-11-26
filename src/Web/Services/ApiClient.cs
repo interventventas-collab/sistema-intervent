@@ -71,6 +71,35 @@ public partial class ApiClient
         return await GetAsync<TelefonoEstado>("/api/telefono/estado");
     }
 
+    public async Task<List<TelefonoPerdida>> GetTelefonoPerdidasAsync()
+        => await GetAsync<List<TelefonoPerdida>>("/api/telefono/perdidas") ?? new();
+
+    public async Task MarcarTelefonoPerdidasVistasAsync()
+    {
+        try { await _http.PostAsync("/api/telefono/perdidas/vistas", null); } catch { }
+    }
+
+    public async Task<List<TelefonoMensaje>> GetTelefonoMensajesAsync()
+        => await GetAsync<List<TelefonoMensaje>>("/api/telefono/mensajes") ?? new();
+
+    private static object MensajeBody(TelefonoMensaje m) => new { texto = m.Texto, destino = m.Destino, hora = m.Hora, dias = m.Dias, fecha = m.Fecha, activo = m.Activo };
+
+    private static async Task<(bool ok, string? error)> Resultado(HttpResponseMessage r)
+        => r.IsSuccessStatusCode ? (true, null) : (false, (await r.Content.ReadAsStringAsync()).Trim('"') is { Length: > 0 and < 200 } t ? t : "No se pudo guardar");
+
+    public async Task<(bool ok, string? error)> GuardarTelefonoMensajeAsync(TelefonoMensaje m)
+    {
+        var r = m.Id > 0
+            ? await _http.PutAsJsonAsync($"/api/telefono/mensajes/{m.Id}", MensajeBody(m))
+            : await _http.PostAsJsonAsync("/api/telefono/mensajes", MensajeBody(m));
+        return await Resultado(r);
+    }
+
+    public async Task BorrarTelefonoMensajeAsync(int id) => await _http.DeleteAsync($"/api/telefono/mensajes/{id}");
+
+    public async Task<(bool ok, string? error)> ProbarTelefonoMensajeAsync(TelefonoMensaje m)
+        => await Resultado(await _http.PostAsJsonAsync("/api/telefono/mensajes/probar", MensajeBody(m)));
+
     // --- Users ---
     public async Task<List<UserManageDto>?> GetUsersAsync()
     {
