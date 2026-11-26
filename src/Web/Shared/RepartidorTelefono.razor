@@ -4,7 +4,8 @@
 
 @*
    2026-11-26: boton 📞 en el celu de los repartidores (Mis pedidos). Llama a la oficina
-   (interno 200: suena el fijo y las compus de Osmar/German/Gabriel) o al deposito (210),
+   (interno 200: suena el fijo y las compus de Osmar/German/Gabriel), al deposito (210) o a Osmar (201).
+   Un solo boton "Telefono" que abre la lista (pedido 26/11),
    por internet (datos del celu, sin gastar credito). Se conecta a la central como interno 220
    recien cuando tocan el boton. Solo llamar: para llamarlos a ellos sigue el WhatsApp.
 *@
@@ -13,10 +14,19 @@
 {
     @if (modo == "libre")
     {
-        <div class="rt-fila">
-            <button type="button" class="rt-btn" @onclick="() => Llamar(200)" disabled="@ocupado"><i class="fa-solid fa-phone"></i> Llamar a la oficina</button>
-            <button type="button" class="rt-btn rt-sec" @onclick="() => Llamar(210)" disabled="@ocupado">Depósito</button>
-        </div>
+        <button type="button" class="rt-btn rt-uno" @onclick="Abrir" disabled="@ocupado"><i class="fa-solid fa-phone"></i> Teléfono</button>
+        @if (abierto)
+        {
+            <div class="rt-lista">
+                @foreach (var i in Contactos())
+                {
+                    var n = int.Parse(i.Numero);
+                    <button type="button" class="rt-item" @onclick="() => Llamar(n, i.Nombre)" disabled="@ocupado">
+                        <span>@i.Nombre</span><i class="fa-solid fa-phone"></i>
+                    </button>
+                }
+            </div>
+        }
         @if (!string.IsNullOrEmpty(aviso))
         {
             <div class="rt-aviso">@aviso</div>
@@ -36,9 +46,13 @@
 }
 
 <style>
-    .rt-fila { display: flex; gap: 0.5rem; margin-top: 0.7rem; }
-    .rt-btn { flex: 1; border: 0; border-radius: 12px; padding: 0.7rem; font-size: 1rem; font-weight: 700; background: #10b981; color: #fff; }
-    .rt-btn.rt-sec { flex: 0 0 auto; background: rgba(255,255,255,.18); color: inherit; font-weight: 600; }
+    .rt-btn { border: 0; border-radius: 12px; padding: 0.7rem; font-size: 1rem; font-weight: 700; background: #10b981; color: #fff; }
+    .rt-btn.rt-uno { margin-top: 0.7rem; width: 100%; }
+    .rt-lista { margin-top: 0.4rem; background: #fff; border-radius: 12px; overflow: hidden; }
+    .rt-item { display: flex; justify-content: space-between; align-items: center; width: 100%; border: 0; background: #fff; color: #111827; padding: 0.85rem 1rem; font-size: 1.05rem; font-weight: 600; border-top: 1px solid #e5e7eb; }
+    .rt-item:first-child { border-top: 0; }
+    .rt-item i { color: #10b981; }
+    .rt-item:disabled { opacity: .6; }
     .rt-btn:disabled { opacity: .6; }
     .rt-aviso { margin-top: 0.4rem; font-size: 0.85rem; opacity: .9; }
     .rt-card { margin-top: 0.7rem; background: #fff; color: #111827; border-radius: 12px; padding: 0.8rem; text-align: center; }
@@ -58,6 +72,28 @@
         public string Usuario { get; set; } = "";
         public string Clave { get; set; } = "";
         public string MiNombre { get; set; } = "";
+        public List<Interno> Internos { get; set; } = new();
+    }
+    private class Interno { public string Nombre { get; set; } = ""; public string Numero { get; set; } = ""; }
+
+    // si todavia no se pregunto al sistema, se muestran igual (mismo orden que devuelve la API)
+    private static readonly List<Interno> PorDefecto = new()
+    {
+        new() { Nombre = "Oficina", Numero = "200" }, new() { Nombre = "Depósito", Numero = "210" }, new() { Nombre = "Osmar", Numero = "201" },
+    };
+    private List<Interno> Contactos() => config?.Internos is { Count: > 0 } l ? l : PorDefecto;
+    private bool abierto;
+
+    private async Task Abrir()
+    {
+        abierto = !abierto; aviso = "";
+        if (abierto && config is null) await CargarConfig();
+    }
+
+    private async Task CargarConfig()
+    {
+        try { config = await Http.GetFromJsonAsync<Cfg>($"api/telefono/repartidor/{Uri.EscapeDataString(Token)}"); }
+        catch { config = null; }
     }
 
     private Cfg? config;
@@ -71,17 +107,12 @@
     private DateTime? desde;
     private System.Threading.Timer? reloj;
 
-    private async Task Llamar(int numero)
+    private async Task Llamar(int numero, string nombre)
     {
-        aviso = "";
-        destinoNombre = numero == 210 ? "el depósito" : "la oficina";
-        if (config is null)
-        {
-            ocupado = true;
-            try { config = await Http.GetFromJsonAsync<Cfg>($"api/telefono/repartidor/{Uri.EscapeDataString(Token)}"); }
-            catch { config = null; }
-            if (config is not { Habilitado: true }) { ocupado = false; aviso = "El teléfono no está disponible ahora."; return; }
-        }
+        aviso = ""; abierto = false;
+        destinoNombre = numero switch { 200 => "la oficina", 210 => "el depósito", _ => nombre };
+        if (config is null) { ocupado = true; await CargarConfig(); }
+        if (config is not { Habilitado: true }) { ocupado = false; aviso = "El teléfono no está disponible ahora."; return; }
         if (!conectado)
         {
             ocupado = true; pendiente = numero; modo = "llamando";
