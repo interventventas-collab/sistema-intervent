@@ -9,6 +9,7 @@ services:
     environment:
       - TEL_101_PASS=${TEL_101_PASS}
       - TEL_102_PASS=${TEL_102_PASS}
+      - TEL_103_PASS=${TEL_103_PASS}
       - IP_PUBLICA=${TEL_IP_PUBLICA:-179.43.123.134}
     volumes:
       - central_db:/var/lib/asterisk-db   # recuerda los internos conectados si se reinicia
