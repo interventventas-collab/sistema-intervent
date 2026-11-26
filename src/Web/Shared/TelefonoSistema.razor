@@ -1,0 +1,245 @@
+@inject ApiClient Api
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@*
+   2026-11-26: telefono dentro del sistema (interno 103 de la central, ver telefonia/).
+   - Boton redondo 📞 en la barra de arriba, con puntito verde = conectado.
+   - Al tocarlo: ventanita con los internos (Oficina 101, Notebook 102) y un teclado.
+   - Llamada entrante: cartel con Atender / Cortar, suena con el parlante de la compu.
+   - Hablando: cartel chico abajo a la derecha con el tiempo, Silenciar y Cortar.
+   Por ahora solo lo ve el usuario admin (MainLayout).
+*@
+
+@if (config is { Habilitado: true })
+{
+    <button class="topbar-bell tel-btn" @onclick="Alternar"
+            title="@(estado == "conectado" ? "Teléfono · conectado, te pueden llamar" : estado == "conectando" ? "Teléfono · conectando…" : "Teléfono · desconectado")">
+        <i class="fa-solid fa-phone"></i>
+        <span class="tel-dot @(estado == "conectado" ? "on" : estado == "conectando" ? "wait" : "off")"></span>
+    </button>
+
+    @if (abierto && modo == Modo.Libre)
+    {
+        <div class="tel-win">
+            <div class="tel-wh">
+                <b>Teléfono</b>
+                <span>soy el 103 · @(estado == "conectado" ? "conectado" : estado == "conectando" ? "conectando…" : "desconectado")</span>
+                <button class="tel-x" @onclick="() => abierto = false" title="Cerrar">✕</button>
+            </div>
+            @foreach (var i in config.Internos)
+            {
+                <div class="tel-row">
+                    <b>@i.Nombre</b><i>@i.Numero</i>
+                    <button class="tel-call" disabled="@(estado != "conectado")" @onclick="() => Llamar(i.Numero)"><i class="fa-solid fa-phone"></i> Llamar</button>
+                </div>
+            }
+            <div class="tel-num">
+                <input @bind="numero" @bind:event="oninput" placeholder="Número" @onkeydown="TeclaInput" />
+                <div class="tel-pad">
+                    @foreach (var t in new[] { "1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#" })
+                    {
+                        <button @onclick="() => numero += t">@t</button>
+                    }
+                </div>
+                <button class="tel-go" disabled="@(estado != "conectado" || string.IsNullOrWhiteSpace(numero))" @onclick="() => Llamar(numero)">Llamar</button>
+                @if (!string.IsNullOrEmpty(aviso))
+                {
+                    <div class="tel-aviso">@aviso</div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (modo == Modo.Entrante)
+    {
+        <div class="tel-card tel-centro">
+            <small>Te están llamando</small>
+            <div class="tel-who">@NombreDe(otroNum, otroNom)</div>
+            <small>interno @otroNum</small>
+            <div class="tel-btns">
+                <button class="tel-ok" @onclick="Atender">Atender</button>
+                <button class="tel-no" @onclick="Cortar">Cortar</button>
+            </div>
+        </div>
+    }
+
+    @if (modo == Modo.Llamando || modo == Modo.Hablando)
+    {
+        <div class="tel-card tel-esquina">
+            <small>@(modo == Modo.Llamando ? "Llamando a" : "Hablando con")</small>
+            <div class="tel-who">@NombreDe(otroNum, otroNom)</div>
+            <div class="tel-timer">@(modo == Modo.Llamando ? "sonando…" : Tiempo())</div>
+            <div class="tel-btns">
+                @if (modo == Modo.Hablando)
+                {
+                    <button class="tel-grey" @onclick="Silenciar">@(silenciado ? "🎙 Activar micrófono" : "🎙 Silenciar")</button>
+                }
+                <button class="tel-no" @onclick="Cortar">Cortar</button>
+            </div>
+        </div>
+    }
+}
+
+<style>
+    .tel-btn { position: relative; }
+    .tel-dot { position: absolute; right: 0.25rem; top: 0.2rem; width: 9px; height: 9px; border-radius: 50%; border: 2px solid #fff; }
+    .tel-dot.on { background: #10b981; }
+    .tel-dot.wait { background: #d1d5db; }
+    .tel-dot.off { background: #9ca3af; }
+    .tel-win { position: fixed; top: 64px; right: 16px; width: 300px; background: #fff; border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.18); z-index: 3000; overflow: hidden; color: #111827; font-size: 14px; }
+    .tel-wh { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid #e5e7eb; }
+    .tel-wh b { flex: 1; }
+    .tel-wh span { color: #6b7280; font-size: 12px; }
+    .tel-x { border: 0; background: transparent; color: #9ca3af; cursor: pointer; font-size: 14px; }
+    .tel-row { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid #f3f4f6; }
+    .tel-row b { flex: 1; font-weight: 500; }
+    .tel-row i { font-style: normal; color: #9ca3af; font-size: 12px; margin-right: 12px; }
+    .tel-call { border: 1px solid #d1d5db; border-radius: 8px; padding: 4px 10px; font-size: 13px; background: #fff; cursor: pointer; }
+    .tel-call:disabled, .tel-go:disabled { opacity: .45; cursor: default; }
+    .tel-num { padding: 10px 14px; }
+    .tel-num input { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 10px; font-size: 16px; letter-spacing: .08em; }
+    .tel-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+    .tel-pad button { padding: 7px 0; border-radius: 8px; background: #f3f4f6; border: 0; font-size: 15px; cursor: pointer; }
+    .tel-pad button:hover { background: #e5e7eb; }
+    .tel-go { width: 100%; margin-top: 8px; padding: 9px; border-radius: 8px; background: #10b981; color: #fff; font-weight: 600; border: 0; cursor: pointer; }
+    .tel-aviso { margin-top: 6px; font-size: 12px; color: #6b7280; }
+    .tel-card { position: fixed; z-index: 3001; width: 300px; background: #fff; border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.25); padding: 16px; text-align: center; color: #111827; }
+    .tel-centro { top: 90px; left: 50%; transform: translateX(-50%); }
+    .tel-esquina { right: 16px; bottom: 16px; }
+    .tel-card small { color: #6b7280; display: block; }
+    .tel-who { font-size: 20px; font-weight: 700; margin: 4px 0 2px; }
+    .tel-timer { font-size: 24px; font-variant-numeric: tabular-nums; margin-top: 6px; color: #374151; }
+    .tel-btns { display: flex; gap: 10px; margin-top: 14px; }
+    .tel-btns button { flex: 1; padding: 10px; border-radius: 10px; color: #fff; font-weight: 600; border: 0; cursor: pointer; font-size: 14px; }
+    .tel-ok { background: #10b981; }
+    .tel-no { background: #ef4444; }
+    .tel-btns .tel-grey { background: #f3f4f6; color: #111827; font-weight: 500; }
+</style>
+
+@code {
+    private enum Modo { Libre, Entrante, Llamando, Hablando }
+
+    private TelefonoConfig? config;
+    private DotNetObjectReference<TelefonoSistema>? yo;
+    private string estado = "conectando";
+    private bool abierto;
+    private Modo modo = Modo.Libre;
+    private string numero = "";
+    private string otroNum = "", otroNom = "";
+    private string aviso = "";
+    private bool silenciado;
+    private DateTime? desde;
+    private System.Threading.Timer? reloj;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try { config = await Api.GetTelefonoConfigAsync(); } catch { config = null; }
+        if (config is not { Habilitado: true }) return;
+        yo = DotNetObjectReference.Create(this);
+        StateHasChanged();
+        try
+        {
+            await JS.InvokeVoidAsync("telefono.init", new
+            {
+                wsUrl = config.WsUrl,
+                dominio = config.Dominio,
+                usuario = config.Usuario,
+                clave = config.Clave
+            }, yo);
+        }
+        catch { estado = "desconectado"; StateHasChanged(); }
+    }
+
+    private string NombreDe(string num, string nom)
+    {
+        var i = config?.Internos.FirstOrDefault(x => x.Numero == num);
+        if (i != null) return i.Nombre;
+        if (num == "600") return "Prueba de eco";
+        return string.IsNullOrWhiteSpace(nom) ? num : nom;
+    }
+
+    private string Tiempo()
+    {
+        if (desde is null) return "00:00";
+        var t = DateTime.UtcNow - desde.Value;
+        return $"{(int)t.TotalMinutes:00}:{t.Seconds:00}";
+    }
+
+    private void Alternar() { abierto = !abierto; aviso = ""; }
+
+    private async Task Llamar(string num)
+    {
+        aviso = "";
+        if (string.IsNullOrWhiteSpace(num)) return;
+        var ok = await JS.InvokeAsync<bool>("telefono.llamar", num);
+        if (!ok) aviso = "No se pudo llamar (¿está conectado?)";
+    }
+
+    private async Task TeclaInput(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Llamar(numero);
+    }
+
+    private async Task Atender() => await JS.InvokeVoidAsync("telefono.atender");
+    private async Task Cortar() => await JS.InvokeVoidAsync("telefono.cortar");
+
+    private async Task Silenciar()
+    {
+        silenciado = !silenciado;
+        await JS.InvokeVoidAsync("telefono.silenciar", silenciado);
+    }
+
+    // ---- avisos desde telefono.js ----
+    [JSInvokable] public void OnEstado(string e) { estado = e; InvokeAsync(StateHasChanged); }
+
+    [JSInvokable] public void OnEntrante(string num, string nom)
+    {
+        otroNum = num; otroNom = nom; modo = Modo.Entrante; abierto = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable] public void OnLlamando(string num, string nom)
+    {
+        otroNum = num; otroNom = nom; modo = Modo.Llamando; abierto = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable] public void OnHablando(string num, string nom)
+    {
+        if (!string.IsNullOrEmpty(num)) otroNum = num;
+        if (!string.IsNullOrEmpty(nom)) otroNom = nom;
+        modo = Modo.Hablando; desde = DateTime.UtcNow; silenciado = false;
+        reloj?.Dispose();
+        reloj = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, 1000, 1000);
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable] public void OnFin(string causa)
+    {
+        reloj?.Dispose(); reloj = null;
+        var eraLlamando = modo == Modo.Llamando;
+        modo = Modo.Libre; desde = null; silenciado = false;
+        if (eraLlamando && !string.IsNullOrEmpty(causa) && causa != "Canceled")
+        {
+            aviso = causa switch
+            {
+                "Busy" => "Está ocupado",
+                "Unavailable" or "Not Found" => "No está conectado",
+                "No Answer" => "No atendió",
+                "User Denied Media Access" => "El navegador no dejó usar el micrófono",
+                _ => "La llamada terminó: " + causa
+            };
+            abierto = true;
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        reloj?.Dispose();
+        try { await JS.InvokeVoidAsync("telefono.apagar"); } catch { }
+        yo?.Dispose();
+    }
+}
