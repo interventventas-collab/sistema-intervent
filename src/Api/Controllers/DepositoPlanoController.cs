@@ -42,7 +42,8 @@ public class DepositoPlanoController : ControllerBase
         int Id, string Planta, string Tipo, string? Codigo, string? Nombre,
         decimal X, decimal Y, decimal Ancho, decimal Largo, decimal? Alto,
         int Rotacion, int? Posiciones, int? Niveles, string? Color, string? Puntos,
-        string? Notas, int Orden, int Productos, string? Estilo);
+        string? Notas, int Orden, int Productos, string? Estilo,
+        int? Calle1, int? Nro1, int? Calle2, int? Nro2);
 
     public class ElementoRequest
     {
@@ -64,12 +65,21 @@ public class DepositoPlanoController : ControllerBase
         public int Orden { get; set; }
         // 2026-11-26: cómo se ve (JSON chico): dónde va el nombre, de qué tamaño, etc.
         public string? Estilo { get; set; }
+        // 2026-11-27: calles (ver DepositoPlanoElemento.Calle1)
+        public int? Calle1 { get; set; }
+        public int? Nro1 { get; set; }
+        public int? Calle2 { get; set; }
+        public int? Nro2 { get; set; }
     }
 
     public record AsignacionDto(int Id, int ProductoId, string? Sku, string Nombre,
         string? Cantidad, string? Nota, DateTime At, string? Por);
 
-    public record EstanteDto(int Posicion, int Nivel, string Codigo, List<AsignacionDto> Productos);
+    public record EstanteDto(int Posicion, int Nivel, string Codigo, List<AsignacionDto> Productos,
+        int Cara = 1, string? Desglose = null);
+
+    /// <summary>2026-11-27: un lado del rack que da a una calle.</summary>
+    public record CaraDto(int Cara, int? Calle, int? Nro, string Titulo);
 
     public class AsignarRequest
     {
@@ -80,16 +90,66 @@ public class DepositoPlanoController : ControllerBase
 
     private static ElementoDto ADto(DepositoPlanoElemento e, int productos) => new(
         e.Id, e.Planta, e.Tipo, e.Codigo, e.Nombre, e.X, e.Y, e.Ancho, e.Largo, e.Alto,
-        e.Rotacion, e.Posiciones, e.Niveles, e.Color, e.Puntos, e.Notas, e.Orden, productos, e.Estilo);
+        e.Rotacion, e.Posiciones, e.Niveles, e.Color, e.Puntos, e.Notas, e.Orden, productos, e.Estilo,
+        e.Calle1, e.Nro1, e.Calle2, e.Nro2);
 
     private static bool EsRack(string? tipo) => string.Equals(tipo, "rack", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>2026-11-27: código del estante. Rack con UNA posición (lo de hoy): rack-nivel, ej. "D2-3".
-    /// Con varias posiciones: el nivel y la posición como letra, ej. "D2-3A" / "D2-3B" (se alterna letra y
-    /// número, como en los depósitos grandes). Antes era rack-posición-nivel ("D2-1-3"): ResolverEstante
-    /// todavía lo entiende, así las etiquetas QR viejas siguen abriendo el estante.</summary>
+    /// <summary>2026-11-27: código del estante SIN calle (rack sin calle cargada, ej. planta alta):
+    /// rack-nivel "D2-3", y con varias posiciones la posición como letra "D2-3A".</summary>
     public static string CodigoEstante(string rack, int? posiciones, int pos, int nivel)
         => (posiciones ?? 1) <= 1 ? $"{rack}-{nivel}" : $"{rack}-{nivel}{LetraPosicion(pos)}";
+
+    /// <summary>2026-11-27: CALLES. Código del estante de un lado del rack: C{calle}-R{número}-A{altura}
+    /// (+ -P{posición} si el rack tiene varias), ej. "C3-R4-A3". Si ese lado no tiene calle cargada,
+    /// el código de siempre (rack-nivel). ResolverEstante entiende también los viejos (D2-3, D2-1-3),
+    /// así las etiquetas QR impresas antes siguen abriendo el estante.</summary>
+    public static string CodigoEstante(DepositoPlanoElemento e, int cara, int pos, int nivel)
+    {
+        var (calle, nro) = LadoDe(e, cara);
+        if (calle is int c && nro is int n)
+            return $"C{c}-R{n}-A{nivel}" + ((e.Posiciones ?? 1) > 1 ? $"-P{pos}" : "");
+        return CodigoEstante(e.Codigo ?? "?", e.Posiciones, pos, nivel);
+    }
+
+    /// <summary>"Calle 3 · Rack 4 · Altura 3" (o "Rack D2 · Altura 3" sin calle) — para leerlo escrito.</summary>
+    public static string DesgloseEstante(DepositoPlanoElemento e, int cara, int pos, int nivel)
+    {
+        var (calle, nro) = LadoDe(e, cara);
+        var posTxt = (e.Posiciones ?? 1) > 1 ? $" · Posición {pos}" : "";
+        return calle is int c && nro is int n
+            ? $"Calle {c} · Rack {n} · Altura {nivel}{posTxt}"
+            : $"Rack {e.Codigo} · Altura {nivel}{posTxt}";
+    }
+
+    /// <summary>Los lados del rack que dan a una calle (1 y/o 2). Sin calles cargadas = un solo lado (1).</summary>
+    public static List<int> Caras(DepositoPlanoElemento e)
+    {
+        var l = new List<int>();
+        if (e.Calle1 is not null && e.Nro1 is not null) l.Add(1);
+        if (e.Calle2 is not null && e.Nro2 is not null) l.Add(2);
+        if (l.Count == 0) l.Add(1);
+        return l;
+    }
+
+    /// <summary>El lado pedido si existe; si no, el único que tiene (racks de pared).</summary>
+    public static int NormCara(DepositoPlanoElemento e, int cara)
+    {
+        var cs = Caras(e);
+        return cs.Contains(cara) ? cara : cs[0];
+    }
+
+    private static (int? Calle, int? Nro) LadoDe(DepositoPlanoElemento e, int cara)
+    {
+        cara = NormCara(e, cara);
+        return cara == 2 ? (e.Calle2, e.Nro2) : (e.Calle1, e.Nro1);
+    }
+
+    private static List<CaraDto> CarasDto(DepositoPlanoElemento e) => Caras(e).Select(c =>
+    {
+        var (calle, nro) = LadoDe(e, c);
+        return new CaraDto(c, calle, nro, calle is int cc && nro is int nn ? $"Calle {cc} · Rack {nn}" : $"Rack {e.Codigo}");
+    }).ToList();
 
     public static string LetraPosicion(int pos) => pos >= 1 && pos <= 26 ? ((char)('A' + pos - 1)).ToString() : pos.ToString(CultureInfo.InvariantCulture);
 
@@ -100,9 +160,10 @@ public class DepositoPlanoController : ControllerBase
         return s.Length > max ? s[..max] : s;
     }
 
-    private async Task<List<AsignacionDto>> AsignacionesDe(int elementoId, int? pos = null, int? nivel = null)
+    private async Task<List<AsignacionDto>> AsignacionesDe(int elementoId, int? pos = null, int? nivel = null, int? cara = null)
     {
         var q = _db.DepositoEstanteProductos.AsNoTracking().Where(a => a.ElementoId == elementoId);
+        if (cara is not null) q = q.Where(a => a.Cara == cara);
         if (pos is not null) q = q.Where(a => a.Posicion == pos);
         if (nivel is not null) q = q.Where(a => a.Nivel == nivel);
         var lista = await q
@@ -170,6 +231,12 @@ public class DepositoPlanoController : ControllerBase
             if (!Regex.IsMatch(r.Codigo, "^[A-Z0-9]+$")) return "El código del rack solo puede tener letras y números (sin guiones ni espacios).";
             if (r.Posiciones is null || r.Posiciones < 1 || r.Posiciones > 30) return "El rack tiene que tener entre 1 y 30 posiciones.";
             if (r.Niveles is null || r.Niveles < 1 || r.Niveles > 15) return "El rack tiene que tener entre 1 y 15 niveles.";
+            // 2026-11-27: calles — cada lado: calle y número juntos, o ninguno
+            if ((r.Calle1 is null) != (r.Nro1 is null) || (r.Calle2 is null) != (r.Nro2 is null))
+                return "Cada lado del rack necesita calle y número juntos (o dejá los dos vacíos).";
+            foreach (var v in new[] { r.Calle1, r.Nro1, r.Calle2, r.Nro2 })
+                if (v is not null && (v < 0 || v > 99)) return "La calle y el número de rack van de 0 a 99.";
+            if (r.Calle1 is not null && r.Calle1 == r.Calle2) return "Los dos lados del rack no pueden dar a la misma calle.";
         }
         else
         {
@@ -185,6 +252,25 @@ public class DepositoPlanoController : ControllerBase
         e.Rotacion = r.Rotacion; e.Posiciones = r.Posiciones; e.Niveles = r.Niveles;
         e.Color = r.Color; e.Puntos = r.Puntos; e.Notas = r.Notas; e.Orden = r.Orden;
         e.Estilo = r.Estilo;
+        var rack = EsRack(r.Tipo);
+        e.Calle1 = rack ? r.Calle1 : null; e.Nro1 = rack ? r.Nro1 : null;
+        e.Calle2 = rack ? r.Calle2 : null; e.Nro2 = rack ? r.Nro2 : null;
+    }
+
+    /// <summary>2026-11-27: ¿algún otro rack ya usa esa calle + número? Devuelve el error o null.</summary>
+    private async Task<string?> CalleRepetida(ElementoRequest r, int? idPropio)
+    {
+        if (!EsRack(r.Tipo)) return null;
+        foreach (var (c, n) in new[] { (r.Calle1, r.Nro1), (r.Calle2, r.Nro2) })
+        {
+            if (c is null || n is null) continue;
+            var otro = await _db.DepositoPlanoElementos.AsNoTracking()
+                .Where(x => x.Tipo == "rack" && x.Id != (idPropio ?? 0)
+                    && ((x.Calle1 == c && x.Nro1 == n) || (x.Calle2 == c && x.Nro2 == n)))
+                .Select(x => x.Codigo).FirstOrDefaultAsync();
+            if (otro is not null) return $"La calle {c} ya tiene un rack {n} (es el rack {otro}).";
+        }
+        return null;
     }
 
     [HttpPost("elementos")]
@@ -195,6 +281,7 @@ public class DepositoPlanoController : ControllerBase
         if (err is not null) return BadRequest(new { error = err });
         if (EsRack(req.Tipo) && await _db.DepositoPlanoElementos.AnyAsync(e => e.Tipo == "rack" && e.Codigo == req.Codigo))
             return Conflict(new { error = $"Ya hay un rack con el código {req.Codigo}." });
+        if (await CalleRepetida(req, null) is string rep) return Conflict(new { error = rep });
 
         var e = new DepositoPlanoElemento { CreadoAt = DateTime.UtcNow, ModificadoAt = DateTime.UtcNow, ModificadoPor = Usuario };
         Copiar(req, e);
@@ -220,7 +307,7 @@ public class DepositoPlanoController : ControllerBase
                 return Conflict(new { error = $"El rack {e.Codigo} tiene {asigs.Count} productos guardados. Sacalos antes de cambiarle el tipo." });
             var fuera = asigs
                 .Where(a => a.Posicion > req.Posiciones || a.Nivel > req.Niveles)
-                .Select(a => CodigoEstante(e.Codigo ?? "?", e.Posiciones, a.Posicion, a.Nivel))
+                .Select(a => CodigoEstante(e, a.Cara, a.Posicion, a.Nivel))
                 .Distinct().OrderBy(c => c).ToList();
             if (fuera.Count == 1)
                 return Conflict(new { error = $"El estante {fuera[0]} tiene productos; sacalos antes de achicar el rack." });
@@ -229,28 +316,44 @@ public class DepositoPlanoController : ControllerBase
         }
         if (EsRack(req.Tipo) && await _db.DepositoPlanoElementos.AnyAsync(x => x.Id != id && x.Tipo == "rack" && x.Codigo == req.Codigo))
             return Conflict(new { error = $"Ya hay un rack con el código {req.Codigo}." });
+        if (await CalleRepetida(req, id) is string repetida) return Conflict(new { error = repetida });
 
-        var codigoViejo = e.Codigo;
-        var plantaVieja = e.Planta;
-        var posicionesViejas = e.Posiciones;
+        // Cómo era antes (para saber qué códigos tenían los productos guardados)
+        var antes = new DepositoPlanoElemento
+        {
+            Codigo = e.Codigo, Planta = e.Planta, Posiciones = e.Posiciones,
+            Calle1 = e.Calle1, Nro1 = e.Nro1, Calle2 = e.Calle2, Nro2 = e.Nro2,
+        };
         Copiar(req, e);
         e.ModificadoAt = DateTime.UtcNow;
         e.ModificadoPor = Usuario;
 
-        // Si el rack cambió de código, de planta o de cantidad de posiciones (el código del estante
-        // cambia: D2-3 ↔ D2-3A), la ubicación de los productos que apuntaban a sus estantes se
-        // actualiza para que no quede el código viejo.
-        if (EsRack(e.Tipo) && asigs.Count > 0 && (codigoViejo != e.Codigo || plantaVieja != e.Planta || (posicionesViejas ?? 1) != (e.Posiciones ?? 1)))
+        if (EsRack(e.Tipo) && asigs.Count > 0)
         {
+            // 2026-11-27: si un lado con productos se queda sin calle y el otro sí tiene, no se puede
+            // (los productos quedarían "del otro lado").
+            var carasNuevas = Caras(e);
+            if (Caras(antes).Count == 2 && carasNuevas.Count == 1)
+            {
+                var perdida = Caras(antes).First(c => !carasNuevas.Contains(c));
+                var n = asigs.Count(a => a.Cara == perdida);
+                if (n > 0)
+                    return Conflict(new { error = $"El lado {CarasDto(antes).First(x => x.Cara == perdida).Titulo} tiene {n} productos guardados. Sacalos antes de sacarle la calle." });
+            }
+
+            // Si cambió algo del código (rack, planta, posiciones o calles), la ubicación de los
+            // productos que apuntaban a sus estantes se actualiza para que no quede el código viejo.
             var prodIds = asigs.Select(a => a.ProductoId).Distinct().ToList();
             var prods = await _db.CafeProductos.Where(p => prodIds.Contains(p.Id)).ToListAsync();
             foreach (var a in asigs)
             {
-                var viejo = CodigoEstante(codigoViejo ?? "?", posicionesViejas, a.Posicion, a.Nivel);
+                var viejo = CodigoEstante(antes, a.Cara, a.Posicion, a.Nivel);
+                a.Cara = NormCara(e, a.Cara);
+                var nuevo = CodigoEstante(e, a.Cara, a.Posicion, a.Nivel);
                 var p = prods.FirstOrDefault(x => x.Id == a.ProductoId);
-                if (p is not null && p.UbicacionZona == viejo)
+                if (p is not null && p.UbicacionZona == viejo && (viejo != nuevo || p.UbicacionPlanta != e.Planta))
                 {
-                    p.UbicacionZona = CodigoEstante(e.Codigo!, e.Posiciones, a.Posicion, a.Nivel);
+                    p.UbicacionZona = nuevo;
                     p.UbicacionPlanta = e.Planta;
                 }
             }
@@ -285,25 +388,44 @@ public class DepositoPlanoController : ControllerBase
         var asigs = await AsignacionesDe(id);
         var crudas = await _db.DepositoEstanteProductos.AsNoTracking()
             .Where(a => a.ElementoId == id)
-            .Select(a => new { a.Id, a.Posicion, a.Nivel }).ToListAsync();
-        var celdaDe = crudas.ToDictionary(a => a.Id, a => (a.Posicion, a.Nivel));
+            .Select(a => new { a.Id, a.Cara, a.Posicion, a.Nivel }).ToListAsync();
+        var celdaDe = crudas.ToDictionary(a => a.Id, a => (Cara: NormCara(e, a.Cara), a.Posicion, a.Nivel));
 
+        // 2026-11-27: un juego de estantes por cada lado que da a una calle
         var estantes = new List<EstanteDto>();
-        for (int pos = 1; pos <= (e.Posiciones ?? 0); pos++)
-            for (int niv = 1; niv <= (e.Niveles ?? 0); niv++)
-                estantes.Add(new EstanteDto(pos, niv, CodigoEstante(e.Codigo ?? "?", e.Posiciones, pos, niv),
-                    asigs.Where(a => celdaDe.TryGetValue(a.Id, out var c) && c.Posicion == pos && c.Nivel == niv).ToList()));
+        foreach (var cara in Caras(e))
+            for (int pos = 1; pos <= (e.Posiciones ?? 0); pos++)
+                for (int niv = 1; niv <= (e.Niveles ?? 0); niv++)
+                    estantes.Add(new EstanteDto(pos, niv, CodigoEstante(e, cara, pos, niv),
+                        asigs.Where(a => celdaDe.TryGetValue(a.Id, out var c) && c.Cara == cara && c.Posicion == pos && c.Nivel == niv).ToList(),
+                        cara, DesgloseEstante(e, cara, pos, niv)));
 
-        return Ok(new { elemento = ADto(e, crudas.Count), estantes });
+        return Ok(new { elemento = ADto(e, crudas.Count), estantes, caras = CarasDto(e) });
     }
 
     /// <summary>Parte el código del estante y busca el rack. Entiende "D2-3" (rack-nivel), "D2-3B"
     /// (nivel 3, posición B) y el formato viejo "D2-1-3" (rack-posición-nivel, de las etiquetas QR
     /// impresas antes del 27/11/2026).</summary>
-    private async Task<(DepositoPlanoElemento? rack, int pos, int nivel, string? error)> ResolverEstante(string codigo, bool tracking = false)
+    private async Task<(DepositoPlanoElemento? rack, int cara, int pos, int nivel, string? error)> ResolverEstante(string codigo, bool tracking = false)
     {
         var c = (codigo ?? "").Trim().ToUpperInvariant();
         string letra; int pos, niv;
+        // 2026-11-27: C3-R4-A3 (calle, rack de esa calle, altura) y -P2 si hay posiciones
+        var mCalle = Regex.Match(c, @"^C(\d{1,2})-R(\d{1,2})-A(\d{1,2})(?:-P(\d{1,2}))?$");
+        if (mCalle.Success)
+        {
+            var calle = int.Parse(mCalle.Groups[1].Value, CultureInfo.InvariantCulture);
+            var nro = int.Parse(mCalle.Groups[2].Value, CultureInfo.InvariantCulture);
+            niv = int.Parse(mCalle.Groups[3].Value, CultureInfo.InvariantCulture);
+            pos = mCalle.Groups[4].Success ? int.Parse(mCalle.Groups[4].Value, CultureInfo.InvariantCulture) : 1;
+            var qc = _db.DepositoPlanoElementos.Where(x => x.Tipo == "rack" && ((x.Calle1 == calle && x.Nro1 == nro) || (x.Calle2 == calle && x.Nro2 == nro)));
+            var rk = tracking ? await qc.FirstOrDefaultAsync() : await qc.AsNoTracking().FirstOrDefaultAsync();
+            if (rk is null) return (null, 0, 0, 0, $"No hay ningún rack {nro} en la calle {calle}.");
+            var cara = rk.Calle1 == calle && rk.Nro1 == nro ? 1 : 2;
+            if (pos < 1 || pos > (rk.Posiciones ?? 0) || niv < 1 || niv > (rk.Niveles ?? 0))
+                return (null, 0, 0, 0, $"La calle {calle}, rack {nro} no tiene altura {niv}{(pos > 1 ? $" posición {pos}" : "")} (tiene {rk.Niveles ?? 0} alturas{((rk.Posiciones ?? 1) > 1 ? $" y {rk.Posiciones} posiciones" : "")}).");
+            return (rk, cara, pos, niv, null);
+        }
         var mNuevo = Regex.Match(c, @"^([A-Z0-9]+)-(\d{1,3})([A-Z])?$");
         var mViejo = Regex.Match(c, @"^([A-Z0-9]+)-(\d{1,3})-(\d{1,3})$");
         if (mNuevo.Success)
@@ -318,31 +440,36 @@ public class DepositoPlanoController : ControllerBase
             pos = int.Parse(mViejo.Groups[2].Value, CultureInfo.InvariantCulture);
             niv = int.Parse(mViejo.Groups[3].Value, CultureInfo.InvariantCulture);
         }
-        else return (null, 0, 0, $"El código \"{codigo}\" no es de un estante (tiene que ser como D2-3: rack y nivel).");
+        else return (null, 0, 0, 0, $"El código \"{codigo}\" no es de un estante (tiene que ser como C3-R4-A3: calle, rack y altura).");
         var q = _db.DepositoPlanoElementos.Where(x => x.Tipo == "rack" && x.Codigo == letra);
         var rack = tracking ? await q.FirstOrDefaultAsync() : await q.AsNoTracking().FirstOrDefaultAsync();
-        if (rack is null) return (null, 0, 0, $"No hay ningún rack {letra} en el plano.");
+        if (rack is null) return (null, 0, 0, 0, $"No hay ningún rack {letra} en el plano.");
         if (pos < 1 || pos > (rack.Posiciones ?? 0) || niv < 1 || niv > (rack.Niveles ?? 0))
-            return (null, 0, 0, $"El rack {letra} no tiene el estante {CodigoEstante(letra, Math.Max(rack.Posiciones ?? 1, pos), pos, niv)} (tiene {rack.Niveles ?? 0} niveles{((rack.Posiciones ?? 1) > 1 ? $" y {rack.Posiciones} posiciones" : "")}).");
-        return (rack, pos, niv, null);
+            return (null, 0, 0, 0, $"El rack {letra} no tiene el estante {CodigoEstante(letra, Math.Max(rack.Posiciones ?? 1, pos), pos, niv)} (tiene {rack.Niveles ?? 0} niveles{((rack.Posiciones ?? 1) > 1 ? $" y {rack.Posiciones} posiciones" : "")}).");
+        // código viejo (sin calle): el primer lado del rack
+        return (rack, Caras(rack)[0], pos, niv, null);
     }
 
     [HttpGet("estante/{codigo}")]
     public async Task<IActionResult> Estante(string codigo)
     {
-        var (rack, pos, niv, error) = await ResolverEstante(codigo);
+        var (rack, cara, pos, niv, error) = await ResolverEstante(codigo);
         if (rack is null) return NotFound(new { error });
-        var cod = CodigoEstante(rack.Codigo!, rack.Posiciones, pos, niv);
+        var (calle, nro) = LadoDe(rack, cara);
         return Ok(new
         {
             rackId = rack.Id,
             planta = rack.Planta,
             rack = rack.Codigo,
-            codigo = cod,
+            codigo = CodigoEstante(rack, cara, pos, niv),
+            desglose = DesgloseEstante(rack, cara, pos, niv),
+            cara,
+            calle,
+            nro,
             posicion = pos,
             nivel = niv,
             posiciones = rack.Posiciones,
-            productos = await AsignacionesDe(rack.Id, pos, niv)
+            productos = await AsignacionesDe(rack.Id, pos, niv, cara)
         });
     }
 
@@ -351,18 +478,18 @@ public class DepositoPlanoController : ControllerBase
     [HttpPost("estante/{codigo}/productos")]
     public async Task<IActionResult> Asignar(string codigo, [FromBody] AsignarRequest req)
     {
-        var (rack, pos, niv, error) = await ResolverEstante(codigo);
+        var (rack, cara, pos, niv, error) = await ResolverEstante(codigo);
         if (rack is null) return NotFound(new { error });
         var prod = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == req.ProductoId);
         if (prod is null) return NotFound(new { error = "Ese producto no existe." });
 
-        var cod = CodigoEstante(rack.Codigo!, rack.Posiciones, pos, niv);
+        var cod = CodigoEstante(rack, cara, pos, niv);
         var ahora = DateTime.UtcNow;
         var a = await _db.DepositoEstanteProductos.FirstOrDefaultAsync(x =>
-            x.ElementoId == rack.Id && x.Posicion == pos && x.Nivel == niv && x.ProductoId == prod.Id);
+            x.ElementoId == rack.Id && x.Cara == cara && x.Posicion == pos && x.Nivel == niv && x.ProductoId == prod.Id);
         if (a is null)
         {
-            a = new DepositoEstanteProducto { ElementoId = rack.Id, Posicion = pos, Nivel = niv, ProductoId = prod.Id };
+            a = new DepositoEstanteProducto { ElementoId = rack.Id, Cara = cara, Posicion = pos, Nivel = niv, ProductoId = prod.Id };
             _db.DepositoEstanteProductos.Add(a);
         }
         a.Cantidad = Recortar(req.Cantidad, 50);
@@ -390,7 +517,7 @@ public class DepositoPlanoController : ControllerBase
         var a = await _db.DepositoEstanteProductos.FirstOrDefaultAsync(x => x.Id == id);
         if (a is null) return NotFound(new { error = "Ese producto ya no estaba en el estante." });
         var rack = await _db.DepositoPlanoElementos.AsNoTracking().FirstOrDefaultAsync(x => x.Id == a.ElementoId);
-        var cod = CodigoEstante(rack?.Codigo ?? "?", rack?.Posiciones, a.Posicion, a.Nivel);
+        var cod = rack is null ? "?" : CodigoEstante(rack, a.Cara, a.Posicion, a.Nivel);
 
         _db.DepositoEstanteProductos.Remove(a);
 
@@ -400,13 +527,13 @@ public class DepositoPlanoController : ControllerBase
             var otra = await _db.DepositoEstanteProductos.AsNoTracking()
                 .Where(x => x.ProductoId == a.ProductoId && x.Id != a.Id)
                 .Join(_db.DepositoPlanoElementos.AsNoTracking(), x => x.ElementoId, e => e.Id,
-                    (x, e) => new { x.At, x.Id, x.Posicion, x.Nivel, e.Codigo, e.Planta, e.Posiciones })
+                    (x, e) => new { x.At, x.Id, x.Cara, x.Posicion, x.Nivel, Rack = e })
                 .OrderByDescending(x => x.At).ThenByDescending(x => x.Id)
                 .FirstOrDefaultAsync();
             if (otra is not null)
             {
-                prod.UbicacionZona = CodigoEstante(otra.Codigo ?? "?", otra.Posiciones, otra.Posicion, otra.Nivel);
-                prod.UbicacionPlanta = otra.Planta;
+                prod.UbicacionZona = CodigoEstante(otra.Rack, otra.Cara, otra.Posicion, otra.Nivel);
+                prod.UbicacionPlanta = otra.Rack.Planta;
             }
             else
             {
@@ -488,9 +615,9 @@ public class DepositoPlanoController : ControllerBase
         var lugares = await _db.DepositoEstanteProductos.AsNoTracking()
             .Where(a => ids.Contains(a.ProductoId))
             .Join(_db.DepositoPlanoElementos.AsNoTracking(), a => a.ElementoId, e => e.Id,
-                (a, e) => new { a.Id, a.ProductoId, a.Posicion, a.Nivel, a.Cantidad, a.At, RackId = e.Id, e.Codigo, e.Planta, e.Posiciones })
+                (a, e) => new { a.Id, a.ProductoId, a.Cara, a.Posicion, a.Nivel, a.Cantidad, a.At, RackId = e.Id, e.Codigo, e.Planta, Rack = e })
             .ToListAsync();
-        var lugaresPor = lugares.GroupBy(l => l.ProductoId).ToDictionary(g => g.Key, g => g.OrderBy(l => l.Codigo).ThenBy(l => l.Posicion).ThenBy(l => l.Nivel).ToList());
+        var lugaresPor = lugares.GroupBy(l => l.ProductoId).ToDictionary(g => g.Key, g => g.OrderBy(l => l.Codigo).ThenBy(l => l.Cara).ThenBy(l => l.Posicion).ThenBy(l => l.Nivel).ToList());
 
         bool Exacto(string? s) => s != null && string.Equals(s.Trim(), texto, StringComparison.OrdinalIgnoreCase);
 
@@ -507,7 +634,8 @@ public class DepositoPlanoController : ControllerBase
                 lugares = (lugaresPor.GetValueOrDefault(c.Id) ?? new()).Select(l => new
                 {
                     asignacionId = l.Id,
-                    codigo = CodigoEstante(l.Codigo ?? "?", l.Posiciones, l.Posicion, l.Nivel),
+                    codigo = CodigoEstante(l.Rack, l.Cara, l.Posicion, l.Nivel),
+                    desglose = DesgloseEstante(l.Rack, l.Cara, l.Posicion, l.Nivel),
                     rackId = l.RackId,
                     planta = l.Planta,
                     cantidad = l.Cantidad
@@ -527,9 +655,9 @@ public class DepositoPlanoController : ControllerBase
         Content = "<p>" + System.Net.WebUtility.HtmlEncode(texto) + "</p>"
     };
 
-    /// <summary>Una etiqueta por estante (posición y después nivel) para la Zebra, rollo de MeLi 10×20 cm
-    /// (812×1624 puntos a 203 dpi, troquel arriba): el código grande, un QR que abre la página del estante y una
-    /// línea "Rack D2 · nivel 3". Se la pasa a window.zebraImprimir(url).</summary>
+    /// <summary>Una etiqueta por estante (por lado, posición y nivel) para la Zebra, rollo de MeLi 10×20 cm
+    /// (812×1624 puntos a 203 dpi, troquel arriba): el código grande (C3-R4-A3), escrito "Calle 3 · Rack 4 ·
+    /// Altura 3" y un QR que abre la página del estante. Se la pasa a window.zebraImprimir(url).</summary>
     [HttpGet("racks/{id:int}/etiquetas.zpl")]
     public async Task<IActionResult> Etiquetas(int id, [FromQuery] string? origen)
     {
@@ -543,30 +671,32 @@ public class DepositoPlanoController : ControllerBase
         if ((e.Posiciones ?? 0) < 1 || (e.Niveles ?? 0) < 1) return ErrorZpl(400, "El rack no tiene posiciones ni niveles.");
 
         var sb = new StringBuilder();
+        // 2026-11-27: una etiqueta por estante de CADA lado que da a una calle (los racks del medio, dos juegos)
+        foreach (var cara in Caras(e))
         for (int pos = 1; pos <= e.Posiciones; pos++)
             for (int niv = 1; niv <= e.Niveles; niv++)
             {
-                var cod = CodigoEstante(e.Codigo!, e.Posiciones, pos, niv);
+                var cod = CodigoEstante(e, cara, pos, niv);
+                var desglose = DesgloseEstante(e, cara, pos, niv);
                 var url = $"{o}/deposito/estante/{cod}";
                 // 2026-11-27: mismo rollo que las etiquetas de envío de MeLi (10 x 20 cm, troquel arriba).
-                // Antes era 10 x 5 y salía todo apretado en el troquel.
                 sb.Append("^XA\n^CI28\n^PW812\n^LL1624\n^LH0,0\n");
                 // troquel (talón de arriba, como en MeLi)
                 sb.Append("^FO16,16^GB780,268,2^FS\n");
-                sb.Append($"^FO30,40^A0N,90,80^FB750,1,0,L,0^FD{cod}^FS\n");
-                var donde = (e.Posiciones ?? 1) > 1 ? $"Rack {e.Codigo} · nivel {niv} · lugar {LetraPosicion(pos)}" : $"Rack {e.Codigo} · nivel {niv}";
-                sb.Append($"^FO30,150^A0N,36,34^FB750,1,0,L,0^FD{donde}^FS\n");
-                sb.Append("^FO30,210^A0N,28,26^FB750,1,0,L,0^FDRecortá esta parte antes de pegar en el estante^FS\n");
+                sb.Append($"^FO30,36^A0N,96,80^FB750,1,0,L,0^FD{cod}^FS\n");
+                sb.Append($"^FO30,150^A0N,40,36^FB750,1,0,L,0^FD{desglose}^FS\n");
+                sb.Append("^FO30,215^A0N,28,26^FB750,1,0,L,0^FDRecortá esta parte antes de pegar en el estante^FS\n");
                 // La parte grande de abajo va ACOSTADA (se pega a lo largo del fierro del rack, que es
                 // angosto): campos girados (R), se lee girando la etiqueta. A la izquierda el código
-                // grande y los datos, a la derecha el QR.
+                // grande y abajo ESCRITO (calle · rack · altura), a la derecha el QR.
                 // (u, v) = posición en la etiqueta acostada; u a lo largo (0..1324), v a lo alto (0..812).
                 const int T0 = 300;
                 string Acostado(int u, int v, int alto, int ancho, string s)
                     => $"^FO{812 - (v + alto)},{T0 + u}^A0R,{alto},{ancho}^FB860,1,0,C,0^FD{s}^FS\n";
-                sb.Append(Acostado(20, 70, 300, 200, cod));
-                sb.Append(Acostado(20, 430, 62, 54, donde));
-                sb.Append(Acostado(20, 510, 42, 38, niv == 1 ? "nivel 1 = el piso" : $"nivel {niv} contando desde el piso"));
+                var grande = cod.Length <= 5 ? (300, 200) : cod.Length <= 8 ? (230, 125) : (200, 105);
+                sb.Append(Acostado(20, 80, grande.Item1, grande.Item2, cod));
+                sb.Append(Acostado(20, 420, 66, 56, desglose));
+                sb.Append(Acostado(20, 505, 42, 38, niv == 1 ? "Altura 1 = el piso" : $"Altura {niv} contando desde el piso"));
                 sb.Append(Acostado(20, 600, 40, 36, "Escaneá con el celu para ver o guardar productos"));
                 // QR (aumento 13 ≈ 380 puntos; el QR se lee en cualquier sentido)
                 sb.Append($"^FO217,{T0 + 900}^BQN,2,13^FDLA,{url}^FS\n");

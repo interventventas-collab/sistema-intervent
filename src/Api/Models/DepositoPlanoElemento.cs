@@ -12,7 +12,7 @@ namespace Api.Models;
 ///
 /// Racks (Tipo = 'rack'): con Rotacion 0, las posiciones corren sobre Y (posición 1 = la punta más
 /// cerca de la calle, Y más chica) cuando Largo ≥ Ancho; si no, corren sobre X (posición 1 = X más
-/// chica). Nivel 1 = el piso. Cada estante se llama Codigo-posición-nivel (ej. "B-3-2").
+/// chica). Nivel 1 = el piso. Cada estante se llama C-R-A (ver Calle1/Nro1) o, sin calle, rack-nivel (ej. "D2-3").
 /// </summary>
 [Table("Deposito_PlanoElementos")]
 public class DepositoPlanoElemento
@@ -46,6 +46,16 @@ public class DepositoPlanoElemento
     public int Rotacion { get; set; }
     public int? Posiciones { get; set; }
     public int? Niveles { get; set; }
+
+    /// <summary>2026-11-27: CALLES. Cada rack tiene hasta dos lados; cada lado que da a una calle tiene
+    /// calle + número de rack dentro de esa calle → el estante se llama C{calle}-R{número}-A{altura}
+    /// (ej. "C3-R4-A3"). Lado 1 = el que mira a la pared izquierda (X chica) o, si el rack está girado
+    /// (90/270), el que mira a la entrada (Y chica). Lado 2 = el otro. Un rack de pared usa un solo lado;
+    /// uno del medio, los dos (productos de los dos lados). Sin calle = código viejo (A1-3).</summary>
+    public int? Calle1 { get; set; }
+    public int? Nro1 { get; set; }
+    public int? Calle2 { get; set; }
+    public int? Nro2 { get; set; }
 
     [MaxLength(9)]
     public string? Color { get; set; }

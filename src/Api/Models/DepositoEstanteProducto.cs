@@ -12,6 +12,8 @@ public class DepositoEstanteProducto
     public int Id { get; set; }
 
     public int ElementoId { get; set; }
+    /// <summary>2026-11-27: de qué lado del rack (1 o 2, ver DepositoPlanoElemento.Calle1).</summary>
+    public int Cara { get; set; } = 1;
     public int Posicion { get; set; }
     public int Nivel { get; set; }
     public int ProductoId { get; set; }

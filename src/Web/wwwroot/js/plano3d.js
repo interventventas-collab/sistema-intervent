@@ -103,14 +103,24 @@
     const h = (tag, cls, css, padre) => { const d = document.createElement(tag); if (cls) d.className = cls; if (css) Object.assign(d.style, css); if (padre) padre.appendChild(d); return d; };
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-    // código "D2-3" / "D2-3B" / viejo "D2-1-3" → { rack, pos, niv }
+    // código "C3-R4-A3" (calle, rack de esa calle, altura, -P2 si hay posiciones) / sin calle "D2-3" /
+    // viejos "D2-3B" y "D2-1-3" → { calle, nro, rack, pos, niv }
     function partir(cod) {
         const c = String(cod || '').trim().toUpperCase();
-        let m = c.match(/^([A-Z0-9]+)-(\d{1,3})([A-Z])?$/);
+        let m = c.match(/^C(\d{1,2})-R(\d{1,2})-A(\d{1,2})(?:-P(\d{1,2}))?$/);
+        if (m) return { calle: +m[1], nro: +m[2], rack: null, niv: +m[3], pos: m[4] ? +m[4] : 1, letra: null };
+        m = c.match(/^([A-Z0-9]+)-(\d{1,3})([A-Z])?$/);
         if (m) return { rack: m[1], niv: +m[2], pos: m[3] ? m[3].charCodeAt(0) - 64 : 1, letra: m[3] || null };
         m = c.match(/^([A-Z0-9]+)-(\d{1,3})-(\d{1,3})$/);
         if (m) return { rack: m[1], pos: +m[2], niv: +m[3], letra: null };
         return null;
+    }
+    // escrito para leerlo: "Calle 3 · Rack 4 · Altura 3 (el piso)"
+    function desglose(p) {
+        if (!p) return '';
+        const alt = `Altura ${p.niv}${p.niv === 1 ? ' (el piso)' : ''}`;
+        if (p.calle != null) return `Calle ${p.calle} · Rack ${p.nro} · ${alt}${p.pos > 1 ? ' · Posición ' + p.pos : ''}`;
+        return `Rack ${p.rack} · ${alt}${p.letra ? ' · Posición ' + p.letra : ''}`;
     }
 
     // ───────────── escena de una planta ─────────────
@@ -160,6 +170,7 @@
         }
 
         const racks = {};
+        const porCalle = {}; // "3-4" (calle-rack) → código del rack
         const azar = (s) => { const x = Math.sin(s) * 10000; return x - Math.floor(x); };
         for (const e of els.filter(e => e.tipo === 'rack' && e.codigo)) {
             const r = R(e), H = (+e.alto || 2.6) * S, N = Math.max(1, e.niveles || 1);
@@ -178,6 +189,8 @@
             const top = div('p3-rcod', { width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${H + 2}px)`, fontSize: Math.max(12, Math.min(26, r.h * 0.5)) + 'px' }, d);
             top.textContent = e.codigo;
             racks[e.codigo.toUpperCase()] = { e, r, H, N, d, niveles };
+            if (e.calle1 != null && e.nro1 != null) porCalle[e.calle1 + '-' + e.nro1] = e.codigo.toUpperCase();
+            if (e.calle2 != null && e.nro2 != null) porCalle[e.calle2 + '-' + e.nro2] = e.codigo.toUpperCase();
         }
 
         // paredes bajitas alrededor de los ambientes con racks (para que se entienda el espacio)
@@ -207,7 +220,7 @@
             const x0 = zona.r.x + 12, xR = k.r.x + k.r.w / 2;
             camino.setAttribute('d', `M ${x0.toFixed(0)} ${yP.toFixed(0)} L ${xR.toFixed(0)} ${yP.toFixed(0)}`);
         }
-        return { mundo, racks, WT, LT, ruta };
+        return { mundo, racks, porCalle, WT, LT, ruta };
     }
 
     // ───────────── pantalla ─────────────
@@ -242,7 +255,8 @@
             const p = partir(it.est);
             const pl = (it.planta || 'PB').toUpperCase();
             const esc = p ? escenaDe(pl) : null;
-            const k = esc ? esc.racks[p.rack] : null;
+            if (p && esc && p.calle != null) p.rack = esc.porCalle[p.calle + '-' + p.nro] || null;
+            const k = esc && p && p.rack ? esc.racks[p.rack] : null;
             return { ...it, i, p, pl, k, ok: !!k };
         });
         items.sort((a, b) => (b.ok - a.ok) || (a.ok && b.ok ? (a.pl.localeCompare(b.pl) || (a.k.r.x - b.k.r.x) || (a.p.niv - b.p.niv)) : a.i - b.i));
@@ -285,7 +299,7 @@
                 if (esAct) {
                     const it = items[act];
                     const g = h('div', 'p3-globo', null, c);
-                    g.innerHTML = `<div class="g"><b>${esc(it.est)}</b><span>Rack ${esc(rk)} · nivel ${it.p.niv}${it.p.niv === 1 ? ' (el piso)' : ''}${it.p.letra ? ' · lugar ' + it.p.letra : ''}</span></div><div class="pico"></div>`;
+                    g.innerHTML = `<div class="g"><b>${esc(it.est)}</b><span>${esc(desglose(it.p))}</span></div><div class="pico"></div>`;
                 }
                 pines.push(m);
             }
@@ -298,7 +312,7 @@
                 return;
             }
             const it = items[act];
-            el.innerHTML = `<div class="t">Producto ${act + 1} de ${items.length}${it.pl === 'P1' ? ' · planta alta' : ''}</div><div class="d">Andá a <em>${esc(it.est)}</em></div><div class="s">${esc(it.n)}${it.c ? ' · <b>' + esc(it.c) + '</b>' : ''}</div>`;
+            el.innerHTML = `<div class="t">Producto ${act + 1} de ${items.length}${it.pl === 'P1' ? ' · planta alta' : ''}</div><div class="d">Andá a <em>${esc(it.est)}</em></div><div class="s" style="color:#fdba74;font-weight:700">${esc(desglose(it.p))}</div><div class="s">${esc(it.n)}${it.c ? ' · <b>' + esc(it.c) + '</b>' : ''}</div>`;
         }
         function lista() {
             const L = root.querySelector('.p3-items');
@@ -306,7 +320,7 @@
               <div class="p3-it ${i === act && !arriba ? 'act' : ''} ${hechos.has(i) ? 'ok' : ''} ${it.ok ? '' : 'sin'}" data-i="${i}">
                 <div class="p3-num">${hechos.has(i) ? '✓' : i + 1}</div>
                 <div><div class="n">${esc(it.n)}</div><div class="k">${esc([it.sku, it.c].filter(Boolean).join(' · '))}</div>
-                ${it.ok ? `<div class="p3-lug"><b>📍 ${esc(it.est)}</b><span>🗺 Ver</span></div>`
+                ${it.ok ? `<div class="p3-lug" title="${esc(desglose(it.p))}"><b>📍 ${esc(it.est)}</b><span>🗺 Ver</span></div>`
                         : `<div class="p3-sinlug">${it.est ? 'Lugar: ' + esc(it.est) + ' (no es un estante del plano)' : 'Sin estante en el plano'}</div>`}
                 </div></div>`).join('');
             root.querySelector('.p3-cab .s').textContent = d.soloVer
