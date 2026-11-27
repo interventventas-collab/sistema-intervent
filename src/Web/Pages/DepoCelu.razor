@@ -43,6 +43,10 @@
     else
     {
         <div class="dc-sub">¿Qué vas a hacer?</div>
+        @* 2026-11-27: recorrer los estantes del plano: ubicar y contar en el mismo paso *@
+        <button class="dc-b" style="width:100%; min-height:0; margin-bottom:0.6rem; background:#0f172a; color:#fff; border-color:#0f172a;" @onclick='() => Ir("/depo/recorrer")'>
+            <div class="dc-e">🧭</div><div class="dc-n" style="color:#fdba74;">Recorrer estantes</div><div class="dc-d" style="color:#cbd5e1;">Calle por calle: ubicar lo que hay y contar el stock</div>
+        </button>
         <div class="dc-g">
             <button class="dc-b" disabled="@(links?.Stock is null)" @onclick='() => Ir($"/stock/{links!.Stock}")'>
                 <div class="dc-e">📥</div><div class="dc-n">Cargar stock</div><div class="dc-d">Sumar o restar lo que entró</div>
