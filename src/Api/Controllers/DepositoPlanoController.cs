@@ -158,7 +158,7 @@ public class DepositoPlanoController : ControllerBase
         if (EsRack(r.Tipo))
         {
             r.Codigo = (r.Codigo ?? "").Trim().ToUpperInvariant();
-            if (r.Codigo.Length == 0) return "El rack necesita una letra (código), por ejemplo A.";
+            if (r.Codigo.Length == 0) return "El rack necesita un código (fila + número), por ejemplo A1.";
             if (r.Codigo.Length > 10) return "El código del rack es demasiado largo (máximo 10).";
             if (!Regex.IsMatch(r.Codigo, "^[A-Z0-9]+$")) return "El código del rack solo puede tener letras y números (sin guiones ni espacios).";
             if (r.Posiciones is null || r.Posiciones < 1 || r.Posiciones > 30) return "El rack tiene que tener entre 1 y 30 posiciones.";
@@ -187,7 +187,7 @@ public class DepositoPlanoController : ControllerBase
         var err = Validar(req);
         if (err is not null) return BadRequest(new { error = err });
         if (EsRack(req.Tipo) && await _db.DepositoPlanoElementos.AnyAsync(e => e.Tipo == "rack" && e.Codigo == req.Codigo))
-            return Conflict(new { error = $"Ya hay un rack con la letra {req.Codigo}." });
+            return Conflict(new { error = $"Ya hay un rack con el código {req.Codigo}." });
 
         var e = new DepositoPlanoElemento { CreadoAt = DateTime.UtcNow, ModificadoAt = DateTime.UtcNow, ModificadoPor = Usuario };
         Copiar(req, e);
@@ -221,7 +221,7 @@ public class DepositoPlanoController : ControllerBase
                 return Conflict(new { error = $"Los estantes {string.Join(", ", fuera)} tienen productos; sacalos antes de achicar el rack." });
         }
         if (EsRack(req.Tipo) && await _db.DepositoPlanoElementos.AnyAsync(x => x.Id != id && x.Tipo == "rack" && x.Codigo == req.Codigo))
-            return Conflict(new { error = $"Ya hay un rack con la letra {req.Codigo}." });
+            return Conflict(new { error = $"Ya hay un rack con el código {req.Codigo}." });
 
         var codigoViejo = e.Codigo;
         var plantaVieja = e.Planta;

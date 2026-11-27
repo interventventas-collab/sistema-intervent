@@ -9337,10 +9337,10 @@ BEGIN
     ('PB','vehiculo',NULL,N'Camioneta',0.73,4.05,1.35,2.7,NULL,NULL,NULL,NULL,NULL,62,N'semilla'),
     ('PB','contenedor',NULL,N'Contenedor de residuos',3.45,5.0,1.4,1.05,NULL,NULL,NULL,NULL,NULL,63,N'semilla'),
     ('PB','sillas',NULL,N'Sillas · 2 filas de 13 pilas',0.06,8.85,1.0,7.95,NULL,NULL,NULL,NULL,NULL,70,N'semilla'),
-    ('PB','rack','A',N'Rack A',0,16.8,1.1,2.55,3,4,NULL,NULL,N'niveles a confirmar',80,N'semilla'),
+    ('PB','rack','P1',N'Rack P1',0,16.8,1.1,2.55,3,4,NULL,NULL,N'niveles a confirmar',80,N'semilla'),
     ('PB','montacargas',NULL,N'Montacargas',0,20.8,1.1,2.1,NULL,NULL,NULL,NULL,NULL,81,N'semilla'),
-    ('PB','rack','B',N'Rack B',0,24.2,1.1,3.4,4,4,NULL,NULL,N'largo y niveles a confirmar',82,N'semilla'),
-    ('PB','rack','C',N'Rack C',0,27.6,1.1,2.55,3,4,NULL,NULL,N'largo y niveles a confirmar',83,N'semilla');
+    ('PB','rack','P2',N'Rack P2',0,24.2,1.1,3.4,4,4,NULL,NULL,N'largo y niveles a confirmar',82,N'semilla'),
+    ('PB','rack','P3',N'Rack P3',0,27.6,1.1,2.55,3,4,NULL,NULL,N'largo y niveles a confirmar',83,N'semilla');
 END
 GO
 
