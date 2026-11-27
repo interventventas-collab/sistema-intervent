@@ -538,7 +538,7 @@
                         <div class="pd-sub">@(s.Tipo == "rack" ? "Lo que pongas acá arma la vista de frente y las etiquetas" : NombreTipo(s.Tipo))</div>
                         @if (s.Tipo == "rack")
                         {
-                            <label>Letra</label>
+                            <label>Código · fila + número (ej. A1 = fila A, el primero desde la calle). Lo podés cambiar como quieras</label>
                             <input value="@s.Codigo" @onchange="@(ev => Cambiar(el => el.Codigo = Txt(ev)?.ToUpperInvariant()))" />
                             <div class="pd-dos">
                                 <div><label>Posiciones (a lo largo)</label><input inputmode="numeric" value="@s.Posiciones" @onchange="@(ev => CambiarInt(ev, (el, v) => el.Posiciones = v))" /></div>
@@ -1188,7 +1188,7 @@
             Y = Math.Max(0, Math.Round((decimal)c[1] - m.Largo / 2, 1)),
             Orden = elementos.Count == 0 ? 0 : elementos.Max(x => x.Orden) + 1,
         };
-        if (tipo == "rack") { nuevo.Codigo = LetraLibre(); nuevo.Posiciones = 3; nuevo.Niveles = 4; }
+        if (tipo == "rack") { nuevo.Codigo = CodigoLibre(null); nuevo.Posiciones = 3; nuevo.Niveles = 4; }
         await Crear(nuevo);
     }
 
@@ -1286,19 +1286,28 @@
         c.Id = 0; c.Productos = 0;
         c.Y = Math.Round(c.Y + Largo(sel) + 0.2m, 1);
         c.Orden = elementos.Max(x => x.Orden) + 1;
-        if (c.Tipo == "rack") { c.Codigo = LetraLibre(); c.Nombre = null; }
+        if (c.Tipo == "rack") { c.Codigo = CodigoLibre(sel.Codigo); c.Nombre = null; }
         await Crear(c);
     }
 
-    private string LetraLibre()
+    // 2026-11-26: los racks se nombran por FILA (letra) + número ("A1", "A2"...; el 1 es la punta más
+    // cerca de la calle; "P" = los del pasillo techado). Al duplicar un rack, el nuevo sigue en la misma
+    // fila con el número siguiente; un rack nuevo arranca una fila nueva ("E1"). Se puede cambiar a mano.
+    private string CodigoLibre(string? deRack)
     {
         var usadas = elementos.Where(x => x.Tipo == "rack" && x.Codigo is not null)
             .Select(x => x.Codigo!.Trim().ToUpperInvariant()).ToHashSet();
+        var mr = System.Text.RegularExpressions.Regex.Match((deRack ?? "").Trim().ToUpperInvariant(), @"^([A-Z])\d+$");
+        if (mr.Success)
+        {
+            var f = mr.Groups[1].Value;
+            for (var n = 1; n < 100; n++) if (!usadas.Contains($"{f}{n}")) return $"{f}{n}";
+        }
+        var filas = usadas.Select(c => System.Text.RegularExpressions.Regex.Match(c, @"^([A-Z])\d+$"))
+            .Where(m => m.Success).Select(m => m.Groups[1].Value[0]).ToHashSet();
         for (var ch = 'A'; ch <= 'Z'; ch++)
-            if (!usadas.Contains(ch.ToString())) return ch.ToString();
-        var n = 1;
-        while (usadas.Contains($"R{n}")) n++;
-        return $"R{n}";
+            if (ch != 'P' && !filas.Contains(ch) && !usadas.Contains($"{ch}1")) return $"{ch}1";
+        return "R" + (usadas.Count + 1);
     }
 
     // ───────────── dibujo ─────────────
