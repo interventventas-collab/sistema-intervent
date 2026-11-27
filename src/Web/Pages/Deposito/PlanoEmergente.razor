@@ -1,5 +1,6 @@
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 @* 2026-11-26: planito emergente con dónde está un estante (ej. "B1-1-2"). Se abre al tocar la
    ubicación de un producto (LugarProducto). Arriba el pedazo del plano donde está el rack, con el
@@ -12,6 +13,9 @@
     .pe-arriba { display: flex; align-items: flex-start; gap: 0.6rem; }
     .pe-cod { font-family: monospace; font-size: 1.9rem; font-weight: 900; color: #78350f; line-height: 1.05; }
     .pe-sub { color: #4b5563; font-size: 0.92rem; }
+    .pe-3d { margin-left: auto; border: 1px solid #0f172a; background: #0f172a; color: #fdba74; border-radius: 10px; height: 38px; padding: 0 0.9rem; font-weight: 800; font-size: 0.9rem; cursor: pointer; flex-shrink: 0; font-family: inherit; }
+    .pe-3d:hover { background: #1e293b; }
+    .pe-3d + .pe-x { margin-left: 0.4rem; }
     .pe-x { margin-left: auto; border: 1px solid #e5e7eb; background: #fff; border-radius: 10px; width: 38px; height: 38px; font-size: 1rem; color: #6b7280; cursor: pointer; flex-shrink: 0; }
     .pe-lbl { font-size: 0.72rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin: 0.9rem 0 0.35rem; }
     .pe-svg { width: 100%; display: block; border: 1px solid #e5e7eb; border-radius: 10px; background: #fafafa; }
@@ -35,6 +39,11 @@
                     <div class="pe-sub">@ApiClient.TextoEstante(est.Rack, est.Posiciones, est.Posicion, est.Nivel)@(est.Planta == "P1" ? " · planta alta" : " · planta baja")</div>
                 }
             </div>
+            @if (est is not null && rack is not null)
+            {
+                @* 2026-11-27: las dos formas: este planito (2D) o el plano en 3D volando al estante *@
+                <button type="button" class="pe-3d" @onclick="Ver3D" title="Ver este estante en el plano 3D">🧭 Ver en 3D</button>
+            }
             <button type="button" class="pe-x" @onclick="Cerrar" title="Cerrar">✕</button>
         </div>
 
@@ -127,6 +136,29 @@
     }
 
     private Task Cerrar() => OnCerrar.InvokeAsync();
+
+    /// <summary>Abre el plano 3D (wwwroot/js/plano3d.js) volando a este estante, con lo que hay guardado acá.</summary>
+    private async Task Ver3D()
+    {
+        if (est is null) return;
+        var planta = string.IsNullOrWhiteSpace(est.Planta) ? "PB" : est.Planta!;
+        var items = est.Productos.Count > 0
+            ? est.Productos.Select(a => (object)new { id = (int?)null, sku = a.Sku, n = a.Nombre, c = a.Cantidad, est = est.Codigo, planta }).ToList()
+            : new List<object> { new { id = (int?)null, sku = (string?)null, n = "Estante " + est.Codigo, c = (string?)null, est = est.Codigo, planta } };
+        try
+        {
+            await JS.InvokeVoidAsync("plano3d.abrir", new
+            {
+                titulo = "Estante " + est.Codigo,
+                etiqueta = "Dónde está",
+                soloVer = true,
+                plantas = new Dictionary<string, List<PlanoElementoDto>> { [planta.ToUpperInvariant()] = elementos },
+                items,
+                inicio = est.Codigo,
+            });
+        }
+        catch { }
+    }
 
     /// <summary>Pedazo del plano a mostrar: el ambiente (zona) donde está el rack, con un margen.</summary>
     private (double, double, double, double, string?) Encuadre()

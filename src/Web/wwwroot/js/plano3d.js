@@ -6,7 +6,8 @@
 //
 // window.plano3d.abrir({ titulo, subtitulo, plantas: { PB: [elementos], P1: [...] },
 //                        items: [{ id, sku, n, c, est, planta }], inicio: "D2-3" | null,
-//                        hechos: [ids ya tildados], dotnet: ref con Tildar3D(id) })
+//                        hechos: [ids ya tildados], dotnet: ref con Tildar3D(id),
+//                        etiqueta: "Dónde está", soloVer: true (sin "Lo tengo"; lo usa el planito de Productos) })
 // Elementos = PlanoElementoDto tal cual llega de la API (camelCase).
 (function () {
     const S = 40; // 1 metro = 40 px
@@ -225,9 +226,9 @@
             </div>
           </div>
           <div class="p3-pan">
-            <div class="p3-cab"><div class="t">Armado de pedido</div><h2>${esc(d.titulo)}</h2><div class="s"></div><div class="p3-barra"><i></i></div></div>
+            <div class="p3-cab"><div class="t">${esc(d.etiqueta || 'Armado de pedido')}</div><h2>${esc(d.titulo)}</h2><div class="s"></div>${d.soloVer ? '' : '<div class="p3-barra"><i></i></div>'}</div>
             <div class="p3-items"></div>
-            <div class="p3-pie"><button data-a="todo">Recorrido</button><button class="lo" data-a="lo">✓ Lo tengo · siguiente</button></div>
+            ${d.soloVer ? '' : '<div class="p3-pie"><button data-a="todo">Recorrido</button><button class="lo" data-a="lo">✓ Lo tengo · siguiente</button></div>'}
           </div>`;
         const escD = root.querySelector('.p3-esc');
 
@@ -308,8 +309,11 @@
                 ${it.ok ? `<div class="p3-lug"><b>📍 ${esc(it.est)}</b><span>🗺 Ver</span></div>`
                         : `<div class="p3-sinlug">${it.est ? 'Lugar: ' + esc(it.est) + ' (no es un estante del plano)' : 'Sin estante en el plano'}</div>`}
                 </div></div>`).join('');
-            root.querySelector('.p3-cab .s').textContent = `${hechos.size} de ${items.length} juntados · ordenado por recorrido`;
-            root.querySelector('.p3-barra i').style.width = (items.length ? hechos.size / items.length * 100 : 0) + '%';
+            root.querySelector('.p3-cab .s').textContent = d.soloVer
+                ? (items.length === 1 ? '' : `${items.length} productos en este estante`)
+                : `${hechos.size} de ${items.length} juntados · ordenado por recorrido`;
+            const barra = root.querySelector('.p3-barra i');
+            if (barra) barra.style.width = (items.length ? hechos.size / items.length * 100 : 0) + '%';
             const a = L.querySelector('.p3-it.act'); if (a) a.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
         function vistaArriba(pl) {
