@@ -50,46 +50,8 @@
         {
             var (vx, vy, vw, vh, zonaNom) = Encuadre();
             <div class="pe-lbl">Dónde está@(zonaNom is null ? "" : " · " + zonaNom) <span style="text-transform:none; font-weight:400;">(la calle queda a la izquierda)</span></div>
-            <svg class="pe-svg" viewBox="@F(vx) @F(vy) @F(vw) @F(vh)" style="aspect-ratio:@F(vw) / @F(vh); max-height:46vh;" xmlns="http://www.w3.org/2000/svg">
-                @foreach (var e in Ordenados())
-                {
-                    var r = Rect(e);
-                    switch (e.Tipo)
-                    {
-                        case "terreno":
-                            <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#fff" stroke="#111" stroke-width="0.08" />
-                            break;
-                        case "zona":
-                            var pts = Puntos(e);
-                            var col = string.IsNullOrWhiteSpace(e.Color) ? "#f3f4f6" : e.Color;
-                            if (pts is not null)
-                            {
-                                <polygon points="@pts" fill="@col" stroke="#a8a29e" stroke-width="0.04" />
-                            }
-                            else
-                            {
-                                <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@col" stroke="#a8a29e" stroke-width="0.04" />
-                            }
-                            break;
-                        case "rack":
-                            var esEste = e.Id == est.RackId;
-                            if (esEste)
-                            {
-                                <rect class="pe-tit" x="@F(r.X - 0.25)" y="@F(r.Y - 0.25)" width="@F(r.W + 0.5)" height="@F(r.H + 0.5)" fill="none" stroke="#ea580c" stroke-width="0.12" rx="0.15" />
-                            }
-                            <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@(esEste ? "#f97316" : "#fde68a")" stroke="@(esEste ? "#9a3412" : "#a16207")" stroke-width="0.05" />
-                            var fs = Math.Min(0.55, Math.Min(r.W, r.H) * 0.55);
-                            <g><text x="@F(r.CX)" y="@F(r.CY + fs * 0.35)" font-size="@F(fs)" font-weight="800" text-anchor="middle" fill="@(esEste ? "#fff" : "#78350f")">@e.Codigo</text></g>
-                            break;
-                        case "texto": case "techo":
-                            break;
-                        default:
-                            var c2 = string.IsNullOrWhiteSpace(e.Color) ? "#e7e5e4" : e.Color;
-                            <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@c2" fill-opacity="0.7" stroke="#a8a29e" stroke-width="0.03" />
-                            break;
-                    }
-                }
-            </svg>
+            <PlanoDibujo Elementos="elementos" Vista="(vx, vy, vw, vh)" RackMarcado="est.RackId" Clase="pe-svg"
+                         Estilo="@($"aspect-ratio:{F(vw)} / {F(vh)}; max-height:46vh;")" />
 
             var pos = Math.Max(1, rack.Posiciones ?? 1);
             var niv = Math.Max(1, rack.Niveles ?? 1);
@@ -139,7 +101,6 @@
     private PlanoEstanteDetalleDto? est;
     private PlanoElementoDto? rack;
     private List<PlanoElementoDto> elementos = new();
-    private double WT = 10;
 
     // el plano casi no cambia: se guarda un rato para que abrir varios sea instantáneo
     private static readonly Dictionary<string, (DateTime At, List<PlanoElementoDto> Els)> cache = new();
@@ -159,7 +120,6 @@
                     cache[planta] = (DateTime.UtcNow, elementos);
                 }
                 rack = elementos.FirstOrDefault(x => x.Id == est.RackId);
-                WT = (double)(elementos.FirstOrDefault(t => t.Tipo == "terreno")?.Ancho ?? 10m);
             }
         }
         catch { est = null; }
@@ -171,48 +131,11 @@
     /// <summary>Pedazo del plano a mostrar: el ambiente (zona) donde está el rack, con un margen.</summary>
     private (double, double, double, double, string?) Encuadre()
     {
-        var rr = Rect(rack!);
-        var zona = elementos.Where(z => z.Tipo == "zona")
-            .Select(z => (z, r: Rect(z)))
-            .Where(t => rr.CX >= t.r.X && rr.CX <= t.r.X + t.r.W && rr.CY >= t.r.Y && rr.CY <= t.r.Y + t.r.H)
-            .OrderBy(t => t.r.W * t.r.H).Select(t => ((PlanoElementoDto, R)?)t).FirstOrDefault();
-        R b;
-        if (zona is { } zz) b = zz.Item2;
-        else
-        {
-            var t = elementos.FirstOrDefault(x => x.Tipo == "terreno");
-            b = t is not null ? Rect(t) : new R(rr.X - 5, rr.Y - 5, rr.W + 10, rr.H + 10);
-        }
+        var zona = PlanoDibujo.ZonaDe(rack!, elementos);
         const double m = 0.8;
-        return (b.X - m, b.Y - m, b.W + 2 * m, b.H + 2 * m, zona?.Item1.Nombre);
-    }
-
-    // ── mismas cuentas que PlanoDeposito.razor (calle a la izquierda, pared izquierda abajo) ──
-    private readonly record struct R(double X, double Y, double W, double H)
-    {
-        public double CX => X + W / 2;
-        public double CY => Y + H / 2;
-    }
-    private static bool Girado(PlanoElementoDto e) => e.Rotacion == 90 || e.Rotacion == 270;
-    private static decimal AnchoV(PlanoElementoDto e) => Girado(e) ? e.Largo : e.Ancho;
-    private static decimal LargoV(PlanoElementoDto e) => Girado(e) ? e.Ancho : e.Largo;
-    private R Rect(PlanoElementoDto e)
-        => new((double)e.Y, WT - (double)e.X - (double)AnchoV(e), (double)LargoV(e), (double)AnchoV(e));
-
-    private IEnumerable<PlanoElementoDto> Ordenados()
-        => elementos.OrderBy(e => e.Tipo switch { "terreno" => 0, "zona" => 1, "pasillo" => 2, "rack" => 4, _ => 3 })
-                    .ThenBy(e => e.Orden).ThenBy(e => e.Id);
-
-    private string? Puntos(PlanoElementoDto e)
-    {
-        if (string.IsNullOrWhiteSpace(e.Puntos)) return null;
-        try
-        {
-            var p = System.Text.Json.JsonSerializer.Deserialize<List<double[]>>(e.Puntos);
-            if (p is not { Count: >= 3 } || p.Any(x => x.Length < 2)) return null;
-            return string.Join(" ", p.Select(q => $"{F(q[1])},{F(WT - q[0])}"));
-        }
-        catch { return null; }
+        if (zona is null) { var (x, y, w, h) = PlanoDibujo.Todo(elementos, m); return (x, y, w, h, null); }
+        var b = PlanoDibujo.RectDe(zona, PlanoDibujo.AnchoTerreno(elementos));
+        return (b.X - m, b.Y - m, b.W + 2 * m, b.H + 2 * m, zona.Nombre);
     }
 
     private static string F(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);

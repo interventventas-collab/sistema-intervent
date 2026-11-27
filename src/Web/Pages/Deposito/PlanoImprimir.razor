@@ -1,0 +1,176 @@
+@page "/deposito/plano/imprimir"
+@layout EmptyLayout
+@attribute [Authorize]
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+@* 2026-11-27: hoja para imprimir o guardar en PDF el plano del depósito (pedido del dueño para armar
+   el depósito). Se elige "todo" o un ambiente (zona); la hoja 1 es el plano con los códigos de los racks
+   y, si se tilda, después van los racks de frente con el código de cada estante.
+   El PDF lo hace el navegador: "Imprimir" → "Guardar como PDF". *@
+
+<style>
+    @@page { size: A4 landscape; margin: 9mm; }
+    body { background: #fff; }
+    .pi { max-width: 1120px; margin: 0 auto; padding: 0.8rem; font-family: Inter, system-ui, sans-serif; color: #111827; }
+    .pi-barra { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; padding: 0.7rem 0.8rem; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 1rem; background: #f9fafb; }
+    .pi-barra select { padding: 0.4rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.95rem; }
+    .pi-btn { border: 1px solid #111827; background: #111827; color: #fff; border-radius: 8px; padding: 0.45rem 0.9rem; font-weight: 700; cursor: pointer; font-size: 0.95rem; }
+    .pi-btn2 { border: 1px solid #cbd5e1; background: #fff; color: #111827; border-radius: 8px; padding: 0.45rem 0.9rem; cursor: pointer; font-size: 0.95rem; text-decoration: none; }
+    .pi-hoja { page-break-after: always; break-after: page; }
+    .pi-hoja:last-child { page-break-after: auto; break-after: auto; }
+    .pi-tit { display: flex; align-items: baseline; gap: 0.8rem; margin-bottom: 0.35rem; }
+    .pi-tit h1 { font-size: 1.3rem; margin: 0; }
+    .pi-tit span { color: #6b7280; font-size: 0.85rem; }
+    .pi-svg { width: 100%; display: block; border: 1px solid #d1d5db; }
+    .pi-nota { color: #6b7280; font-size: 0.78rem; margin-top: 0.3rem; }
+    .pi-racks { display: flex; flex-wrap: wrap; gap: 0.9rem 1.4rem; }
+    .pi-rack { break-inside: avoid; page-break-inside: avoid; }
+    .pi-rack h3 { margin: 0 0 0.2rem; font-size: 1rem; }
+    .pi-rack .pi-sub { color: #6b7280; font-size: 0.72rem; margin-bottom: 0.2rem; }
+    @@media print { .pi-barra { display: none !important; } .pi { padding: 0; max-width: none; } }
+</style>
+
+<div class="pi">
+    <div class="pi-barra">
+        <strong>Imprimir plano</strong>
+        <select value="@planta" @onchange="CambiarPlanta">
+            <option value="PB">Planta baja</option>
+            <option value="P1">Planta alta</option>
+        </select>
+        <select value="@(zonaId?.ToString() ?? "")" @onchange="@(e => { zonaId = int.TryParse(e.Value?.ToString(), out var z) ? z : null; })">
+            <option value="">Todo el plano</option>
+            @foreach (var z in Zonas())
+            {
+                <option value="@z.Id">@z.Nombre (@RacksDe(z.Id).Count racks)</option>
+            }
+        </select>
+        <label style="display:flex; align-items:center; gap:0.3rem; font-size:0.92rem;">
+            <input type="checkbox" @bind="frentes" /> Agregar los racks de frente
+        </label>
+        <button type="button" class="pi-btn" @onclick="Imprimir">🖨 Imprimir / Guardar PDF</button>
+        <a class="pi-btn2" href="/deposito/plano">← Volver al plano</a>
+        <span style="color:#6b7280; font-size:0.8rem; flex-basis:100%;">Para el PDF: en la ventana de imprimir elegí <b>“Guardar como PDF”</b> como impresora. Sale en hoja A4 acostada.</span>
+    </div>
+
+    @if (cargando)
+    {
+        <div style="color:#6b7280;">Cargando el plano…</div>
+    }
+    else if (elementos.Count == 0)
+    {
+        <div style="color:#6b7280;">Esta planta todavía no tiene nada dibujado.</div>
+    }
+    else
+    {
+        var zona = zonaId is int zid ? elementos.FirstOrDefault(x => x.Id == zid) : null;
+        var vista = Vista(zona);
+        var racks = zona is null ? elementos.Where(x => x.Tipo == "rack").ToList() : RacksDe(zona.Id);
+        var titulo = (planta == "P1" ? "Planta alta" : "Planta baja") + (zona is null ? " · plano completo" : " · " + zona.Nombre);
+        <div class="pi-hoja">
+            <div class="pi-tit">
+                <h1>@titulo</h1>
+                <span>@AhoraTexto() · la calle queda a la izquierda · @racks.Count racks</span>
+            </div>
+            <PlanoDibujo Elementos="elementos" Vista="vista" Nombres="true" Posiciones="true" Clase="pi-svg"
+                         Estilo="@($"aspect-ratio:{F(vista.W)} / {F(vista.H)}; max-height:{(zona is null ? "165mm" : "170mm")};")" />
+            <div class="pi-nota">Cada rack lleva su código (fila + número; el 1 es la punta más cerca de la calle). Cada estante se llama <b>código-posición-nivel</b>, ej. A1-1-2 = rack A1, posición 1, nivel 2 (el 1 es el piso).</div>
+        </div>
+
+        @if (frentes && racks.Count > 0)
+        {
+            <div class="pi-hoja">
+                <div class="pi-tit"><h1>Racks de frente</h1><span>@titulo · posición 1 = punta de la calle · nivel 1 = el piso</span></div>
+                <div class="pi-racks">
+                    @foreach (var r in racks.OrderBy(x => x.Codigo, StringComparer.Ordinal))
+                    {
+                        var pos = Math.Max(1, r.Posiciones ?? 1);
+                        var niv = Math.Max(1, r.Niveles ?? 1);
+                        const int CW = 70, CH = 28, M = 18;
+                        var w = M + pos * CW + 4; var h = niv * CH + 8;
+                        <div class="pi-rack">
+                            <h3>Rack @r.Codigo</h3>
+                            <div class="pi-sub">@pos posición@(pos == 1 ? "" : "es") · @niv niveles@(string.IsNullOrWhiteSpace(r.Notas) ? "" : " · " + r.Notas)</div>
+                            <svg width="@w" height="@h" viewBox="0 0 @w @h" xmlns="http://www.w3.org/2000/svg">
+                                @for (var n = 1; n <= niv; n++)
+                                {
+                                    var y = (niv - n) * CH + 2;
+                                    <g><text x="@(M - 5)" y="@(y + CH / 2 + 3)" font-size="10" text-anchor="end" fill="#6b7280">@n</text></g>
+                                    @for (var p = 1; p <= pos; p++)
+                                    {
+                                        var x = M + (p - 1) * CW;
+                                        <rect x="@x" y="@y" width="@(CW - 4)" height="@(CH - 4)" rx="3" fill="#fef3c7" stroke="#b08a2e" stroke-width="1" />
+                                        <g><text x="@(x + (CW - 4) / 2)" y="@(y + (CH - 4) / 2 + 4)" font-size="11" font-weight="700" text-anchor="middle" fill="#78350f" font-family="monospace">@($"{r.Codigo}-{p}-{n}")</text></g>
+                                    }
+                                }
+                                <line x1="@(M - 2)" y1="@(niv * CH + 1)" x2="@(w - 2)" y2="@(niv * CH + 1)" stroke="#374151" stroke-width="2" />
+                            </svg>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "planta")] public string? PlantaQ { get; set; }
+    [SupplyParameterFromQuery(Name = "zona")] public int? ZonaQ { get; set; }
+
+    private string planta = "PB";
+    private int? zonaId;
+    private bool frentes = true;
+    private bool cargando = true;
+    private List<PlanoElementoDto> elementos = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        planta = PlantaQ == "P1" ? "P1" : "PB";
+        zonaId = ZonaQ;
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        cargando = true;
+        try { elementos = (await Api.GetPlanoDepositoAsync(planta))?.Elementos ?? new(); }
+        catch { elementos = new(); }
+        if (zonaId is int z && !elementos.Any(x => x.Id == z)) zonaId = null;
+        cargando = false;
+    }
+
+    private async Task CambiarPlanta(ChangeEventArgs e)
+    {
+        planta = e.Value?.ToString() == "P1" ? "P1" : "PB";
+        zonaId = null;
+        await Cargar();
+    }
+
+    /// <summary>Ambientes con nombre; primero los que tienen racks.</summary>
+    private List<PlanoElementoDto> Zonas()
+        => elementos.Where(x => x.Tipo == "zona" && !string.IsNullOrWhiteSpace(x.Nombre))
+            .OrderByDescending(z => RacksDe(z.Id).Count > 0).ThenBy(z => z.Nombre).ToList();
+
+    private List<PlanoElementoDto> RacksDe(int zonaId)
+        => elementos.Where(x => x.Tipo == "rack" && PlanoDibujo.ZonaDe(x, elementos)?.Id == zonaId).ToList();
+
+    private (double X, double Y, double W, double H) Vista(PlanoElementoDto? zona)
+    {
+        if (zona is null) return PlanoDibujo.Todo(elementos, 0.6);
+        var b = PlanoDibujo.RectDe(zona, PlanoDibujo.AnchoTerreno(elementos));
+        const double m = 0.6;
+        return (b.X - m, b.Y - m, b.W + 2 * m, b.H + 2 * m);
+    }
+
+    private async Task Imprimir()
+    {
+        try { await JS.InvokeVoidAsync("print"); } catch { }
+    }
+
+    private static string AhoraTexto()
+    {
+        return DateTime.UtcNow.ToArTime().ToString("dd/MM/yyyy HH:mm");
+    }
+
+    private static string F(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+}

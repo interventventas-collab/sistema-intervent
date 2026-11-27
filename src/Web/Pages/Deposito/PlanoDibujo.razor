@@ -1,0 +1,189 @@
+@* 2026-11-27: dibujo del plano SOLO PARA MIRAR (sin arrastrar ni editar). Lo usan el planito emergente
+   de Productos (PlanoEmergente) y la hoja para imprimir / PDF (PlanoImprimir).
+   Mismas cuentas que PlanoDeposito.razor: la calle a la izquierda, la pared izquierda abajo.
+   Vista = el pedazo a mostrar en coordenadas de pantalla (x, y, ancho, alto). *@
+
+<svg class="@Clase" style="font-family:Arial, Helvetica, sans-serif; letter-spacing:0; @Estilo" viewBox="@F(Vista.X) @F(Vista.Y) @F(Vista.W) @F(Vista.H)" xmlns="http://www.w3.org/2000/svg">
+    @foreach (var e in Ordenados())
+    {
+        var r = Rect(e);
+        switch (e.Tipo)
+        {
+            case "terreno":
+                <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="#fff" stroke="#111" stroke-width="0.08" />
+                break;
+            case "zona":
+                var pts = Puntos(e);
+                var col = string.IsNullOrWhiteSpace(e.Color) ? "#f3f4f6" : e.Color;
+                if (pts is not null)
+                {
+                    <polygon points="@pts" fill="@col" stroke="#a8a29e" stroke-width="0.04" />
+                }
+                else
+                {
+                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@col" stroke="#a8a29e" stroke-width="0.04" />
+                }
+                break;
+            case "rack":
+                var esEste = e.Id == RackMarcado;
+                if (esEste)
+                {
+                    <rect class="pe-tit" x="@F(r.X - 0.25)" y="@F(r.Y - 0.25)" width="@F(r.W + 0.5)" height="@F(r.H + 0.5)" fill="none" stroke="#ea580c" stroke-width="0.12" rx="0.15" />
+                }
+                <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@(esEste ? "#f97316" : "#fde68a")" stroke="@(esEste ? "#9a3412" : "#a16207")" stroke-width="0.05" />
+                @if (Posiciones && (e.Posiciones ?? 1) > 1)
+                {
+                    // rayitas entre posiciones (la 1 es la punta de la calle)
+                    var np = e.Posiciones!.Value;
+                    for (var i = 1; i < np; i++)
+                    {
+                        if (r.W >= r.H)
+                        {
+                            <line x1="@F(r.X + r.W * i / np)" y1="@F(r.Y)" x2="@F(r.X + r.W * i / np)" y2="@F(r.Y + r.H)" stroke="#a16207" stroke-width="0.03" />
+                        }
+                        else
+                        {
+                            <line x1="@F(r.X)" y1="@F(r.Y + r.H * (np - i) / np)" x2="@F(r.X + r.W)" y2="@F(r.Y + r.H * (np - i) / np)" stroke="#a16207" stroke-width="0.03" />
+                        }
+                    }
+                }
+                var fs = Math.Min(0.55, Math.Min(r.W, r.H) * 0.55);
+                <g><text x="@F(r.CX)" y="@F(r.CY + fs * 0.35)" font-size="@F(fs)" font-weight="800" text-anchor="middle" fill="@(esEste ? "#fff" : "#78350f")">@e.Codigo</text></g>
+                break;
+            case "texto": case "techo":
+                break;
+            default:
+                var c2 = string.IsNullOrWhiteSpace(e.Color) ? ColorBase(e.Tipo) : e.Color;
+                <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@c2" fill-opacity="0.75" stroke="#a8a29e" stroke-width="0.03" />
+                break;
+        }
+    }
+    @if (Nombres)
+    {
+        @* nombres arriba de todo (como en el plano grande): ambientes, pasillos, escalera, muebles *@
+        @foreach (var e in elementos.Where(x => !string.IsNullOrWhiteSpace(x.Nombre) && x.Tipo is "zona" or "pasillo" or "escalera" or "mueble" or "escritorio" or "mesa" or "montacargas" or "pallet" or "heladera" or "contenedor"))
+        {
+            var r = Rect(e);
+            var (cx, cy) = CentroZona(e, r);
+            var st = Est(e);
+            var fs = (e.Tipo == "zona" ? 0.6 : 0.3) * st.Ls;
+            var x = cx + st.Lx; var y = cy + st.Ly;
+            var vert = st.Lv ?? (e.Tipo != "zona" && r.H > r.W * 1.3);
+            <g transform="@(vert ? $"rotate(-90 {F(x)} {F(y)})" : null)">
+                <text x="@F(x)" y="@F(y + fs * 0.35)" font-size="@F(fs)" font-weight="@(e.Tipo == "zona" ? "700" : "500")" text-anchor="middle" fill="#374151">@e.Nombre</text>
+            </g>
+        }
+    }
+</svg>
+
+@code {
+    [Parameter] public List<PlanoElementoDto> Elementos { get; set; } = new();
+    [Parameter] public (double X, double Y, double W, double H) Vista { get; set; }
+    [Parameter] public int? RackMarcado { get; set; }
+    [Parameter] public bool Nombres { get; set; }
+    /// <summary>true = rayitas entre las posiciones de cada rack.</summary>
+    [Parameter] public bool Posiciones { get; set; }
+    [Parameter] public string? Clase { get; set; }
+    [Parameter] public string? Estilo { get; set; }
+
+    private List<PlanoElementoDto> elementos => Elementos;
+    private double WT => AnchoTerreno(Elementos);
+
+    public static double AnchoTerreno(List<PlanoElementoDto> els)
+        => (double)(els.FirstOrDefault(t => t.Tipo == "terreno")?.Ancho ?? 10m);
+
+    public readonly record struct R(double X, double Y, double W, double H)
+    {
+        public double CX => X + W / 2;
+        public double CY => Y + H / 2;
+    }
+    private static bool Girado(PlanoElementoDto e) => e.Rotacion == 90 || e.Rotacion == 270;
+    private static decimal AnchoV(PlanoElementoDto e) => Girado(e) ? e.Largo : e.Ancho;
+    private static decimal LargoV(PlanoElementoDto e) => Girado(e) ? e.Ancho : e.Largo;
+
+    /// <summary>Rectángulo en pantalla: X = Y del plano, Y = ancho del terreno − X del plano.</summary>
+    public static R RectDe(PlanoElementoDto e, double wt)
+        => new((double)e.Y, wt - (double)e.X - (double)AnchoV(e), (double)LargoV(e), (double)AnchoV(e));
+    private R Rect(PlanoElementoDto e) => RectDe(e, WT);
+
+    /// <summary>Ambiente (zona) donde cae el centro del rack: el más chico que lo contiene.</summary>
+    public static PlanoElementoDto? ZonaDe(PlanoElementoDto el, List<PlanoElementoDto> els)
+    {
+        var wt = AnchoTerreno(els);
+        var rr = RectDe(el, wt);
+        return els.Where(z => z.Tipo == "zona").Select(z => (z, r: RectDe(z, wt)))
+            .Where(t => rr.CX >= t.r.X && rr.CX <= t.r.X + t.r.W && rr.CY >= t.r.Y && rr.CY <= t.r.Y + t.r.H)
+            .OrderBy(t => t.r.W * t.r.H).Select(t => t.z).FirstOrDefault();
+    }
+
+    /// <summary>Todo el dibujo (en pantalla), con margen.</summary>
+    public static (double, double, double, double) Todo(List<PlanoElementoDto> els, double m)
+    {
+        var wt = AnchoTerreno(els);
+        var rs = els.Select(e => RectDe(e, wt)).ToList();
+        if (rs.Count == 0) return (0, 0, 44, 12);
+        var x0 = rs.Min(r => r.X); var y0 = rs.Min(r => r.Y);
+        var x1 = rs.Max(r => r.X + r.W); var y1 = rs.Max(r => r.Y + r.H);
+        return (x0 - m, y0 - m, x1 - x0 + 2 * m, y1 - y0 + 2 * m);
+    }
+
+    private IEnumerable<PlanoElementoDto> Ordenados()
+        => Elementos.OrderBy(e => e.Tipo switch { "terreno" => 0, "zona" => 1, "pasillo" => 2, "rack" => 4, _ => 3 })
+                    .ThenBy(e => e.Orden).ThenBy(e => e.Id);
+
+    private static List<double[]>? LeerPuntos(PlanoElementoDto e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Puntos)) return null;
+        try
+        {
+            var p = System.Text.Json.JsonSerializer.Deserialize<List<double[]>>(e.Puntos);
+            return p is { Count: >= 3 } && p.All(x => x.Length >= 2) ? p : null;
+        }
+        catch { return null; }
+    }
+
+    private string? Puntos(PlanoElementoDto e)
+    {
+        var p = LeerPuntos(e);
+        return p is null ? null : string.Join(" ", p.Select(q => $"{F(q[1])},{F(WT - q[0])}"));
+    }
+
+    private (double, double) CentroZona(PlanoElementoDto e, R r)
+    {
+        var p = LeerPuntos(e);
+        if (p is null) return (r.CX, r.CY);
+        double a = 0, cx = 0, cy = 0;
+        for (int i = 0; i < p.Count; i++)
+        {
+            var (x0, y0) = (p[i][1], WT - p[i][0]);
+            var (x1, y1) = (p[(i + 1) % p.Count][1], WT - p[(i + 1) % p.Count][0]);
+            var k = x0 * y1 - x1 * y0; a += k; cx += (x0 + x1) * k; cy += (y0 + y1) * k;
+        }
+        if (Math.Abs(a) < 1e-9) return (p.Average(q => q[1]), WT - p.Average(q => q[0]));
+        return (cx / (3 * a), cy / (3 * a));
+    }
+
+    private readonly record struct EstiloEl(double Lx, double Ly, double Ls, bool? Lv);
+    private static EstiloEl Est(PlanoElementoDto e)
+    {
+        if (string.IsNullOrWhiteSpace(e.Estilo)) return new(0, 0, 1, null);
+        try
+        {
+            using var d = System.Text.Json.JsonDocument.Parse(e.Estilo);
+            var r = d.RootElement;
+            double N(string k, double def) => r.TryGetProperty(k, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetDouble() : def;
+            bool? B(string k) => r.TryGetProperty(k, out var v) ? v.ValueKind switch { System.Text.Json.JsonValueKind.True => true, System.Text.Json.JsonValueKind.False => false, _ => null } : null;
+            return new(N("lx", 0), N("ly", 0), Math.Clamp(N("ls", 1), 0.3, 4), B("lv"));
+        }
+        catch { return new(0, 0, 1, null); }
+    }
+
+    private static string ColorBase(string tipo) => tipo switch
+    {
+        "montacargas" => "#d6d3d1", "contenedor" => "#3b6d11", "pc" => "#1f2937",
+        "pallet" => "#d6b48a", "heladera" => "#f8fafc", "pasillo" => "#f9fafb", "escalera" => "#e5e7eb",
+        "escritorio" or "mesa" => "#e7e5e4", _ => "#e7e5e4",
+    };
+
+    private static string F(double v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+}
