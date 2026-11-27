@@ -96,7 +96,7 @@
         const fs = rawLabel.length >= 2 ? 13 : 17;
 
         // FORMA de la cabeza del pin según el tipo de envío (la punta siempre cae en 24,44):
-        //   circle=Flex · square=ME1 · diamond=Alquiler · triangle=Venta por fuera · hexagon=cargada a mano.
+        //   circle=Flex · square=ME1 · diamond=Alquiler · triangle=Venta por fuera · hexagon=cargada a mano · bill=Cobranza.
         // El color sigue indicando repartidor/asignación; la forma indica el TIPO.
         const shape = first.shape || 'circle';
         let headPath, labelY;
@@ -118,6 +118,10 @@
             case 'triangle': // Venta por fuera — triángulo apuntando a la ubicación
                 headPath = 'M10 7 Q10 5 12 5 H36 Q38 5 38 7 L24 44 Z';
                 labelY = 13;
+                break;
+            case 'bill':     // Cobranza — billete ancho con puntita (2026-11-27): "$ | numero"
+                headPath = 'M6 7 H42 Q45 7 45 10 V26 Q45 29 42 29 H29 L24 44 L19 29 H6 Q3 29 3 26 V10 Q3 7 6 7 Z';
+                labelY = 18;
                 break;
             default:         // circle — Flex (gota redonda de siempre)
                 headPath = PIN_PATH;
@@ -185,8 +189,15 @@
             (comercial ? techoToldo() + `<path d="${headPath}" fill="none" stroke="#1f2937" stroke-width="2"/>` : '') +
             // En los comerciales el numero lleva un halo del color del pin: si el toldo le queda
             // cerca (formas de cabeza bajitas, como el triangulo), igual se lee.
-            `<text x="${PIN_HEAD_CX}" y="${labelY + fs * 0.35}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif"` +
-            (comercial ? ` stroke="${body}" stroke-width="2.6" paint-order="stroke"` : '') + `>${label}</text>` +
+            (shape === 'bill'
+                // Billete de COBRANZA: "$" a la izquierda, rayita, y el numero a la derecha (sin numero, solo el $).
+                ? (rawLabel
+                    ? `<text x="15" y="23.2" text-anchor="middle" font-size="15" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif">$</text>` +
+                      `<line x1="23.5" y1="12" x2="23.5" y2="25" stroke="${txt}" stroke-opacity="0.45" stroke-width="1.2"/>` +
+                      `<text x="33.5" y="22.5" text-anchor="middle" font-size="${rawLabel.length >= 3 ? 10 : 12}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif">${label}</text>`
+                    : `<text x="24" y="24" text-anchor="middle" font-size="17" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif">$</text>`)
+                : `<text x="${PIN_HEAD_CX}" y="${labelY + fs * 0.35}" text-anchor="middle" font-size="${fs}" font-weight="800" fill="${txt}" font-family="Inter,Arial,sans-serif"` +
+                  (comercial ? ` stroke="${body}" stroke-width="2.6" paint-order="stroke"` : '') + `>${label}</text>`) +
             `${badge}${check}${surfaceBadge}</svg>`;
     }
 
