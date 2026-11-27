@@ -1,0 +1,34 @@
+@implements IDisposable
+@inject PlanoEmergenteService Svc
+@inject NavigationManager Nav
+
+@* 2026-11-27: lugar fijo (en el layout) donde se abre el planito emergente. Ver PlanoEmergenteService. *@
+
+@if (Svc.Codigo is string cod)
+{
+    <Web.Pages.Deposito.PlanoEmergente @key="cod" Codigo="@cod" OnCerrar="Svc.Cerrar" />
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        Svc.HayHost = true;
+        Svc.Cambio += Refrescar;
+        Nav.LocationChanged += AlNavegar;
+    }
+
+    private void Refrescar() => InvokeAsync(StateHasChanged);
+
+    // si cambia de pantalla con el planito abierto, se cierra
+    private void AlNavegar(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        if (Svc.Codigo is not null) Svc.Cerrar();
+    }
+
+    public void Dispose()
+    {
+        Svc.Cambio -= Refrescar;
+        Nav.LocationChanged -= AlNavegar;
+        Svc.HayHost = false;
+    }
+}

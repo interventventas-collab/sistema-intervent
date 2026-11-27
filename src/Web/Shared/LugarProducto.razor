@@ -52,15 +52,16 @@ else if (!string.IsNullOrEmpty(lugar))
     @if (estLugar is not null)
     {
         @* 2026-11-26: si está en un estante del plano, al tocar la ubicación se abre el planito emergente *@
-        <span role="button" @onclick="() => planoAbierto = estLugar" @onclick:stopPropagation="true" title="Ver en el plano dónde está"
-              style="font-size:@Tamano; color:#64748b; cursor:pointer;">📍 @lugar@Sufijo
-            @if (dudoso)
-            {
-                <span style="color:#b45309; font-weight:600;">· ⚠ no estaba acá</span>
-            }
-        </span>
-        <button type="button" @onclick="() => planoAbierto = estLugar" @onclick:stopPropagation="true" title="Ver en el plano dónde está"
-                style="background:none; border:none; padding:0 0 0 0.4rem; color:#2563eb; font-size:0.72rem; text-decoration:underline; cursor:pointer;">🗺 ver en el plano</button>
+        @* 2026-11-27: un solo botón-pastilla "📍 PB · D2-1-3  🗺 Ver" (antes texto + link subrayado) *@
+        <button type="button" class="lp-plano" @onclick="() => AbrirPlano(estLugar)" @onclick:stopPropagation="true" title="Ver en el plano dónde está"
+                style="font-size:@Tamano;">
+            <span class="lp-plano-lugar">📍 @lugar@Sufijo</span>
+            <span class="lp-plano-ver">🗺 Ver en el plano</span>
+        </button>
+        @if (dudoso)
+        {
+            <span style="font-size:@Tamano; color:#b45309; font-weight:600;">· ⚠ no estaba acá</span>
+        }
     }
     else
     {
@@ -93,6 +94,7 @@ else if (puedeEditar)
 
 @if (planoAbierto is not null)
 {
+    @* solo si el layout no tiene el lugar fijo del planito (PlanoEmergenteHost) *@
     <Web.Pages.Deposito.PlanoEmergente Codigo="@planoAbierto" OnCerrar="() => planoAbierto = null" />
 }
 
@@ -115,6 +117,16 @@ else if (puedeEditar)
     [Parameter] public string? Sufijo { get; set; }
 
     private string? planoAbierto;
+
+    [Inject] private PlanoEmergenteService PlanoSvc { get; set; } = default!;
+
+    /// <summary>Abre el planito arriba de toda la página (en el layout); si no hay lugar fijo, acá mismo.</summary>
+    private void AbrirPlano(string codigo)
+    {
+        if (PlanoSvc.HayHost) PlanoSvc.Abrir(codigo);
+        else planoAbierto = codigo;
+    }
+
     private static readonly (string, string)[] Plantas = { ("PB", "PB"), ("P1", "P1"), ("OTRO", "Otro depósito") };
 
     private bool abierto;
