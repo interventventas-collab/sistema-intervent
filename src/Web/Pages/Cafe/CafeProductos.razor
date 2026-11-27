@@ -27,12 +27,14 @@
                 <option value="CAFE">☕ Café</option>
                 <option value="OTROS">📦 Otros / insumos</option>
             </select>
-            @* 2026-06-18: filtro tipo — Simples vs Compuestos. Default Todos. *@
-            <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroTipo">
-                <option value="">Todos los tipos</option>
-                <option value="SIMPLE">🟢 Simples</option>
-                <option value="COMPUESTO">🟣 Compuestos</option>
-                <option value="PACK">📦 Packs</option>
+            @* 2026-06-18: filtro tipo. 27/11/2026: arranca en "Productos y compuestos" (sin packs);
+               los packs se ven con "Solo packs" o "Todo (con packs)". *@
+            <select class="form-input" style="max-width: 200px; font-size: 0.85rem;" @bind="filtroTipo">
+                <option value="">Productos y compuestos</option>
+                <option value="SIMPLE">🟢 Solo productos</option>
+                <option value="COMPUESTO">🟣 Solo compuestos</option>
+                <option value="PACK">📦 Solo packs</option>
+                <option value="TODO">Todo (con packs)</option>
             </select>
             <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroMarca">
                 <option value="">Todas las marcas</option>
@@ -2524,6 +2526,8 @@
                 q = q.Where(p => p.EsCompuestoFake && !p.EsPackFake);
             else if (filtroTipo == "PACK")
                 q = q.Where(p => p.EsPackFake);
+            else if (filtroTipo == "")
+                q = q.Where(p => !p.EsPackFake);   // de movida: productos y compuestos, sin packs
             return q.ToList();
         }
     }
