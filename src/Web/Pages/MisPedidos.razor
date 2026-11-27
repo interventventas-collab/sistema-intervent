@@ -1309,6 +1309,92 @@
                     }
                 </div>;
 
+            @* 27/11/2026: COBRANZA que le mandaron desde la oficina ("Mandar a cobrar"). Va a cobrar, no a entregar. *@
+            RenderFragment<MisPedidosMapeoDto> cobranzaCard = cb =>
+                @<div class="mp-card" style="background:white; border:1px solid #f59e0b; border-left:6px solid #f59e0b; margin-bottom:0.6rem; padding:0.6rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem;">
+                        <span style="font-weight:700; font-size:1rem; color:#111827; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@(cb.Nombre ?? "Cliente")</span>
+                        <span style="background:#fef3c7; color:#92400e; font-size:0.62rem; font-weight:800; padding:0.05rem 0.35rem; border-radius:4px; flex:0 0 auto;">COBRANZA</span>
+                    </div>
+                    <div style="font-size:0.85rem; color:#374151; margin-top:0.25rem;">@cb.Direccion</div>
+                    @if (!string.IsNullOrEmpty(cb.Localidad)) { <div style="font-size:0.75rem; color:#6b7280;">@cb.Localidad</div> }
+                    <div style="font-size:1.35rem; font-weight:800; color:#b91c1c; margin-top:0.35rem; font-variant-numeric:tabular-nums;">$ @((cb.CobrarSaldo ?? 0m).ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR")))</div>
+                    @if (!string.IsNullOrWhiteSpace(cb.CobrarDetalle)) { <div style="font-size:0.75rem; color:#6b7280;">a cobrar · @cb.CobrarDetalle</div> }
+                    @{ var notaCb = NotaDelComprador(cb.Notas); }
+                    @if (!string.IsNullOrWhiteSpace(notaCb))
+                    {
+                        <div style="margin-top:0.4rem; padding:0.4rem 0.55rem; color:#78350f; background:#fef3c7; border-radius:6px; font-size:0.82rem; line-height:1.35; white-space:pre-wrap; overflow-wrap:anywhere;">💬 @notaCb</div>
+                    }
+                    <div style="display:flex; gap:0.4rem; margin-top:0.5rem;">
+                        @if (cb.Latitude != 0 || cb.Longitude != 0)
+                        {
+                            <a href="@($"https://www.google.com/maps/dir/?api=1&destination={cb.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture)},{cb.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture)}")" target="_blank" rel="noopener" style="flex:1; text-align:center; background:#0891b2; color:white; padding:0.5rem; border-radius:8px; font-size:0.88rem; font-weight:700; text-decoration:none;">🧭 Cómo llegar</a>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(cb.Telefono))
+                        {
+                            <a href="@($"tel:{cb.Telefono}")" style="flex:0 0 auto; text-align:center; background:white; color:#0f766e; border:1.5px solid #0f766e; padding:0.45rem 0.8rem; border-radius:8px; font-size:0.88rem; font-weight:700; text-decoration:none;">📞 Llamar</a>
+                        }
+                    </div>
+                    @if (cobVisitaStopId == cb.Id)
+                    {
+                        <div style="margin-top:0.6rem; padding:0.55rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+                            <div style="font-size:0.8rem; color:#374151; font-weight:700;">¿Cuánto cobraste?</div>
+                            <input type="number" step="0.01" inputmode="decimal" class="mp-input" style="margin-top:0.3rem;" @bind="cobVisitaImporte" @bind:event="oninput" placeholder="0,00" />
+                            <div style="font-size:0.75rem; color:#6b7280; margin-top:0.15rem;">= $ @cobVisitaImporte.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("es-AR"))</div>
+                            <div style="font-size:0.8rem; color:#374151; font-weight:700; margin-top:0.5rem;">¿Cómo pagó?</div>
+                            <div style="display:flex; gap:0.35rem; flex-wrap:wrap; margin-top:0.3rem;">
+                                @foreach (var m in new[] { "Efectivo", "Transferencia", "Cheque" })
+                                {
+                                    var mm = m;
+                                    <button type="button" @onclick="() => cobVisitaMedio = mm"
+                                            style="border:1px solid @(cobVisitaMedio == mm ? "#111827" : "#d1d5db"); background:@(cobVisitaMedio == mm ? "#111827" : "white"); color:@(cobVisitaMedio == mm ? "white" : "#374151"); border-radius:999px; padding:0.35rem 0.8rem; font-size:0.85rem; cursor:pointer;">@m</button>
+                                }
+                            </div>
+                            <input type="text" class="mp-input" style="margin-top:0.45rem;" maxlength="200" placeholder="Nota (opcional): nº de cheque, quién pagó…" @bind="cobVisitaNotas" @bind:event="oninput" />
+                            <button type="button" disabled="@cobVisitaEnviando" @onclick="() => EnviarCobroVisita(cb)"
+                                    style="width:100%; margin-top:0.55rem; padding:0.7rem; background:#15803d; color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:800; cursor:pointer;">
+                                @(cobVisitaEnviando ? "Guardando..." : "💰 Confirmar cobro")
+                            </button>
+                            <button type="button" class="mp-nopude-cancelar" disabled="@cobVisitaEnviando" @onclick="() => cobVisitaStopId = null">Cancelar</button>
+                        </div>
+                    }
+                    else if (noEntregadaStopId == cb.Id)
+                    {
+                        <div class="mp-nopude-panel">
+                            <div class="mp-nopude-titulo">¿Por qué no pagó? · tocá el motivo</div>
+                            @foreach (var motivo in MotivosNoPago)
+                            {
+                                <button type="button" class="mp-nopude-motivo" disabled="@enviandoNoEntregada"
+                                        @onclick="() => EnviarNoEntregada(cb, motivo)">@motivo</button>
+                            }
+                            @if (!noEntregadaOtro)
+                            {
+                                <button type="button" class="mp-nopude-motivo" disabled="@enviandoNoEntregada" @onclick="AbrirOtroMotivo">Otro motivo</button>
+                            }
+                            else
+                            {
+                                <input class="mp-nopude-input" type="text" maxlength="200" placeholder="Contá en pocas palabras qué pasó"
+                                       @bind="noEntregadaTexto" @bind:event="oninput" />
+                                <button type="button" class="mp-nopude-confirmar" disabled="@enviandoNoEntregada"
+                                        @onclick="() => EnviarNoEntregada(cb, noEntregadaTexto)">
+                                    @(enviandoNoEntregada ? "Guardando..." : "Confirmar")
+                                </button>
+                            }
+                            <button type="button" class="mp-nopude-cancelar" disabled="@enviandoNoEntregada" @onclick="CerrarNoEntregada">Cancelar</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="display:flex; gap:0.4rem; margin-top:0.55rem;">
+                            <button type="button" @onclick="() => AbrirCobroVisita(cb)"
+                                    style="flex:1; padding:0.7rem; background:#15803d; color:white; border:none; border-radius:8px; font-size:0.95rem; font-weight:800; cursor:pointer;">💰 Cargar cobro</button>
+                            <button type="button" @onclick="() => AbrirNoEntregada(cb.Id)"
+                                    style="flex:1; padding:0.7rem; background:white; color:#b91c1c; border:1.5px solid #fca5a5; border-radius:8px; font-size:0.95rem; font-weight:700; cursor:pointer;">No pagó</button>
+                        </div>
+                        <div style="font-size:0.7rem; color:#9ca3af; text-align:center; margin-top:0.25rem;">El cobro le llega a la oficina para aprobar, como siempre.</div>
+                    }
+                </div>;
+
             @* Renglón chico de una parada YA HECHA, cuando el repartidor la abre para mirarla. *@
             RenderFragment<MisPedidosMapeoDto> hechaCard = hc =>
                 @<div style="background:white; border:1px solid #e5e7eb; border-radius:8px; padding:0.6rem; margin-bottom:0.5rem;">
@@ -1403,6 +1489,7 @@
                     else if (abierta && e.tipo == "me1") { @me1Card(e.me1!) }
                     else if (abierta && e.tipo == "alq") { @alqCard(e.alq!) }
                     else if (abierta && e.tipo == "hecha") { @hechaCard(st) }
+                    else if (abierta && st.Origin == "cobranza") { @cobranzaCard(st) }
                     else if (abierta) { @flexCard(st) }
                     else if (e.tipo == "hecha")
                     {
@@ -2849,6 +2936,7 @@
         "me1" => "ME1",
         "flex" => "Flex",
         "visita" => "visita",
+        "cobranza" => "cobranza",
         _ => "parada"
     };
 
@@ -2862,6 +2950,7 @@
         "venta_cafe" => ("#bbf7d0", "#166534", "VENTA"),
         "alquiler"   => ("#e9d5ff", "#6b21a8", "ALQUILER"),
         "visita"     => ("#cffafe", "#155e75", "VISITA"),
+        "cobranza"   => ("#fef3c7", "#92400e", "COBRANZA"),
         _            => ("#e5e7eb", "#4b5563", "PARADA")
     };
 
@@ -2972,6 +3061,62 @@
         "Dirección equivocada",
         "No me atendieron"
     };
+
+    /// <summary>27/11/2026: motivos de "No pagó" en una COBRANZA mandada.</summary>
+    private static readonly string[] MotivosNoPago =
+    {
+        "No estaba",
+        "Pidió que vuelva otro día",
+        "No tenía la plata",
+        "Dice que no debe eso"
+    };
+
+    // ── 27/11/2026: cobro de una COBRANZA mandada ("Mandar a cobrar") ──
+    private int? cobVisitaStopId;
+    private decimal cobVisitaImporte;
+    private string cobVisitaMedio = "Efectivo";
+    private string cobVisitaNotas = "";
+    private bool cobVisitaEnviando;
+
+    private void AbrirCobroVisita(MisPedidosMapeoDto st)
+    {
+        if (FaltaCoche(() => { AbrirCobroVisita(st); return Task.CompletedTask; })) return;
+        noEntregadaStopId = null;
+        cobVisitaStopId = st.Id;
+        cobVisitaImporte = st.CobrarSaldo is > 0m ? st.CobrarSaldo.Value : 0m;
+        cobVisitaMedio = "Efectivo";
+        cobVisitaNotas = "";
+    }
+
+    private async Task EnviarCobroVisita(MisPedidosMapeoDto st)
+    {
+        if (cobVisitaEnviando) return;
+        if (cobVisitaImporte <= 0m) { MostrarToast("Poné cuánto cobraste.", true); return; }
+        cobVisitaEnviando = true; StateHasChanged();
+        try
+        {
+            var notas = cobVisitaMedio + (string.IsNullOrWhiteSpace(cobVisitaNotas) ? "" : " · " + cobVisitaNotas.Trim());
+            HttpResponseMessage resp;
+            try
+            {
+                resp = await Http.PostAsJsonAsync($"api/cafe/repartidor-public/mis-pedidos/{Token}/cobranza/{st.Id}",
+                    new { Importe = cobVisitaImporte, Notas = notas });
+            }
+            catch { MostrarToast("No pude guardarlo. Probá de nuevo.", true); return; }
+            if (!resp.IsSuccessStatusCode)
+            {
+                string detalle = "";
+                try { detalle = (await resp.Content.ReadFromJsonAsync<ErrorResp>())?.Error ?? ""; } catch { }
+                MostrarToast(string.IsNullOrWhiteSpace(detalle) ? "No pude guardarlo. Probá de nuevo." : detalle, true);
+                return;
+            }
+            cobVisitaStopId = null;
+            MostrarToast("💰 Cobro cargado · le llega a la oficina para aprobar", false);
+            _ = PingUbicacion("entrega");
+            await Recargar();
+        }
+        finally { cobVisitaEnviando = false; StateHasChanged(); }
+    }
 
     private int? noEntregadaStopId;            // parada con la elección de motivo abierta (null = ninguna)
     private bool noEntregadaOtro;              // ya tocó "Otro motivo": se ve el campo de texto

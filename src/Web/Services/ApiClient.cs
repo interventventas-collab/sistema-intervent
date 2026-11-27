@@ -2976,6 +2976,50 @@ public partial class ApiClient
         return (await resp.Content.ReadAsByteArrayAsync(), null);
     }
 
+    // ── 27/11/2026: "Mandar a cobrar" (cobranza asignada a un repartidor) ──
+    private static string CobQs(params (string k, int? v)[] ps)
+        => string.Join("&", ps.Where(p => p.v.HasValue && p.v.Value > 0).Select(p => $"{p.k}={p.v}").DefaultIfEmpty("x=0"));
+
+    public async Task<CobPrepararDto?> CobPrepararAsync(int? clienteId, int? ventaId)
+        => await GetAsync<CobPrepararDto>("/api/cafe/cobranza-visitas/preparar?" + CobQs(("clienteId", clienteId), ("ventaId", ventaId)));
+
+    public async Task<(CobMandarResult? res, string? error)> CobMandarAsync(CobMandarRequest req)
+    {
+        await SetAuthHeaderAsync();
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("/api/cafe/cobranza-visitas", req);
+            if (resp.IsSuccessStatusCode) return (await resp.Content.ReadFromJsonAsync<CobMandarResult>(), null);
+            try { var err = await resp.Content.ReadFromJsonAsync<ErrorResp>(); return (null, err?.Error ?? "No se pudo mandar"); }
+            catch { return (null, $"No se pudo mandar (HTTP {(int)resp.StatusCode})"); }
+        }
+        catch (Exception ex) { return (null, ex.Message); }
+    }
+
+    public async Task<(bool ok, string? error)> CobCancelarAsync(int stopId)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.DeleteAsync($"/api/cafe/cobranza-visitas/{stopId}");
+        if (resp.IsSuccessStatusCode) return (true, null);
+        try { var err = await resp.Content.ReadFromJsonAsync<ErrorResp>(); return (false, err?.Error ?? "No se pudo cancelar"); }
+        catch { return (false, "No se pudo cancelar"); }
+    }
+
+    public async Task<List<CobAbiertaDto>?> CobAbiertasAsync()
+        => await GetAsync<List<CobAbiertaDto>>("/api/cafe/cobranza-visitas/abiertas");
+
+    public async Task<List<CobDeudorDto>?> CobDeudoresAsync(DateTime fecha)
+        => await GetAsync<List<CobDeudorDto>>($"/api/cafe/cobranza-visitas/deudores?fecha={fecha:yyyy-MM-dd}");
+
+    public async Task<(byte[]? bytes, string? error)> CobReciboPdfAsync(int? stopId, int? clienteId, int? ventaId, bool todas = true)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/cafe/cobranza-visitas/recibo.pdf?" + CobQs(("stopId", stopId), ("clienteId", clienteId), ("ventaId", ventaId)) + "&todas=" + (todas ? "true" : "false"));
+        if (resp.IsSuccessStatusCode) return (await resp.Content.ReadAsByteArrayAsync(), null);
+        try { var err = await resp.Content.ReadFromJsonAsync<ErrorResp>(); return (null, err?.Error ?? "No se pudo generar el recibo"); }
+        catch { return (null, $"HTTP {(int)resp.StatusCode}"); }
+    }
+
     public async Task<(byte[]? bytes, string? error)> GetCafeVentaPdfAsync(int id)
     {
         await SetAuthHeaderAsync();

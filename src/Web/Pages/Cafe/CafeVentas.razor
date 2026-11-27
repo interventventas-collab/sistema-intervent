@@ -875,6 +875,12 @@
                                         {
                                             <div style="font-size:0.7rem; color:#dc2626; font-weight:700; margin-top:0.15rem;">⏳ Pendiente</div>
                                         }
+                                        @* 27/11/2026: mandada a cobrar con un repartidor ("🚚 Mati · vie 28/11"). Tocándola se cambia. *@
+                                        var cobAb = saldo > 0.01m ? CobAbiertaDe(v) : null;
+                                        @if (cobAb is not null)
+                                        {
+                                            <div style="font-size:0.68rem; color:#4b5563; font-weight:600; margin-top:0.15rem; cursor:pointer;" title="Mandada a cobrar · tocá para cambiarla" @onclick="() => AbrirMandarACobrar(v)">@CobTexto.Etiqueta(cobAb)</div>
+                                        }
                                     }
                                     @if (anulada)
                                     {
@@ -1144,6 +1150,11 @@
     </div>
 </div>
 
+@if (cobVenta is not null)
+{
+    <MandarACobrarModal VentaId="cobVenta.Id" ClienteId="cobVenta.ClienteId" OnClose="CerrarMandarACobrar" />
+}
+
 @* ═══════════════ POPUP "+" — RESTO DE LAS ACCIONES ═══════════════ *@
 @* 2026-06-22: Menu desplegable del boton 🖨+ con las 3 opciones de impresion *@
 @if (printMenuOpenForVentaId.HasValue)
@@ -1200,6 +1211,13 @@
             <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await Task.Yield(); await SumarVentaAlMapa(v); }">
                 <span class="ic" style="color:#2563eb;">🗺️</span><span>Sumar al mapa</span>
             </button>
+            @* 27/11/2026: mandar la cobranza de esta venta a un repartidor (mismo cartel que en Nueva cobranza y el mapa). *@
+            @if (!anuladaM && saldoM > 0.01m && !(vMenu.TipoComprobante ?? "").StartsWith("NC", StringComparison.OrdinalIgnoreCase) && !vMenu.FacturadaComoVentaId.HasValue)
+            {
+                <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await Task.Yield(); AbrirMandarACobrar(v); }">
+                    <span class="ic" style="color:#b45309;">💰</span><span>Mandar a cobrar · debe $@FormatMoney(saldoM)</span>
+                </button>
+            }
             <button class="actions-popup-item" @onclick="async () => { var v = vMenu; CloseActionsMenu(); await Task.Yield(); await DuplicarComprobante(v); }">
                 <span class="ic" style="color:#16a34a;">📋</span><span>Duplicar comprobante</span>
             </button>
@@ -5908,6 +5926,24 @@
         return string.IsNullOrEmpty(n) ? $"#{id}" : n[(n.LastIndexOf('-') + 1)..];
     }
     private Dictionary<int, decimal> saldosPorVenta = new();
+
+    // ── 27/11/2026: "Mandar a cobrar" ──
+    private CafeVentaDto? cobVenta;
+    private List<CobAbiertaDto> cobAbiertas = new();
+    private void AbrirMandarACobrar(CafeVentaDto v) => cobVenta = v;
+    private async Task CerrarMandarACobrar(bool cambio)
+    {
+        cobVenta = null;
+        if (cambio) await CargarCobAbiertas();
+    }
+    private async Task CargarCobAbiertas()
+    {
+        try { cobAbiertas = await Api.CobAbiertasAsync() ?? new(); } catch { cobAbiertas = new(); }
+    }
+    /// <summary>La cobranza mandada que cubre esta venta: la de esa venta puntual o la de todo el cliente.</summary>
+    private CobAbiertaDto? CobAbiertaDe(CafeVentaDto v)
+        => cobAbiertas.FirstOrDefault(a => a.VentaId == v.Id)
+        ?? (v.ClienteId.HasValue ? cobAbiertas.FirstOrDefault(a => a.VentaId == null && a.ClienteId == v.ClienteId.Value) : null);
     // 09/10/2026: lo imputado en cobranzas (para el credito que le queda a una NC) y el vinculo
     // factura anulada <-> NC ("Anulada con NC …" / "Anula FC …").
     private Dictionary<int, decimal> pagadoPorVenta = new();
@@ -8803,6 +8839,7 @@
                 vinculoNcPorVenta = (saldos ?? new()).Where(s => s.VinculoNc != null).ToDictionary(s => s.VentaId, s => s.VinculoNc!);
             }
             catch { saldosPorVenta = new(); pagadoPorVenta = new(); vinculoNcPorVenta = new(); }
+            await CargarCobAbiertas();
         }
         catch
         {
@@ -8869,6 +8906,7 @@
                 vinculoNcPorVenta = (saldos ?? new()).Where(s => s.VinculoNc != null).ToDictionary(s => s.VentaId, s => s.VinculoNc!);
             }
             catch { saldosPorVenta = new(); pagadoPorVenta = new(); vinculoNcPorVenta = new(); }
+            await CargarCobAbiertas();
         }
         catch { ToastService.Error("Error al buscar ventas"); }
         loading = false;

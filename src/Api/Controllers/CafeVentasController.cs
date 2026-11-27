@@ -178,7 +178,12 @@ public class CafeVentasController : ControllerBase
         var saldo = Math.Max(0m, totalCobrable - pagado);
         var cfg = await _db.CafeSettings.FindAsync(1);
         var qr = await _qrRepartidorService.GenerarQrAsync(v.PublicToken);
-        var bytes = _reciboVisitaPdfService.GenerarPdf(v, saldo, cfg, qr);
+        // 27/11/2026: si esta venta se mandó a cobrar, el recibo dice a qué repartidor y qué día.
+        var cobSvc = HttpContext.RequestServices.GetRequiredService<CobranzaVisitaService>();
+        var (datos, _) = await cobSvc.DatosReciboAsync(null, null, v.Id, todas: false);
+        var bytes = datos is not null && datos.Repartidor is not null
+            ? _reciboVisitaPdfService.GenerarPdf(datos, cfg, qr)
+            : _reciboVisitaPdfService.GenerarPdf(v, saldo, cfg, qr);
         return File(bytes, "application/pdf", $"VIS-{DateTime.Now.Year:0000}-{v.Id:0000}.pdf");
     }
 

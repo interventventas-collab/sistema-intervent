@@ -93,6 +93,9 @@ public class MisPedidosMapeoDto
     public string? Notas { get; set; }
     /// <summary>2026-09-02: domicilio COMERCIAL, tal como sale en la etiqueta del Flex.</summary>
     public bool EsComercial { get; set; }
+    /// <summary>27/11/2026: parada COBRANZA — cuánto cobrar y de qué comprobantes.</summary>
+    public decimal? CobrarSaldo { get; set; }
+    public string? CobrarDetalle { get; set; }
 }
 
 public class PublicRouteDto
