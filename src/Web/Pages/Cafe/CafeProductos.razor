@@ -5,9 +5,14 @@
 @inject IJSRuntime JS
 @inject HttpClient Http
 @inject NavigationManager Navigation
+@implements IDisposable
 
 <style>
     .cli-pick-row:hover { background: #f0f9ff; }
+    /* 27/11/2026: con 2000+ productos en pantalla, cada letra del buscador hacía que el navegador
+       recalculara la tabla entera (~90 ms por letra, más en compus lentas). Esto le avisa que lo
+       de adentro de la tabla no afecta al resto de la página: baja a ~15 ms. No recorta nada. */
+    .tabla-productos { contain: layout style; }
 </style>
 
 <div class="card">
@@ -15,7 +20,7 @@
         <h3>☕ Productos <span style="font-weight: 500; font-size: 0.85rem; color: #6b7280;">(@(productosVisibles.Count))</span></h3>
         <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
             <input class="form-input" style="min-width: 240px; font-size: 0.85rem;"
-                   @bind="filtroTexto" @bind:event="oninput"
+                   value="@filtroTextoInput" @oninput="OnBuscarInput"
                    placeholder="🔍 SKU, código de barras, nombre..." />
             <select class="form-input" style="max-width: 180px; font-size: 0.85rem;" @bind="filtroCategoria" @bind:after="Load">
                 <option value="">Todas las categorías</option>
@@ -195,7 +200,7 @@
                 </div>
             }
             <div class="table-responsive">
-                <table class="data-table">
+                <table class="data-table tabla-productos">
                     <thead>
                         <tr>
                             @if (modoEdicion || modoTildar)
@@ -2093,6 +2098,37 @@
     private string filtroTipo = "";
     private string filtroMarca = "";
     private string filtroTexto = "";
+    // 27/11/2026: el buscador iba lentísimo porque CADA letra redibujaba la tabla entera (cientos de
+    // filas grandes). Ahora la letra se escribe al instante sin redibujar nada, y la tabla se filtra
+    // recién cuando dejás de tipear 250 ms.
+    private string filtroTextoInput = "";
+    private CancellationTokenSource? buscarCts;
+    private bool saltearProximoRender;
+    protected override bool ShouldRender()
+    {
+        if (saltearProximoRender) { saltearProximoRender = false; return false; }
+        return true;
+    }
+    private void OnBuscarInput(ChangeEventArgs e)
+    {
+        filtroTextoInput = e.Value?.ToString() ?? "";
+        buscarCts?.Cancel();
+        var cts = buscarCts = new CancellationTokenSource();
+        saltearProximoRender = true;   // el repintado automático después de la tecla no hace falta
+        _ = AplicarBusquedaDemorada(cts.Token);
+    }
+    private async Task AplicarBusquedaDemorada(CancellationToken ct)
+    {
+        try { await Task.Delay(250, ct); } catch (TaskCanceledException) { return; }
+        if (ct.IsCancellationRequested) return;
+        await InvokeAsync(() =>
+        {
+            filtroTexto = filtroTextoInput;
+            saltearProximoRender = false;
+            StateHasChanged();
+        });
+    }
+    public void Dispose() => buscarCts?.Cancel();
     // 2026-09-07: filtro "solo los costos en dolares que quedaron viejos"
     private bool soloDolarDesactualizado;
     // 2026-06-15: filtro "solo con reserva" (ventas MeLi pendientes de despacho)
