@@ -32,6 +32,12 @@ public class PlanoElementoDto
     public int Productos { get; set; }
     /// <summary>2026-11-26: JSON con dónde va el nombre y de qué tamaño (ver PlanoDeposito.razor).</summary>
     public string? Estilo { get; set; }
+    /// <summary>2026-11-27: CALLES. Lado 1 (pared izquierda / entrada) y lado 2 (el otro): calle + número
+    /// de rack en esa calle → estante C{calle}-R{nro}-A{altura}. Vacío = ese lado no da a una calle.</summary>
+    public int? Calle1 { get; set; }
+    public int? Nro1 { get; set; }
+    public int? Calle2 { get; set; }
+    public int? Nro2 { get; set; }
 
     public PlanoElementoDto Copia() => (PlanoElementoDto)MemberwiseClone();
 }
@@ -56,6 +62,10 @@ public class PlanoElementoGuardarDto
     public string? Notas { get; set; }
     public int Orden { get; set; }
     public string? Estilo { get; set; }
+    public int? Calle1 { get; set; }
+    public int? Nro1 { get; set; }
+    public int? Calle2 { get; set; }
+    public int? Nro2 { get; set; }
 
     public static PlanoElementoGuardarDto De(PlanoElementoDto e) => new()
     {
@@ -63,6 +73,7 @@ public class PlanoElementoGuardarDto
         X = e.X, Y = e.Y, Ancho = e.Ancho, Largo = e.Largo, Alto = e.Alto, Rotacion = e.Rotacion,
         Posiciones = e.Posiciones, Niveles = e.Niveles, Color = e.Color, Puntos = e.Puntos,
         Notas = e.Notas, Orden = e.Orden, Estilo = e.Estilo,
+        Calle1 = e.Calle1, Nro1 = e.Nro1, Calle2 = e.Calle2, Nro2 = e.Nro2,
     };
 }
 
@@ -84,12 +95,25 @@ public class PlanoEstanteDto
     public int Nivel { get; set; }
     public string Codigo { get; set; } = "";
     public List<PlanoAsignacionDto> Productos { get; set; } = new();
+    /// <summary>2026-11-27: de qué lado del rack (1 o 2) y escrito ("Calle 3 · Rack 4 · Altura 3").</summary>
+    public int Cara { get; set; } = 1;
+    public string? Desglose { get; set; }
+}
+
+/// <summary>2026-11-27: un lado del rack que da a una calle.</summary>
+public class PlanoCaraDto
+{
+    public int Cara { get; set; }
+    public int? Calle { get; set; }
+    public int? Nro { get; set; }
+    public string Titulo { get; set; } = "";
 }
 
 public class PlanoRackDto
 {
     public PlanoElementoDto Elemento { get; set; } = new();
     public List<PlanoEstanteDto> Estantes { get; set; } = new();
+    public List<PlanoCaraDto> Caras { get; set; } = new();
 }
 
 /// <summary>Un estante solo (lo que abre el QR pegado en el estante).</summary>
@@ -103,6 +127,11 @@ public class PlanoEstanteDetalleDto
     public int? Posiciones { get; set; }
     public int Posicion { get; set; }
     public int Nivel { get; set; }
+    /// <summary>2026-11-27: lado del rack, calle y número de rack en la calle, y escrito.</summary>
+    public int Cara { get; set; } = 1;
+    public int? Calle { get; set; }
+    public int? Nro { get; set; }
+    public string? Desglose { get; set; }
     public List<PlanoAsignacionDto> Productos { get; set; } = new();
 }
 
@@ -121,6 +150,7 @@ public class PlanoLugarDto
     public int RackId { get; set; }
     public string? Planta { get; set; }
     public string? Cantidad { get; set; }
+    public string? Desglose { get; set; }
 }
 
 /// <summary>2026-11-26: producto con lugar viejo ("PB · TOST") que todavía no está en ningún estante

@@ -9349,3 +9349,23 @@ GO
 IF OBJECT_ID('Deposito_PlanoElementos','U') IS NOT NULL AND COL_LENGTH('Deposito_PlanoElementos','Estilo') IS NULL
     ALTER TABLE Deposito_PlanoElementos ADD Estilo NVARCHAR(400) NULL;
 GO
+
+-- 27/11/2026: PLANO DEL DEPÓSITO — CALLES. Cada rack tiene hasta dos lados con calle + número
+-- (estante C3-R4-A3) y cada producto guardado recuerda de qué lado está (Cara 1/2).
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+IF OBJECT_ID('Deposito_PlanoElementos','U') IS NOT NULL AND COL_LENGTH('Deposito_PlanoElementos','Calle1') IS NULL
+    ALTER TABLE Deposito_PlanoElementos ADD Calle1 INT NULL, Nro1 INT NULL, Calle2 INT NULL, Nro2 INT NULL;
+GO
+IF OBJECT_ID('Deposito_EstanteProductos','U') IS NOT NULL AND COL_LENGTH('Deposito_EstanteProductos','Cara') IS NULL
+    ALTER TABLE Deposito_EstanteProductos ADD Cara INT NOT NULL CONSTRAINT DF_Deposito_EstanteProductos_Cara DEFAULT 1;
+GO
+IF EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_Deposito_EstanteProductos'
+           AND object_id = OBJECT_ID('Deposito_EstanteProductos'))
+   AND NOT EXISTS (SELECT 1 FROM sys.index_columns ic JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                   JOIN sys.indexes i ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+                   WHERE i.name = 'UX_Deposito_EstanteProductos' AND c.name = 'Cara')
+BEGIN
+    DROP INDEX UX_Deposito_EstanteProductos ON Deposito_EstanteProductos;
+    CREATE UNIQUE INDEX UX_Deposito_EstanteProductos ON Deposito_EstanteProductos(ElementoId, Cara, Posicion, Nivel, ProductoId);
+END
+GO

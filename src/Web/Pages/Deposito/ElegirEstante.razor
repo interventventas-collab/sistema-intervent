@@ -38,12 +38,24 @@
                 <option value="">— elegí —</option>
                 @foreach (var r in racks)
                 {
-                    <option value="@r.Id">Rack @r.Codigo · @r.Planta</option>
+                    <option value="@r.Id">Rack @r.Codigo · @r.Planta@(r.Calle1 is not null || r.Calle2 is not null ? " · " + string.Join(" / ", ApiClient.CarasDe(r).Select(c => c.Titulo)) : "")</option>
                 }
             </select>
         </span>
         @if (rack is not null)
         {
+            @* 2026-11-27: rack del medio → de qué lado (cada lado da a una calle distinta) *@
+            @if (ApiClient.CarasDe(rack) is { Count: > 1 } carasR)
+            {
+                <span class="ee-fila">
+                    <span class="ee-lbl">Lado</span>
+                    @foreach (var (c, tit) in carasR)
+                    {
+                        var cc = c;
+                        <button type="button" class="ee-n @(cara == cc ? "on" : "")" @onclick="() => cara = cc">@tit</button>
+                    }
+                </span>
+            }
             @* 2026-11-27: con una sola posición (lo de hoy) no se pregunta; con varias, la posición es una letra *@
             @if ((rack.Posiciones ?? 1) > 1)
             {
@@ -57,7 +69,7 @@
             </span>
             }
             <span class="ee-fila">
-                <span class="ee-lbl">Nivel</span>
+                <span class="ee-lbl">Altura</span>
                 @for (var i = 1; i <= (rack.Niveles ?? 1); i++)
                 {
                     var n = i;
@@ -68,7 +80,7 @@
             <span class="ee-fila">
                 <input class="ee-in" @bind="cantidad" @bind:event="oninput" maxlength="50" placeholder="Cantidad (opcional)" />
                 <button type="button" class="ee-btn" disabled="@(Codigo is null || guardando)" @onclick="Guardar">
-                    @(guardando ? "Guardando…" : Codigo is null ? ((rack.Posiciones ?? 1) > 1 ? "Elegí nivel y lugar" : "Elegí el nivel") : $"Guardar en {Codigo}")
+                    @(guardando ? "Guardando…" : Codigo is null ? (cara is null ? "Elegí el lado" : (rack.Posiciones ?? 1) > 1 ? "Elegí altura y lugar" : "Elegí la altura") : $"Guardar en {Codigo}")
                 </button>
             </span>
         }
@@ -84,11 +96,11 @@
 
     private List<PlanoElementoDto>? racks;
     private PlanoElementoDto? rack;
-    private int? pos, nivel;
+    private int? pos, nivel, cara;
     private string? cantidad;
     private bool guardando;
 
-    private string? Codigo => rack is not null && pos is not null && nivel is not null ? ApiClient.CodigoEstante(rack.Codigo, rack.Posiciones, pos.Value, nivel.Value) : null;
+    private string? Codigo => rack is not null && pos is not null && nivel is not null && cara is not null ? ApiClient.CodigoEstante(rack, cara.Value, pos.Value, nivel.Value) : null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,6 +121,7 @@
         rack = int.TryParse(e.Value?.ToString(), out var id) ? racks?.FirstOrDefault(r => r.Id == id) : null;
         pos = (rack?.Posiciones ?? 1) <= 1 ? 1 : null;
         nivel = rack?.Niveles == 1 ? 1 : null;
+        cara = rack is null ? null : ApiClient.CarasDe(rack) is { Count: 1 } una ? una[0].Cara : null;
     }
 
     private async Task Guardar()
