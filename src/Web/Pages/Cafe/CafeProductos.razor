@@ -322,6 +322,20 @@
                                        botones PB / P1 / Otro depósito ahí mismo (naranja si "no estaba acá"). *@
                                     @* Los combos (EsCompuestoFake) viven en otra tabla: su Id no es de un producto. *@
                                     @* 2026-11-26: + "📦 Estante" (rack del plano) y "🗺 Ver en el plano" si está en un estante. *@
+                                    @* 2026-11-26: packs y combos: el lugar de los productos que lo forman (ej. el pack x6 de D401
+                                       muestra dónde está el D401), con el planito al tocarlo. Solo mirar: se cambia en el producto. *@
+                                    @if (p.EsCompuestoFake && p.ComponenteIds is { Count: > 0 } compIds)
+                                    {
+                                        foreach (var cid in compIds)
+                                        {
+                                            if (!lugares.TryGetValue(cid, out var lc) || lc.Lugar is null) continue;
+                                            var skuComp = productos?.FirstOrDefault(x => x.Id == cid && !x.EsCompuestoFake)?.Sku;
+                                            <div>
+                                                <LugarProducto ProductoId="cid" Lugar="@lc.Lugar" Dudoso="@(lc.DudosaAt is not null)" Editable="false"
+                                                               ConEstante="true" Tamano="0.75rem" Sufijo="@(compIds.Count > 1 || skuComp is not null ? $" ({skuComp ?? "componente"})" : null)" />
+                                            </div>
+                                        }
+                                    }
                                     @if (!p.EsCompuestoFake)
                                     {
                                         lugares.TryGetValue(p.Id, out var lug);
@@ -2977,6 +2991,7 @@
                     IsActive = c.IsActive,
                     EsCompuestoFake = true,
                     EsPackFake = Composicion.EsPack(c),
+                    ComponenteIds = c.Items.Select(i => i.ProductoId).Distinct().ToList(),
                     Composicion = Composicion.DeCompuesto(c),
                     PrecioReferenciaCompuesto = c.PreviewPrecioOtro,
                     OemId = c.OemId,

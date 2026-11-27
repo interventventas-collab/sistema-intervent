@@ -202,6 +202,8 @@ public class CafeProductoDto
     public bool EsCompuestoFake { get; set; } = false;
     /// <summary>2026-09-28: compuesto que en realidad es un PACK (X2, X6, X12…: varias cajas con tapa juntas).</summary>
     public bool EsPackFake { get; set; } = false;
+    /// <summary>2026-11-26: solo pantalla — productos que componen el combo/pack (para mostrar dónde están en el depósito).</summary>
+    public List<int>? ComponenteIds { get; set; }
     /// <summary>2026-06-18: solo si EsCompuestoFake=true — precio de referencia del combo (PVP del armado).</summary>
     public decimal? PrecioReferenciaCompuesto { get; set; }
     public string Categoria { get; set; } = "CAFE";

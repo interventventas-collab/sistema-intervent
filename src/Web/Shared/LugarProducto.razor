@@ -5,7 +5,8 @@
    "no está acá" para avisar que fueron a buscarlo y no estaba.
    Después de guardar muestra el cambio al toque y avisa al padre (OnCambio) por si quiere recargar.
    2026-11-26: ConEstante=true suma el chip "📦 Estante" (rack · posición · nivel del plano del
-   depósito, con ElegirEstante) y "🗺 Ver en el plano" cuando el lugar es un estante (ej. PB · H-1-2). *@
+   depósito, con ElegirEstante) y "🗺 Ver en el plano" cuando el lugar es un estante (ej. PB · H-1-2).
+   Al tocar la ubicación de un estante se abre el planito emergente (PlanoEmergente). *@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
@@ -47,16 +48,28 @@
 }
 else if (!string.IsNullOrEmpty(lugar))
 {
-    <span style="font-size:@Tamano; color:#64748b;">📍 @lugar
-        @if (dudoso)
-        {
-            <span style="color:#b45309; font-weight:600;">· ⚠ no estaba acá</span>
-        }
-    </span>
-    @if (ConEstante && EstanteDe(lugar) is string est)
+    var estLugar = ConEstante ? EstanteDe(lugar) : null;
+    @if (estLugar is not null)
     {
-        <a href="/deposito/plano?estante=@Uri.EscapeDataString(est)" @onclick:stopPropagation="true" title="Abrir el plano del depósito marcando ese estante"
-           style="padding-left:0.4rem; color:#94a3b8; font-size:0.72rem; text-decoration:underline;">🗺 Ver en el plano</a>
+        @* 2026-11-26: si está en un estante del plano, al tocar la ubicación se abre el planito emergente *@
+        <span role="button" @onclick="() => planoAbierto = estLugar" @onclick:stopPropagation="true" title="Ver en el plano dónde está"
+              style="font-size:@Tamano; color:#64748b; cursor:pointer;">📍 @lugar@Sufijo
+            @if (dudoso)
+            {
+                <span style="color:#b45309; font-weight:600;">· ⚠ no estaba acá</span>
+            }
+        </span>
+        <button type="button" @onclick="() => planoAbierto = estLugar" @onclick:stopPropagation="true" title="Ver en el plano dónde está"
+                style="background:none; border:none; padding:0 0 0 0.4rem; color:#2563eb; font-size:0.72rem; text-decoration:underline; cursor:pointer;">🗺 ver en el plano</button>
+    }
+    else
+    {
+        <span style="font-size:@Tamano; color:#64748b;">📍 @lugar@Sufijo
+            @if (dudoso)
+            {
+                <span style="color:#b45309; font-weight:600;">· ⚠ no estaba acá</span>
+            }
+        </span>
     }
     @if (puedeEditar && PermitirCambiar)
     {
@@ -78,6 +91,11 @@ else if (puedeEditar)
             style="background:none; border:none; padding:0; color:#94a3b8; font-size:0.74rem; text-decoration:underline; cursor:pointer;">📍 agregar lugar</button>
 }
 
+@if (planoAbierto is not null)
+{
+    <Web.Pages.Deposito.PlanoEmergente Codigo="@planoAbierto" OnCerrar="() => planoAbierto = null" />
+}
+
 @code {
     [Parameter] public int? ProductoId { get; set; }
     [Parameter] public string? Lugar { get; set; }
@@ -93,6 +111,10 @@ else if (puedeEditar)
     /// <summary>2026-11-26: true = suma "📦 Estante" al editor y "🗺 Ver en el plano" si el lugar es un estante.</summary>
     [Parameter] public bool ConEstante { get; set; }
 
+    /// <summary>2026-11-26: texto chico después del lugar (ej. " (D401)" en un pack: el lugar es el del producto suelto).</summary>
+    [Parameter] public string? Sufijo { get; set; }
+
+    private string? planoAbierto;
     private static readonly (string, string)[] Plantas = { ("PB", "PB"), ("P1", "P1"), ("OTRO", "Otro depósito") };
 
     private bool abierto;
