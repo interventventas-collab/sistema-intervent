@@ -122,11 +122,11 @@
     }
     else if (vista == "fin" && est is not null)
     {
-        <div class="rc-bar"><div class="t"><span>Calle @est.Calle · @operador.Nombre</span></div><div class="d">Rack @est.Nro listo ✅</div></div>
+        <div class="rc-bar"><div class="t"><span>Calle @est.Calle · @operador.Nombre</span></div><div class="d">Rack @est.NombreRack listo ✅</div></div>
         <div class="rc-cont">
             <div style="text-align:center; padding:1rem 0 .6rem">
                 <div style="font-size:3rem">✅</div>
-                <div style="font-weight:800; font-size:1.25rem">C@(est.Calle)-R@(est.Nro) revisado</div>
+                <div style="font-weight:800; font-size:1.25rem">Calle @est.Calle · @est.NombreRack revisado</div>
                 <div style="color:#64748b; font-size:.85rem">@est.Niveles alturas · @operador.Nombre</div>
             </div>
             <div class="rc-res-l"><span>Productos contados</span><b>@resRack.Contados</b></div>
@@ -147,9 +147,9 @@
     else if (est is not null)
     {
         <div class="rc-bar">
-            <div class="t"><span>Calle @est.Calle · rack @est.Nro · altura @est.Nivel de @est.Niveles</span><button @onclick="VolverACalles">calles</button></div>
+            <div class="t"><span>Calle @est.Calle · fila @est.Fila · rack @est.Nro · altura @est.Nivel de @est.Niveles</span><button @onclick="VolverACalles">calles</button></div>
             <div class="rc-cod">@est.Codigo</div>
-            <div class="rc-desg">@est.Desglose@(est.Nivel == 1 ? " (el piso)" : "") · rack @est.Rack@(est.Planta == "P1" ? " · planta alta" : "")</div>
+            <div class="rc-desg">@est.Desglose@(est.Nivel == 1 ? " (el piso)" : "")@(est.Planta == "P1" ? " · planta alta" : "")</div>
         </div>
         <div class="rc-cont">
             @if (error is not null) { <div class="rc-error">@error</div> }

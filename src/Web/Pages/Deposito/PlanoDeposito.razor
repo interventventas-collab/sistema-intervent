@@ -561,28 +561,27 @@
                         <div class="pd-sub">@(s.Tipo == "rack" ? "Lo que pongas acá arma la vista de frente y las etiquetas" : NombreTipo(s.Tipo))</div>
                         @if (s.Tipo == "rack")
                         {
-                            <label>Nombre interno del rack (ej. D1) · no sale en las etiquetas: ahí va el código de la calle</label>
+                            <label>Código interno del rack (no sale en las etiquetas: ahí va calle-fila-rack)</label>
                             <input value="@s.Codigo" @onchange="@(ev => Cambiar(el => el.Codigo = Txt(ev)?.ToUpperInvariant()))" />
                             <div class="pd-dos">
                                 <div><label>Posiciones (a lo largo)</label><input inputmode="numeric" value="@s.Posiciones" @onchange="@(ev => CambiarInt(ev, (el, v) => el.Posiciones = v))" /></div>
                                 <div><label>Niveles (hacia arriba)</label><input inputmode="numeric" value="@s.Niveles" @onchange="@(ev => CambiarInt(ev, (el, v) => el.Niveles = v))" /></div>
                             </div>
-                            @* 2026-11-27: CALLES — cada lado del rack que da a una calle: calle + número de rack en esa calle.
-                               El estante se llama C{calle}-R{número}-A{altura}. Un rack del medio usa los dos lados. *@
+                            @* 2026-11-27: CALLE-FILA-RACK-ALTURA (pedido del dueño): fila = línea de estanterías, rack = cuál de
+                               esa fila (1 = el más cerca de la calle). Cada lado dice a qué calle da: el estante se llama
+                               C{calle}-F{fila}-R{rack}-A{altura}. Un rack del medio da a dos calles. *@
                             var girado = s.Rotacion == 90 || s.Rotacion == 270;
-                            <label style="margin-top:10px">Calles · @(girado ? "lado de la entrada" : "lado pared izquierda") <span class="pd-g">(vacío si ese lado no da a una calle)</span></label>
-                            <div class="pd-dos">
-                                <div><label>Calle</label><input inputmode="numeric" placeholder="ej. 1" value="@s.Calle1" @onchange="@(ev => CambiarLado(ev, 1, true))" /></div>
-                                <div><label>Rack nº en esa calle</label><input inputmode="numeric" placeholder="ej. 2" value="@s.Nro1" @onchange="@(ev => CambiarLado(ev, 1, false))" /></div>
+                            <div class="pd-dos" style="margin-top:10px">
+                                <div><label>Fila</label><input inputmode="numeric" placeholder="ej. 4" value="@s.Fila" @onchange="@(ev => CambiarFila(ev, true))" /></div>
+                                <div><label>Rack nº en la fila</label><input inputmode="numeric" placeholder="ej. 2" value="@s.NroFila" @onchange="@(ev => CambiarFila(ev, false))" /></div>
                             </div>
-                            <label>Calles · @(girado ? "lado del fondo" : "lado pared derecha")</label>
                             <div class="pd-dos">
-                                <div><label>Calle</label><input inputmode="numeric" placeholder="ej. 2" value="@s.Calle2" @onchange="@(ev => CambiarLado(ev, 2, true))" /></div>
-                                <div><label>Rack nº en esa calle</label><input inputmode="numeric" placeholder="ej. 1" value="@s.Nro2" @onchange="@(ev => CambiarLado(ev, 2, false))" /></div>
+                                <div><label>Calle · @(girado ? "lado entrada" : "lado pared izq.")</label><input inputmode="numeric" placeholder="vacío = no da" value="@s.Calle1" @onchange="@(ev => CambiarLado(ev, 1))" /></div>
+                                <div><label>Calle · @(girado ? "lado fondo" : "lado pared der.")</label><input inputmode="numeric" placeholder="vacío = no da" value="@s.Calle2" @onchange="@(ev => CambiarLado(ev, 2))" /></div>
                             </div>
-                            @if (ApiClient.CarasDe(s) is { } cs && (s.Calle1 is not null || s.Calle2 is not null))
+                            @if (s.Fila is not null)
                             {
-                                <div class="pd-g" style="font-size:.8rem">Estantes: @string.Join(" y ", cs.Select(c => ApiClient.CodigoEstante(s, c.Cara, 1, 1) + "…"))</div>
+                                <div class="pd-g" style="font-size:.8rem">Estantes: @string.Join(" y ", ApiClient.CarasDe(s).Select(c => ApiClient.CodigoEstante(s, c.Cara, 1, 1) + "…"))</div>
                             }
                         }
                         <label>Nombre</label>
@@ -1323,27 +1322,37 @@
         await Cambiar(el => f(el, Math.Round(v.Value, 2)));
     }
 
-    /// <summary>2026-11-27: calle o número de rack de un lado. Se guarda cuando el lado tiene los dos
-    /// (o ninguno); con uno solo, espera al otro.</summary>
-    private async Task CambiarLado(ChangeEventArgs ev, int lado, bool esCalle)
+    /// <summary>2026-11-27: la calle a la que da un lado (vacío = ese lado no da a una calle).</summary>
+    private async Task CambiarLado(ChangeEventArgs ev, int lado)
     {
         if (sel is null) return;
-        var t = Txt(ev);
-        int? v = null;
-        if (t is not null)
+        if (!LeerNum(ev, out var v)) return;
+        if (lado == 1) sel.Calle1 = v; else sel.Calle2 = v;
+        await Guardar(sel);
+    }
+
+    /// <summary>2026-11-27: fila o número de rack en la fila. Se guarda cuando están los dos (o ninguno).</summary>
+    private async Task CambiarFila(ChangeEventArgs ev, bool esFila)
+    {
+        if (sel is null) return;
+        if (!LeerNum(ev, out var v)) return;
+        if (esFila) sel.Fila = v; else sel.NroFila = v;
+        if ((sel.Fila is null) != (sel.NroFila is null))
         {
-            if (!int.TryParse(t, out var n) || n < 0 || n > 99) { ToastService.Warning("Poné un número del 0 al 99 (o dejalo vacío)"); return; }
-            v = n;
-        }
-        if (lado == 1) { if (esCalle) sel.Calle1 = v; else sel.Nro1 = v; }
-        else { if (esCalle) sel.Calle2 = v; else sel.Nro2 = v; }
-        var (c, nro) = lado == 1 ? (sel.Calle1, sel.Nro1) : (sel.Calle2, sel.Nro2);
-        if ((c is null) != (nro is null))
-        {
-            ToastService.Info(c is null ? "Ahora poné la calle de ese lado" : "Ahora poné el número de rack en esa calle");
+            ToastService.Info(sel.Fila is null ? "Ahora poné la fila" : "Ahora poné qué número de rack es en esa fila");
             return;
         }
         await Guardar(sel);
+    }
+
+    private bool LeerNum(ChangeEventArgs ev, out int? v)
+    {
+        v = null;
+        var t = Txt(ev);
+        if (t is null) return true;
+        if (!int.TryParse(t, out var n) || n < 0 || n > 99) { ToastService.Warning("Poné un número del 0 al 99 (o dejalo vacío)"); return false; }
+        v = n;
+        return true;
     }
 
     private async Task CambiarInt(ChangeEventArgs ev, Action<PlanoElementoDto, int> f)
@@ -1375,7 +1384,7 @@
         c.Id = 0; c.Productos = 0;
         c.Y = Math.Round(c.Y + Largo(sel) + 0.2m, 1);
         c.Orden = elementos.Max(x => x.Orden) + 1;
-        if (c.Tipo == "rack") { c.Codigo = CodigoLibre(sel.Codigo); c.Nombre = null; c.Calle1 = c.Nro1 = c.Calle2 = c.Nro2 = null; }
+        if (c.Tipo == "rack") { c.Codigo = CodigoLibre(sel.Codigo); c.Nombre = null; c.Calle1 = c.Nro1 = c.Calle2 = c.Nro2 = null; if (sel.Fila is int f && sel.NroFila is int nf) { c.Fila = f; c.NroFila = nf + 1; } }
         await Crear(c);
     }
 
@@ -1551,7 +1560,7 @@
 
     private static string Titulo(PlanoElementoDto e)
         => !string.IsNullOrWhiteSpace(e.Nombre) ? e.Nombre!
-         : e.Tipo == "rack" ? (ApiClient.LadosRack(e).Count > 0 ? ApiClient.NombreRack(e) : $"Rack {e.Codigo}")
+         : e.Tipo == "rack" ? (e.Fila is not null ? $"Rack {ApiClient.NombreRack(e)}" : $"Rack {e.Codigo}")
          : NombreTipo(e.Tipo);
 
     public async ValueTask DisposeAsync()

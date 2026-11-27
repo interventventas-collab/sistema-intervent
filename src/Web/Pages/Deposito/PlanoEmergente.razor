@@ -66,7 +66,7 @@
             var niv = Math.Max(1, rack.Niveles ?? 1);
             const int CW = 74, CH = 34, M = 26;
             var w = M + pos * CW + 6; var h = niv * CH + 26;
-            <div class="pe-lbl">@(est.Calle is int ca && est.Nro is int nr ? $"Calle {ca} · rack {nr} de frente" : $"Rack {rack.Codigo} de frente")</div>
+            <div class="pe-lbl">@(ApiClient.CarasDe(rack).FirstOrDefault(c => c.Cara == est.Cara).Titulo ?? $"Rack {rack.Codigo}") · de frente</div>
             <div class="pe-frente">
                 <svg width="@w" height="@h" viewBox="0 0 @w @h" xmlns="http://www.w3.org/2000/svg">
                     @for (var n = 1; n <= niv; n++)

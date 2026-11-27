@@ -9392,3 +9392,9 @@ BEGIN
     CREATE INDEX IX_Deposito_EstanteRevisiones_Estante ON Deposito_EstanteRevisiones(ElementoId, Cara, Posicion, Nivel, At);
 END
 GO
+
+-- 27/11/2026: PLANO DEL DEPÓSITO — CALLE-FILA-RACK-ALTURA (C3-F4-R2-A3). Fila = línea física de
+-- estanterías y NroFila = qué rack de esa fila. ⚠ En PROD correr a mano ANTES de publicar la API.
+IF OBJECT_ID('Deposito_PlanoElementos','U') IS NOT NULL AND COL_LENGTH('Deposito_PlanoElementos','Fila') IS NULL
+    ALTER TABLE Deposito_PlanoElementos ADD Fila INT NULL, NroFila INT NULL;
+GO

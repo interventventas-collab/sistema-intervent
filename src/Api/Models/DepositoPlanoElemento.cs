@@ -57,6 +57,13 @@ public class DepositoPlanoElemento
     public int? Calle2 { get; set; }
     public int? Nro2 { get; set; }
 
+    /// <summary>2026-11-27 (2ª versión, pedido del dueño): CALLE-FILA-RACK-ALTURA. Fila = línea física de
+    /// estanterías (1 = pared izquierda + pasillo techado…) y NroFila = qué rack de esa fila (1 = el más cerca
+    /// de la calle). Cada lado solo dice a qué calle da (Calle1 / Calle2) → estante C3-F4-R2-A3.
+    /// Nro1/Nro2 quedan solo para leer las etiquetas impresas con el código anterior (C3-R4-A3).</summary>
+    public int? Fila { get; set; }
+    public int? NroFila { get; set; }
+
     [MaxLength(9)]
     public string? Color { get; set; }
 
