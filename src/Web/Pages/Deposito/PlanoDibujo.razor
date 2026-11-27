@@ -47,8 +47,25 @@
                         }
                     }
                 }
-                var fs = Math.Min(0.55, Math.Min(r.W, r.H) * 0.55);
-                <g><text x="@F(r.CX)" y="@F(r.CY + fs * 0.35)" font-size="@F(fs)" font-weight="800" text-anchor="middle" fill="@(esEste ? "#fff" : "#78350f")">@e.Codigo</text></g>
+                @* 2026-11-27: código de calle de cada lado (como las etiquetas) *@
+                var lados = ApiClient.LadosRack(e);
+                if (lados.Count == 0)
+                {
+                    var fs = Math.Min(0.55, Math.Min(r.W, r.H) * 0.55);
+                    <g><text x="@F(r.CX)" y="@F(r.CY + fs * 0.35)" font-size="@F(fs)" font-weight="800" text-anchor="middle" fill="@(esEste ? "#fff" : "#78350f")">@e.Codigo</text></g>
+                }
+                else
+                {
+                    var girado = e.Rotacion == 90 || e.Rotacion == 270;
+                    foreach (var (cara, txt) in lados)
+                    {
+                        var dos = lados.Count == 2;
+                        var fs = Math.Clamp(Math.Min(dos && !girado ? r.H / 2.3 : r.H * 0.5, (dos && girado ? r.W / 2 : r.W) / (txt.Length * 0.62)), 0.15, 0.55);
+                        var tx = girado && dos ? (cara == 1 ? r.X + r.W / 4 : r.X + r.W * 3 / 4) : r.CX;
+                        var ty = !girado && dos ? (cara == 1 ? r.Y + r.H * 3 / 4 : r.Y + r.H / 4) : r.CY;
+                        <g><text x="@F(tx)" y="@F(ty + fs * 0.35)" font-size="@F(fs)" font-weight="800" text-anchor="middle" fill="@(esEste ? "#fff" : "#78350f")">@txt</text></g>
+                    }
+                }
                 break;
             case "texto": case "techo":
                 break;

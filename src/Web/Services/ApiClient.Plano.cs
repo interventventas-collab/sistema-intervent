@@ -112,6 +112,24 @@ public partial class ApiClient
         return CodigoEstante(rack.Codigo, rack.Posiciones, pos, nivel);
     }
 
+    /// <summary>2026-11-27: cómo se llama el rack en el plano: el código de calle de cada lado
+    /// ("C3-R2", o "C1-R2 / C2-R1" si es del medio). Sin calle, su código de siempre (D1).</summary>
+    public static string NombreRack(PlanoElementoDto r)
+    {
+        var l = LadosRack(r);
+        return l.Count == 0 ? (r.Codigo ?? "?") : string.Join(" / ", l.Select(x => x.Texto));
+    }
+
+    /// <summary>2026-11-27: los lados con calle y su texto corto ("C3-R2"), para dibujarlos en el plano.
+    /// Lado 1 = pared izquierda (abajo en el plano) o, girado, la entrada (izquierda); lado 2 = el otro.</summary>
+    public static List<(int Cara, string Texto)> LadosRack(PlanoElementoDto r)
+    {
+        var l = new List<(int, string)>();
+        if (r.Calle1 is int c1 && r.Nro1 is int n1) l.Add((1, $"C{c1}-R{n1}"));
+        if (r.Calle2 is int c2 && r.Nro2 is int n2) l.Add((2, $"C{c2}-R{n2}"));
+        return l;
+    }
+
     /// <summary>2026-11-27: los lados del rack que dan a una calle: (1, "Calle 1 · Rack 2"), (2, …).
     /// Sin calles cargadas: un solo lado con el nombre del rack.</summary>
     public static List<(int Cara, string Titulo)> CarasDe(PlanoElementoDto r)

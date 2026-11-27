@@ -36,7 +36,7 @@
                 <div class="pe-cod">@Codigo</div>
                 @if (est is not null)
                 {
-                    <div class="pe-sub">@(est.Desglose ?? ApiClient.TextoEstante(est.Rack, est.Posiciones, est.Posicion, est.Nivel))@(est.Nivel == 1 && est.Desglose is not null ? " (el piso)" : "")@(est.Planta == "P1" ? " · planta alta" : " · planta baja") <span style="color:#9ca3af">· rack @est.Rack</span></div>
+                    <div class="pe-sub">@(est.Desglose ?? ApiClient.TextoEstante(est.Rack, est.Posiciones, est.Posicion, est.Nivel))@(est.Nivel == 1 && est.Desglose is not null ? " (el piso)" : "")@(est.Planta == "P1" ? " · planta alta" : " · planta baja")</div>
                 }
             </div>
             @if (est is not null && rack is not null)

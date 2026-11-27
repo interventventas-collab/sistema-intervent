@@ -187,7 +187,12 @@
                 }
             }
             const top = div('p3-rcod', { width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${H + 2}px)`, fontSize: Math.max(12, Math.min(26, r.h * 0.5)) + 'px' }, d);
-            top.textContent = e.codigo;
+            // 2026-11-27: el código de calle de cada lado (como las etiquetas); sin calle, el de siempre
+            const lados = [];
+            if (e.calle1 != null && e.nro1 != null) lados.push('C' + e.calle1 + '-R' + e.nro1);
+            if (e.calle2 != null && e.nro2 != null) lados.push('C' + e.calle2 + '-R' + e.nro2);
+            if (lados.length === 2) { top.innerHTML = '<div style="text-align:center;line-height:1.05">' + lados[1] + '<br>' + lados[0] + '</div>'; top.style.fontSize = Math.max(10, Math.min(18, r.h * 0.3)) + 'px'; }
+            else top.textContent = lados[0] || e.codigo;
             racks[e.codigo.toUpperCase()] = { e, r, H, N, d, niveles };
             if (e.calle1 != null && e.nro1 != null) porCalle[e.calle1 + '-' + e.nro1] = e.codigo.toUpperCase();
             if (e.calle2 != null && e.nro2 != null) porCalle[e.calle2 + '-' + e.nro2] = e.codigo.toUpperCase();
