@@ -132,6 +132,11 @@
             <div class="pd-busca edit">Modo editar · tocá algo de la izquierda para agregarlo · cada cambio se guarda solo</div>
         }
         <div class="pd-der">
+            @if (!editar)
+            {
+                @* 2026-11-27: hoja para imprimir / guardar PDF (todo o por zona) *@
+                <a class="pd-btn" href="/deposito/plano/imprimir?planta=@planta" style="text-decoration:none;">🖨 Imprimir / PDF</a>
+            }
             @if (esAdmin)
             {
                 @if (!editar)
