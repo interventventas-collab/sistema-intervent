@@ -9,6 +9,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="prep-card @(SelectedForPrint ? "prep-card-selected" : "")" style="@(Venta.EditandoPor is not null ? "border:2px solid #dc2626;" : cambiosVisibles.Count > 0 ? "border:2px solid #d97706;" : "")">
@@ -161,6 +162,16 @@
         }
     }
 
+    @* 2026-11-27: "Dónde está todo" — plano del depósito en 3D con el recorrido del pedido
+       (wwwroot/js/plano3d.js). Solo si algún producto está en un estante del plano. *@
+    @if (Venta.Items.Any(i => ApiClient.EsCodigoEstante(i.UbicacionZona)))
+    {
+        <button class="prep-btn-ver-comp prep-btn-3d" @onclick="() => Abrir3D(null)" disabled="@abriendo3D"
+                title="Ver en el plano del depósito, en 3D, dónde está cada producto de este pedido">
+            @(abriendo3D ? "Abriendo el plano…" : "🧭 Dónde está todo · plano 3D")
+        </button>
+    }
+
     @* Boton para desplegar la composicion del pedido. Por default cerrado. *@
     <button class="prep-btn-ver-comp" @onclick="() => mostrarComposicion = !mostrarComposicion">
         @if (mostrarComposicion)
@@ -297,7 +308,8 @@
                             @if (it.ProductoId is not null || !string.IsNullOrEmpty(it.Lugar))
                             {
                                 <div style="font-weight:400; line-height:1.3;">
-                                    <LugarProducto ProductoId="it.ProductoId" Lugar="@it.Lugar" Dudoso="it.LugarDudoso" Editable="true" PermitirCambiar="true" Tamano="0.74rem" />
+                                    <LugarProducto ProductoId="it.ProductoId" Lugar="@it.Lugar" Dudoso="it.LugarDudoso" Editable="true" PermitirCambiar="true" Tamano="0.74rem"
+                                                   ConEstante="true" OnVerPlano="Abrir3D" TextoVer="🧭 3D" />
                                 </div>
                             }
                             <div class="prep-item-tags">
@@ -737,6 +749,63 @@
     {
         qrPollCts?.Cancel();
         qrPollCts?.Dispose();
+        ref3D?.Dispose();
+    }
+
+    // ───────── 2026-11-27: plano 3D del pedido (wwwroot/js/plano3d.js) ─────────
+    private bool abriendo3D;
+    private DotNetObjectReference<CardPedido>? ref3D;
+    // el plano casi no cambia: se guarda un rato para que abrirlo de nuevo sea instantáneo
+    private static readonly Dictionary<string, (DateTime At, List<PlanoElementoDto> Els)> plano3DCache = new();
+
+    /// <summary>Abre el plano 3D con todos los productos del pedido; si viene un estante ("D2-3"),
+    /// la cámara vuela primero a ese.</summary>
+    private async Task Abrir3D(string? estante)
+    {
+        if (abriendo3D) return;
+        abriendo3D = true;
+        StateHasChanged();
+        try
+        {
+            var items = Venta.Items.Where(i => !i.EsConceptoLibre).Select(i => new
+            {
+                id = i.Id,
+                sku = i.Sku,
+                n = i.ProductoNombre,
+                c = $"{i.Cantidad} × {FormatoLabelExtendido(i.Formato, i.UxB)}",
+                est = ApiClient.EsCodigoEstante(i.UbicacionZona) ? i.UbicacionZona!.Trim() : null,
+                planta = string.IsNullOrWhiteSpace(i.UbicacionPlanta) ? "PB" : i.UbicacionPlanta,
+            }).ToList();
+            var plantas = new Dictionary<string, List<PlanoElementoDto>>();
+            foreach (var pl in items.Where(x => x.est is not null).Select(x => x.planta!.ToUpperInvariant()).Distinct())
+            {
+                if (plano3DCache.TryGetValue(pl, out var c) && (DateTime.UtcNow - c.At).TotalMinutes < 5) { plantas[pl] = c.Els; continue; }
+                var els = (await Api.GetPlanoDepositoAsync(pl))?.Elementos ?? new();
+                plano3DCache[pl] = (DateTime.UtcNow, els);
+                plantas[pl] = els;
+            }
+            ref3D ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("plano3d.abrir", new
+            {
+                titulo = $"{Venta.Numero} · {Venta.ClienteNombre}",
+                plantas,
+                items,
+                inicio = estante,
+                hechos = tildados.ToList(),
+                dotnet = ref3D,
+            });
+        }
+        catch (Exception ex) { ToastService.Error("No pude abrir el plano: " + ex.Message); }
+        finally { abriendo3D = false; StateHasChanged(); }
+    }
+
+    /// <summary>"✓ Lo tengo" en el plano 3D: tilda el producto también acá en la tarjeta.</summary>
+    [JSInvokable]
+    public Task Tildar3D(int itemId)
+    {
+        tildados.Add(itemId);
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
     // 2026-08-03: foto del producto abierta en grande (lightbox). Null = cerrada.

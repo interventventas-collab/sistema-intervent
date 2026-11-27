@@ -56,7 +56,7 @@ else if (!string.IsNullOrEmpty(lugar))
         <button type="button" class="lp-plano" @onclick="() => AbrirPlano(estLugar)" @onclick:stopPropagation="true" title="Ver en el plano dónde está"
                 style="font-size:@Tamano;">
             <span class="lp-plano-lugar">📍 @lugar@Sufijo</span>
-            <span class="lp-plano-ver">🗺 Ver en el plano</span>
+            <span class="lp-plano-ver">@TextoVer</span>
         </button>
         @if (dudoso)
         {
@@ -121,8 +121,16 @@ else if (puedeEditar)
     [Inject] private PlanoEmergenteService PlanoSvc { get; set; } = default!;
 
     /// <summary>Abre el planito arriba de toda la página (en el layout); si no hay lugar fijo, acá mismo.</summary>
-    private void AbrirPlano(string codigo)
+    /// <summary>2026-11-27: si viene, "Ver en el plano" llama a esto en vez de abrir el planito
+    /// (ej. el armado de pedidos abre el plano 3D con todo el pedido).</summary>
+    [Parameter] public EventCallback<string> OnVerPlano { get; set; }
+
+    /// <summary>Texto del botón de la pastilla (en lugares angostos, más corto: "🗺 3D").</summary>
+    [Parameter] public string TextoVer { get; set; } = "🗺 Ver en el plano";
+
+    private async Task AbrirPlano(string codigo)
     {
+        if (OnVerPlano.HasDelegate) { await OnVerPlano.InvokeAsync(codigo); return; }
         if (PlanoSvc.HayHost) PlanoSvc.Abrir(codigo);
         else planoAbierto = codigo;
     }

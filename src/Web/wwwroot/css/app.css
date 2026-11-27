@@ -5497,9 +5497,15 @@ tr.om-franja-tr > td { padding: 0 0.5rem 0.8rem !important; border-top: none !im
 .lp-plano { display: inline-flex; align-items: center; gap: 0; padding: 0; border: 1px solid #cbd5e1; border-radius: 999px;
     background: #fff; cursor: pointer; overflow: hidden; line-height: 1.5; vertical-align: middle; font-family: inherit;
     transition: border-color .15s, box-shadow .15s; }
+.lp-plano-lugar, .lp-plano-ver { white-space: nowrap; }
+.lp-plano { max-width: 100%; flex-wrap: nowrap; }
 .lp-plano-lugar { padding: 0 0.5rem; color: #334155; font-weight: 600; font-family: ui-monospace, monospace; letter-spacing: 0.01em; }
 .lp-plano-ver { padding: 0 0.55rem; color: #1d4ed8; background: #eff6ff; border-left: 1px solid #dbeafe; font-weight: 600; }
 .lp-plano:hover { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
 .lp-plano:hover .lp-plano-ver { background: #dbeafe; }
 .lp-plano:focus { outline: none; }
 .lp-plano:focus-visible { box-shadow: 0 0 0 3px rgba(59,130,246,0.35); }
+
+/* 2026-11-27: armado de pedidos — botón del plano 3D (CardPedido) */
+.prep-btn-ver-comp.prep-btn-3d { background: #0f172a; color: #fdba74; border-top-color: #0f172a; font-weight: 800; letter-spacing: .01em; }
+.prep-btn-ver-comp.prep-btn-3d:hover { background: #1e293b; color: #fed7aa; }
