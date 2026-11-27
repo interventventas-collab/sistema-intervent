@@ -503,8 +503,8 @@ public class DepositoPlanoController : ControllerBase
         Content = "<p>" + System.Net.WebUtility.HtmlEncode(texto) + "</p>"
     };
 
-    /// <summary>Una etiqueta por estante (posición y después nivel) para la Zebra 4"×2"
-    /// (812×406 puntos a 203 dpi): el código grande, un QR que abre la página del estante y una
+    /// <summary>Una etiqueta por estante (posición y después nivel) para la Zebra, rollo de MeLi 10×20 cm
+    /// (812×1624 puntos a 203 dpi, troquel arriba): el código grande, un QR que abre la página del estante y una
     /// línea chica "Rack B · posición 3 · nivel 2". Se la pasa a window.zebraImprimir(url).</summary>
     [HttpGet("racks/{id:int}/etiquetas.zpl")]
     public async Task<IActionResult> Etiquetas(int id, [FromQuery] string? origen)
@@ -524,13 +524,27 @@ public class DepositoPlanoController : ControllerBase
             {
                 var cod = CodigoEstante(e.Codigo!, pos, niv);
                 var url = $"{o}/deposito/estante/{cod}";
-                sb.Append("^XA\n^CI28\n^PW812\n^LL406\n^LH0,0\n");
-                // código grande a la izquierda (hasta ~520 puntos de ancho, centrado)
-                sb.Append($"^FO20,70^A0N,170,140^FB520,1,0,C,0^FD{cod}^FS\n");
-                // QR a la derecha (versión chica, aumento 6, entra hasta ~130 letras de dirección)
-                sb.Append($"^FO560,50^BQN,2,6^FDLA,{url}^FS\n");
-                // línea chica abajo
-                sb.Append($"^FO20,320^A0N,38,38^FB760,1,0,L,0^FDRack {e.Codigo} · posición {pos} · nivel {niv}^FS\n");
+                // 2026-11-27: mismo rollo que las etiquetas de envío de MeLi (10 x 20 cm, troquel arriba).
+                // Antes era 10 x 5 y salía todo apretado en el troquel.
+                sb.Append("^XA\n^CI28\n^PW812\n^LL1624\n^LH0,0\n");
+                // troquel (talón de arriba, como en MeLi)
+                sb.Append("^FO16,16^GB780,268,2^FS\n");
+                sb.Append($"^FO30,40^A0N,90,80^FB750,1,0,L,0^FD{cod}^FS\n");
+                sb.Append($"^FO30,150^A0N,36,34^FB750,1,0,L,0^FDRack {e.Codigo} · posición {pos} · nivel {niv}^FS\n");
+                sb.Append("^FO30,210^A0N,28,26^FB750,1,0,L,0^FDRecortá esta parte antes de pegar en el estante^FS\n");
+                // La parte grande de abajo va ACOSTADA (se pega a lo largo del fierro del rack, que es
+                // angosto): campos girados (R), se lee girando la etiqueta. A la izquierda el código
+                // grande y los datos, a la derecha el QR.
+                // (u, v) = posición en la etiqueta acostada; u a lo largo (0..1324), v a lo alto (0..812).
+                const int T0 = 300;
+                string Acostado(int u, int v, int alto, int ancho, string s)
+                    => $"^FO{812 - (v + alto)},{T0 + u}^A0R,{alto},{ancho}^FB860,1,0,C,0^FD{s}^FS\n";
+                sb.Append(Acostado(20, 70, 300, 200, cod));
+                sb.Append(Acostado(20, 430, 62, 54, $"Rack {e.Codigo} · posición {pos} · nivel {niv}"));
+                sb.Append(Acostado(20, 510, 42, 38, niv == 1 ? "nivel 1 = el piso" : $"nivel {niv} contando desde el piso"));
+                sb.Append(Acostado(20, 600, 40, 36, "Escaneá con el celu para ver o guardar productos"));
+                // QR (aumento 13 ≈ 380 puntos; el QR se lee en cualquier sentido)
+                sb.Append($"^FO217,{T0 + 900}^BQN,2,13^FDLA,{url}^FS\n");
                 sb.Append("^XZ\n");
             }
         return Content(sb.ToString(), "text/plain; charset=utf-8");
