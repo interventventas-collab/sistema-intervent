@@ -5,7 +5,7 @@
    desde las pantallas de siempre (Productos, Ubicaciones). Guarda con el mismo endpoint del plano
    (POST /api/deposito/plano/estante/{codigo}/productos), que además le pone al producto la
    ubicación de siempre (planta del rack + "H-1-2"). Sin desplegables raros: un select para el
-   rack y botoncitos para posición y nivel. *@
+   rack y botoncitos para nivel (y lugar A/B/C si el rack tiene varias posiciones). *@
 
 <style>
     .ee { display: inline-flex; flex-direction: column; gap: 0.35rem; font-size: 0.8rem; color: #334155; }
@@ -44,14 +44,18 @@
         </span>
         @if (rack is not null)
         {
+            @* 2026-11-27: con una sola posición (lo de hoy) no se pregunta; con varias, la posición es una letra *@
+            @if ((rack.Posiciones ?? 1) > 1)
+            {
             <span class="ee-fila">
-                <span class="ee-lbl">Posición</span>
+                <span class="ee-lbl">Lugar</span>
                 @for (var i = 1; i <= (rack.Posiciones ?? 1); i++)
                 {
                     var n = i;
-                    <button type="button" class="ee-n @(pos == n ? "on" : "")" @onclick="() => pos = n">@n</button>
+                    <button type="button" class="ee-n @(pos == n ? "on" : "")" @onclick="() => pos = n">@ApiClient.LetraPosicion(n)</button>
                 }
             </span>
+            }
             <span class="ee-fila">
                 <span class="ee-lbl">Nivel</span>
                 @for (var i = 1; i <= (rack.Niveles ?? 1); i++)
@@ -64,7 +68,7 @@
             <span class="ee-fila">
                 <input class="ee-in" @bind="cantidad" @bind:event="oninput" maxlength="50" placeholder="Cantidad (opcional)" />
                 <button type="button" class="ee-btn" disabled="@(Codigo is null || guardando)" @onclick="Guardar">
-                    @(guardando ? "Guardando…" : Codigo is null ? "Elegí posición y nivel" : $"Guardar en {Codigo}")
+                    @(guardando ? "Guardando…" : Codigo is null ? ((rack.Posiciones ?? 1) > 1 ? "Elegí nivel y lugar" : "Elegí el nivel") : $"Guardar en {Codigo}")
                 </button>
             </span>
         }
@@ -84,7 +88,7 @@
     private string? cantidad;
     private bool guardando;
 
-    private string? Codigo => rack is not null && pos is not null && nivel is not null ? $"{rack.Codigo}-{pos}-{nivel}" : null;
+    private string? Codigo => rack is not null && pos is not null && nivel is not null ? ApiClient.CodigoEstante(rack.Codigo, rack.Posiciones, pos.Value, nivel.Value) : null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -103,7 +107,7 @@
     private void ElegirRack(ChangeEventArgs e)
     {
         rack = int.TryParse(e.Value?.ToString(), out var id) ? racks?.FirstOrDefault(r => r.Id == id) : null;
-        pos = rack?.Posiciones == 1 ? 1 : null;
+        pos = (rack?.Posiciones ?? 1) <= 1 ? 1 : null;
         nivel = rack?.Niveles == 1 ? 1 : null;
     }
 

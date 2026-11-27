@@ -209,12 +209,12 @@
                     {
                         var pp = p; var ll = l;
                         var on = lugarSel == ll.AsignacionId;
-                        var (rk, pos, niv) = PartirCodigo(ll.Codigo);
+                        var (rk, pos, niv, conLetra) = ApiClient.PartirEstante(ll.Codigo);
                         <button class="pd-res @(on ? "on" : "")" @onclick="@(() => IrALugar(pp, ll))">
                             <b>@pp.Nombre</b><span class="pd-lug">@ll.Codigo</span>
                             <span class="pd-g">
                                 @if (!string.IsNullOrWhiteSpace(ll.Cantidad)) { <text> · @ll.Cantidad</text> }
-                                @if (on && pos > 0) { <text> · Rack @rk, posición @pos, nivel @niv</text> }
+                                @if (on && niv > 0) { <text> · Rack @rk, nivel @niv@(conLetra ? $", lugar {ApiClient.LetraPosicion(pos)}" : "")</text> }
                                 @if (!string.Equals(ll.Planta, planta, StringComparison.OrdinalIgnoreCase)) { <text> · @NombrePlanta(ll.Planta)</text> }
                             </span>
                         </button>
@@ -629,7 +629,7 @@
                                 {
                                     @for (var p = 1; p <= np; p++)
                                     {
-                                        <g><text x="@F(cw * (p - 1) + 6)" y="@F(ch * (nn - n) + 19)" font-family="monospace" font-size="@(np > 6 ? "8" : "12")" font-weight="800" fill="#78350f">@($"{s.Codigo}-{p}-{n}")</text></g>
+                                        <g><text x="@F(cw * (p - 1) + 6)" y="@F(ch * (nn - n) + 19)" font-family="monospace" font-size="@(np > 6 ? "8" : "12")" font-weight="800" fill="#78350f">@ApiClient.CodigoEstante(s.Codigo, np, p, n)</text></g>
                                     }
                                 }
                             </svg>
@@ -649,7 +649,7 @@
                 var cols = $"grid-template-columns:34px repeat({np}, minmax(0, 1fr))";
                 <h2>@Titulo(el) · vista de frente</h2>
                 <div class="pd-sub">
-                    @np @(np == 1 ? "posición" : "posiciones") · @nn @(nn == 1 ? "nivel" : "niveles") · @M(Largo(el)) × @M(Ancho(el))@(el.Alto is decimal alto ? $" · {M(alto)} de alto" : "")@(string.IsNullOrWhiteSpace(el.Notas) ? "" : " · " + el.Notas)
+                    @(np > 1 ? $"{np} posiciones (A–{ApiClient.LetraPosicion(np)}) · " : "")@nn @(nn == 1 ? "nivel" : "niveles") · @M(Largo(el)) × @M(Ancho(el))@(el.Alto is decimal alto ? $" · {M(alto)} de alto" : "")@(string.IsNullOrWhiteSpace(el.Notas) ? "" : " · " + el.Notas)
                 </div>
                 <div class="pd-frente">
                     @for (var n = nn; n >= 1; n--)
@@ -659,7 +659,7 @@
                             @for (var p = 1; p <= np; p++)
                             {
                                 var est = rack.Estantes.FirstOrDefault(x => x.Posicion == p && x.Nivel == n);
-                                var cod = est?.Codigo ?? $"{el.Codigo}-{p}-{n}";
+                                var cod = est?.Codigo ?? ApiClient.CodigoEstante(el.Codigo, np, p, n);
                                 var hit = string.Equals(cod, celdaSel, StringComparison.OrdinalIgnoreCase);
                                 <button class="pd-cel @(hit ? "hit" : "")" @onclick="@(() => ElegirCelda(cod))">
                                     <span class="pd-cod">@cod</span><br />
@@ -684,14 +684,17 @@
                         </div>
                     }
                 </div>
-                <div class="pd-pie" style="@cols"><span>nivel</span>@for (var p = 1; p <= np; p++) { <span>pos. @p</span> }</div>
+                @if (np > 1)
+                {
+                    <div class="pd-pie" style="@cols"><span>nivel</span>@for (var p = 1; p <= np; p++) { <span>lugar @ApiClient.LetraPosicion(p)</span> }</div>
+                }
 
                 @if (celdaSel is not null)
                 {
                     var est = rack.Estantes.FirstOrDefault(x => string.Equals(x.Codigo, celdaSel, StringComparison.OrdinalIgnoreCase));
-                    var (_, cpos, cniv) = PartirCodigo(celdaSel);
+                    var (_, cpos, cniv, cLetra) = ApiClient.PartirEstante(celdaSel);
                     <div class="pd-est">
-                        <h4><span class="pd-cod" style="font-size:1rem">@celdaSel</span> <span class="pd-g">· posición @cpos · nivel @cniv</span></h4>
+                        <h4><span class="pd-cod" style="font-size:1rem">@celdaSel</span> <span class="pd-g">· nivel @cniv@(cniv == 1 ? " (el piso)" : "")@(cLetra ? $" · lugar {ApiClient.LetraPosicion(cpos)}" : "")</span></h4>
                         @if (est is null || est.Productos.Count == 0)
                         {
                             <div class="pd-g" style="margin-bottom:8px">Este estante está vacío.</div>
@@ -1433,14 +1436,6 @@
     }
 
     /// <summary>"B-3-2" → (rack B, posición 3, nivel 2). El rack puede tener guiones.</summary>
-    private static (string Rack, int Pos, int Niv) PartirCodigo(string? cod)
-    {
-        if (string.IsNullOrWhiteSpace(cod)) return ("", 0, 0);
-        var p = cod.Split('-');
-        if (p.Length < 3 || !int.TryParse(p[^2], out var pos) || !int.TryParse(p[^1], out var niv)) return (cod, 0, 0);
-        return (string.Join("-", p[..^2]), pos, niv);
-    }
-
     private static string NombrePlanta(string? p) => (p ?? "").ToUpperInvariant() switch
     {
         "PB" => "planta baja",

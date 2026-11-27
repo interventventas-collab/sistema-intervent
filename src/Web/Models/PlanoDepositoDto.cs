@@ -99,6 +99,8 @@ public class PlanoEstanteDetalleDto
     public string? Planta { get; set; }
     public string? Rack { get; set; }
     public string Codigo { get; set; } = "";
+    /// <summary>2026-11-27: cuántas posiciones tiene el rack (1 = el código es rack-nivel, ej. D2-3).</summary>
+    public int? Posiciones { get; set; }
     public int Posicion { get; set; }
     public int Nivel { get; set; }
     public List<PlanoAsignacionDto> Productos { get; set; } = new();
