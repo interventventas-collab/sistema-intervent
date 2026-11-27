@@ -139,7 +139,7 @@ public class DepositoPlanoController : ControllerBase
         return cs.Contains(cara) ? cara : cs[0];
     }
 
-    private static (int? Calle, int? Nro) LadoDe(DepositoPlanoElemento e, int cara)
+    public static (int? Calle, int? Nro) LadoDe(DepositoPlanoElemento e, int cara)
     {
         cara = NormCara(e, cara);
         return cara == 2 ? (e.Calle2, e.Nro2) : (e.Calle1, e.Nro1);
@@ -406,7 +406,11 @@ public class DepositoPlanoController : ControllerBase
     /// <summary>Parte el código del estante y busca el rack. Entiende "D2-3" (rack-nivel), "D2-3B"
     /// (nivel 3, posición B) y el formato viejo "D2-1-3" (rack-posición-nivel, de las etiquetas QR
     /// impresas antes del 27/11/2026).</summary>
-    private async Task<(DepositoPlanoElemento? rack, int cara, int pos, int nivel, string? error)> ResolverEstante(string codigo, bool tracking = false)
+    private Task<(DepositoPlanoElemento? rack, int cara, int pos, int nivel, string? error)> ResolverEstante(string codigo, bool tracking = false)
+        => ResolverEstanteAsync(_db, codigo, tracking);
+
+    /// <summary>2026-11-27: lo mismo, para otros controllers (Recorrer estantes del celu).</summary>
+    public static async Task<(DepositoPlanoElemento? rack, int cara, int pos, int nivel, string? error)> ResolverEstanteAsync(AppDbContext _db, string codigo, bool tracking = false)
     {
         var c = (codigo ?? "").Trim().ToUpperInvariant();
         string letra; int pos, niv;

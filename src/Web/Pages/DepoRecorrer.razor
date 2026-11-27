@@ -1,0 +1,539 @@
+@page "/depo/recorrer"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@implements IAsyncDisposable
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@* 2026-11-27: "🧭 Recorrer estantes" — celu del depósito, con la clave del día (mismo pase que /depo).
+   Calle → rack → altura (de abajo hacia arriba). En cada estante: lo que hay guardado se CUENTA con
+   + y − (si no coincide con el sistema, se corrige el stock con el operador elegido), se agrega lo que
+   encuentran escaneando el código de barras (o buscando), "📦 Todo el stock acá" ubica sin contar,
+   y "✕ No está" lo saca. "Listo" marca el estante revisado y pasa al siguiente.
+   API: DepoRecorridoController (/api/public/depo-recorrido). *@
+
+<style>
+    body { background: #f1f5f9; }
+    .rc { max-width: 560px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; font-family: inherit; color: #0f172a; }
+    .rc-bar { background: #0f172a; color: #fff; padding: 0.75rem 0.9rem 0.7rem; position: sticky; top: 0; z-index: 5; }
+    .rc-bar .t { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; display: flex; justify-content: space-between; gap: .5rem; }
+    .rc-bar .t a, .rc-bar .t button { color: #94a3b8; background: none; border: none; font: inherit; text-transform: none; letter-spacing: 0; text-decoration: underline; cursor: pointer; padding: 0; }
+    .rc-bar .d { font-size: 1.15rem; font-weight: 800; margin-top: 2px; }
+    .rc-cod { font-family: ui-monospace, monospace; font-weight: 900; font-size: 2.2rem; color: #fdba74; letter-spacing: .02em; line-height: 1.1; }
+    .rc-desg { font-size: .9rem; color: #e2e8f0; }
+    .rc-cont { flex: 1; padding: .8rem; }
+    .rc-pie { position: sticky; bottom: 0; background: #fff; border-top: 1px solid #e2e8f0; padding: .6rem .7rem .8rem; z-index: 5; }
+    .rc-btn { display: block; width: 100%; border: none; border-radius: 14px; padding: .95rem; font-size: 1.05rem; font-weight: 800; font-family: inherit; cursor: pointer; margin-top: .5rem; }
+    .rc-btn:disabled { opacity: .5; }
+    .rc-verde { background: #16a34a; color: #fff; }
+    .rc-negro { background: #0f172a; color: #fdba74; }
+    .rc-gris { background: #fff; color: #0f172a; border: 1px solid #cbd5e1; }
+    .rc-dos { display: flex; gap: .5rem; }
+    .rc-dos .rc-btn { margin-top: 0; font-size: .95rem; padding: .8rem .5rem; }
+    .rc-calle { display: flex; gap: .7rem; align-items: center; background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: .8rem; margin-bottom: .55rem; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+    .rc-calle .c { width: 48px; height: 48px; border-radius: 12px; color: #fff; font-weight: 900; font-size: 1.15rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .rc-calle .n { font-weight: 800; }
+    .rc-calle .k { font-size: .8rem; color: #64748b; }
+    .rc-prog { height: 7px; background: #e2e8f0; border-radius: 9px; overflow: hidden; margin-top: 5px; }
+    .rc-prog i { display: block; height: 100%; background: #16a34a; }
+    .rc-ops { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+    .rc-op { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1rem .6rem; font: inherit; font-weight: 800; font-size: 1.05rem; cursor: pointer; }
+    .rc-alt { display: flex; flex-direction: column-reverse; gap: 4px; margin-bottom: .8rem; }
+    .rc-alt button { display: flex; align-items: center; gap: .5rem; border: none; background: none; padding: 0; font: inherit; cursor: pointer; text-align: left; }
+    .rc-alt .a { width: 34px; font-family: ui-monospace, monospace; font-weight: 800; color: #64748b; font-size: .85rem; }
+    .rc-alt .b { flex: 1; height: 26px; border-radius: 7px; background: #fef3c7; border: 1px solid #e9c46a; display: flex; align-items: center; padding: 0 .55rem; color: #92400e; font-size: .78rem; }
+    .rc-alt .ok .b { background: #dcfce7; border-color: #86efac; color: #166534; }
+    .rc-alt .ac .b { background: #f97316; border-color: #9a3412; color: #fff; font-weight: 800; }
+    .rc-prod { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: .7rem .75rem; margin-bottom: .55rem; }
+    .rc-prod.listo { background: #f0fdf4; border-color: #bbf7d0; }
+    .rc-prod .n { font-weight: 700; font-size: .95rem; line-height: 1.25; }
+    .rc-prod .s { font-size: .78rem; color: #64748b; margin-top: 2px; }
+    .rc-cnt { display: flex; align-items: center; gap: .4rem; margin-top: .55rem; }
+    .rc-cnt button.pm { width: 44px; height: 44px; border-radius: 12px; border: 1px solid #cbd5e1; background: #fff; font-size: 1.4rem; font-weight: 800; cursor: pointer; }
+    .rc-cnt input { width: 76px; height: 44px; text-align: center; font-size: 1.35rem; font-weight: 900; border: 1px solid #cbd5e1; border-radius: 12px; }
+    .rc-cnt .ok { margin-left: auto; height: 44px; border-radius: 12px; border: none; background: #16a34a; color: #fff; font-weight: 800; padding: 0 .9rem; font-size: 1rem; cursor: pointer; }
+    .rc-mini { display: flex; gap: .4rem; margin-top: .45rem; flex-wrap: wrap; }
+    .rc-mini button { border: 1px solid #cbd5e1; background: #fff; border-radius: 999px; padding: .3rem .7rem; font-size: .8rem; font-weight: 700; cursor: pointer; color: #334155; }
+    .rc-dif { font-size: .78rem; font-weight: 800; color: #b45309; margin-top: .3rem; }
+    .rc-aviso { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 12px; padding: .55rem .7rem; font-size: .85rem; margin-bottom: .6rem; }
+    .rc-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 12px; padding: .55rem .7rem; font-size: .9rem; margin-bottom: .6rem; }
+    .rc-vacio { color: #64748b; text-align: center; padding: 1.2rem .5rem; font-size: .95rem; }
+    .rc-fondo { position: fixed; inset: 0; background: rgba(15,23,42,.55); z-index: 20; }
+    .rc-hoja { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; background: #fff; border-radius: 22px 22px 0 0; padding: 1rem .9rem 1.1rem; max-width: 560px; margin: 0 auto; max-height: 92vh; overflow: auto; box-shadow: 0 -10px 30px rgba(0,0,0,.25); }
+    .rc-lector { width: 100%; border-radius: 14px; overflow: hidden; background: #000; min-height: 220px; }
+    .rc-busca { width: 100%; padding: .75rem .8rem; font-size: 1rem; border: 1px solid #cbd5e1; border-radius: 12px; margin-top: .5rem; }
+    .rc-res { display: block; width: 100%; text-align: left; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: .6rem .7rem; margin-top: .4rem; font: inherit; cursor: pointer; }
+    .rc-tog { display: flex; gap: .4rem; margin-top: .5rem; }
+    .rc-tog button { flex: 1; border: 1px solid #cbd5e1; background: #fff; border-radius: 10px; padding: .55rem .4rem; font: inherit; font-size: .85rem; font-weight: 700; cursor: pointer; }
+    .rc-tog button.on { background: #0f172a; color: #fff; border-color: #0f172a; }
+    .rc-res-l { display: flex; justify-content: space-between; font-size: .95rem; padding: .55rem .2rem; border-bottom: 1px solid #f1f5f9; }
+    .rc-x { position: absolute; right: .8rem; top: .7rem; border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; width: 38px; height: 38px; font-size: 1rem; cursor: pointer; }
+</style>
+
+<div class="rc">
+    @if (cargando && inicio is null && est is null)
+    {
+        <div class="rc-cont"><div class="rc-vacio">Cargando…</div></div>
+    }
+    else if (operador is null)
+    {
+        @* ¿quién sos? (como en Cargar stock) *@
+        <div class="rc-bar"><div class="t"><span>Depósito en celu</span><a href="/depo">← inicio</a></div><div class="d">🧭 Recorrer estantes · ¿quién sos?</div></div>
+        <div class="rc-cont">
+            @if (error is not null) { <div class="rc-error">@error</div> }
+            <div class="rc-ops">
+                @foreach (var o in inicio?.Operadores ?? new())
+                {
+                    var oo = o;
+                    <button class="rc-op" @onclick="() => ElegirOperador(oo)">@oo.Nombre</button>
+                }
+            </div>
+        </div>
+    }
+    else if (vista == "calles")
+    {
+        <div class="rc-bar">
+            <div class="t"><span>Depósito en celu · @operador.Nombre</span><span><button @onclick="CambiarOperador">cambiar</button> · <a href="/depo">inicio</a></span></div>
+            <div class="d">🧭 Recorrer estantes</div>
+        </div>
+        <div class="rc-cont">
+            @if (error is not null) { <div class="rc-error">@error</div> }
+            @if (inicio is { Calles.Count: 0 })
+            {
+                <div class="rc-vacio">Todavía no hay racks con calle en el plano del depósito.</div>
+            }
+            @foreach (var c in inicio?.Calles ?? new())
+            {
+                var cc = c;
+                var pct = c.Estantes == 0 ? 0 : c.Revisados * 100 / c.Estantes;
+                <button class="rc-calle" @onclick="() => AbrirEstante(cc.Seguir!)">
+                    <div class="c" style="background:@ColorCalle(c.Calle)">C@(c.Calle)</div>
+                    <div style="flex:1">
+                        <div class="n">Calle @c.Calle@(c.Planta == "P1" ? " · planta alta" : "")@(pct >= 100 ? " ✓" : "")</div>
+                        <div class="k">@c.Racks @(c.Racks == 1 ? "rack" : "racks") · @c.Revisados de @c.Estantes estantes revisados · @c.Productos productos</div>
+                        <div class="rc-prog"><i style="width:@(pct)%"></i></div>
+                    </div>
+                </button>
+            }
+            <button class="rc-btn rc-negro" @onclick="EscanearEstante">📷 Escanear el QR de un estante</button>
+            <div class="rc-vacio" style="font-size:.82rem">Tocá una calle y arranca en el primer estante que falta revisar. Lo que contás corrige el stock.</div>
+        </div>
+    }
+    else if (vista == "fin" && est is not null)
+    {
+        <div class="rc-bar"><div class="t"><span>Calle @est.Calle · @operador.Nombre</span></div><div class="d">Rack @est.Nro listo ✅</div></div>
+        <div class="rc-cont">
+            <div style="text-align:center; padding:1rem 0 .6rem">
+                <div style="font-size:3rem">✅</div>
+                <div style="font-weight:800; font-size:1.25rem">C@(est.Calle)-R@(est.Nro) revisado</div>
+                <div style="color:#64748b; font-size:.85rem">@est.Niveles alturas · @operador.Nombre</div>
+            </div>
+            <div class="rc-res-l"><span>Productos contados</span><b>@resRack.Contados</b></div>
+            <div class="rc-res-l"><span>Nuevos en este rack</span><b>@resRack.Nuevos</b></div>
+            <div class="rc-res-l"><span>Stock corregido</span><b style="color:@(resRack.Ajustes > 0 ? "#b45309" : "inherit")">@resRack.Ajustes</b></div>
+            <div class="rc-res-l"><span>Sacados (no estaban)</span><b>@resRack.Sacados</b></div>
+            @if (proximo is not null)
+            {
+                <button class="rc-btn rc-verde" @onclick="() => AbrirEstante(proximo)">Seguir con @proximo ▶</button>
+            }
+            else
+            {
+                <div class="rc-vacio">🎉 Terminaste la calle @est.Calle.</div>
+            }
+            <button class="rc-btn rc-gris" @onclick="VolverACalles">Volver a las calles</button>
+        </div>
+    }
+    else if (est is not null)
+    {
+        <div class="rc-bar">
+            <div class="t"><span>Calle @est.Calle · rack @est.Nro · altura @est.Nivel de @est.Niveles</span><button @onclick="VolverACalles">calles</button></div>
+            <div class="rc-cod">@est.Codigo</div>
+            <div class="rc-desg">@est.Desglose@(est.Nivel == 1 ? " (el piso)" : "") · rack @est.Rack@(est.Planta == "P1" ? " · planta alta" : "")</div>
+        </div>
+        <div class="rc-cont">
+            @if (error is not null) { <div class="rc-error">@error</div> }
+            @if (aviso is not null) { <div class="rc-aviso">@aviso</div> }
+            <div class="rc-alt">
+                @foreach (var a in est.Alturas)
+                {
+                    var aa = a;
+                    var esta = a.Nivel == est.Nivel;
+                    <button class="@(esta ? "ac" : a.Revisado ? "ok" : "")" @onclick="() => AbrirEstante(aa.Codigo)">
+                        <span class="a">A@(a.Nivel)</span>
+                        <span class="b">@(esta ? "← estás acá" : a.Revisado ? $"✓ {(a.Productos == 0 ? "vacío" : a.Productos + " productos")}" : a.Productos > 0 ? $"{a.Productos} productos · sin revisar" : "sin revisar")</span>
+                    </button>
+                }
+            </div>
+
+            @if (est.Productos.Count == 0)
+            {
+                <div class="rc-vacio">Este estante no tiene nada guardado. Escaneá lo que hay, o tocá <b>Listo</b> si está vacío.</div>
+            }
+            @foreach (var p in est.Productos)
+            {
+                var pp = p;
+                var listo = p.Contado is not null;
+                var v = Valor(p);
+                <div class="rc-prod @(listo ? "listo" : "")">
+                    <div class="n">@p.Nombre</div>
+                    <div class="s">@p.Sku · sistema dice <b>@p.Stock</b>@(listo ? $" · contado {p.Contado}" + (p.ContadoPor is null ? "" : $" por {p.ContadoPor}") : "")</div>
+                    @if (p.Otros.Count > 0)
+                    {
+                        <div class="s">también en @string.Join(", ", p.Otros.Select(o => o.Codigo + (o.Contado is int n ? $" ({n})" : "")))</div>
+                    }
+                    <div class="rc-cnt">
+                        <button class="pm" @onclick="() => Sumar(pp, -1)">−</button>
+                        <input type="number" inputmode="numeric" value="@v" @onchange="@(e => Poner(pp, e))" />
+                        <button class="pm" @onclick="() => Sumar(pp, 1)">+</button>
+                        <button class="ok" disabled="@guardando" @onclick="() => Contar(pp, v, false, false)">✓ @(listo ? "Otra vez" : "Contado")</button>
+                    </div>
+                    @if (p.Otros.Count == 0 && v != p.Stock)
+                    {
+                        <div class="rc-dif">⚠ @(v < p.Stock ? $"{p.Stock - v} menos" : $"{v - p.Stock} más") que el sistema · se corrige al confirmar</div>
+                    }
+                    <div class="rc-mini">
+                        <button @onclick="() => Contar(pp, pp.Stock, true, false)">📦 Todo el stock acá (@p.Stock)</button>
+                        <button @onclick="() => Sacar(pp)">✕ No está</button>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="rc-pie">
+            <div class="rc-dos">
+                <button class="rc-btn rc-negro" @onclick="EscanearProducto">📷 Escanear producto</button>
+                <button class="rc-btn rc-gris" @onclick="AbrirBuscar">🔎 Buscar</button>
+            </div>
+            <button class="rc-btn rc-verde" disabled="@guardando" @onclick="Listo">
+                ✓ Listo@(est.Siguiente is null ? "" : est.CambiaRack ? " · terminar el rack" : $" · seguir a A{est.Nivel + 1} ▲")
+            </button>
+        </div>
+    }
+</div>
+
+@* ── hoja de abajo: cámara / buscar / producto encontrado ── *@
+@if (hoja is not null)
+{
+    <div class="rc-fondo" @onclick="CerrarHoja"></div>
+    <div class="rc-hoja">
+        <button class="rc-x" @onclick="CerrarHoja">✕</button>
+        @if (hoja == "camara" || hoja == "qr")
+        {
+            <div style="font-weight:800; margin-bottom:.5rem">@(hoja == "qr" ? "Apuntá al QR del estante" : "Apuntá al código de barras")</div>
+            <div id="rc-lector" class="rc-lector"></div>
+            @if (errorCamara is not null) { <div class="rc-error" style="margin-top:.5rem">@errorCamara</div> }
+            @if (hoja == "camara")
+            {
+                <button class="rc-btn rc-gris" @onclick="AbrirBuscar">🔎 Buscar por nombre</button>
+            }
+        }
+        else if (hoja == "buscar")
+        {
+            <div style="font-weight:800">Buscar producto</div>
+            <input class="rc-busca" placeholder="Nombre, SKU o código de barras" value="@busca" @oninput="Buscando" />
+            @foreach (var r in resultados)
+            {
+                var rr = r;
+                <button class="rc-res" @onclick="() => Elegir(rr)">
+                    <div style="font-weight:700">@r.Nombre</div>
+                    <div style="font-size:.78rem; color:#64748b">@r.Sku · stock @r.Stock@(r.Lugares.Count > 0 ? " · en " + string.Join(", ", r.Lugares.Select(l => l.Codigo)) : " · sin estante")</div>
+                </button>
+            }
+        }
+        else if (hoja == "producto" && elegido is not null && est is not null)
+        {
+            var ya = est.Productos.Any(x => x.ProductoId == elegido.ProductoId);
+            var otros = elegido.Lugares.Where(l => !string.Equals(l.Codigo, est.Codigo, StringComparison.OrdinalIgnoreCase)).ToList();
+            <div style="font-size:.75rem; color:#16a34a; font-weight:800">✓ @(ya ? "YA ESTÁ EN ESTE ESTANTE" : "ENCONTRADO")</div>
+            <div style="font-weight:800; font-size:1.05rem; margin:.15rem 2.5rem .15rem 0">@elegido.Nombre</div>
+            <div style="font-size:.8rem; color:#64748b">@elegido.Sku · sistema dice <b>@elegido.Stock</b>@(otros.Count > 0 ? " · también en " + string.Join(", ", otros.Select(o => o.Codigo)) : " · hoy no tiene estante")</div>
+            <div style="font-weight:700; font-size:.92rem; margin-top:.8rem">¿Cuántos hay en este estante?</div>
+            <div class="rc-cnt">
+                <button class="pm" @onclick="() => cantHoja = Math.Max(0, cantHoja - 1)">−</button>
+                <input type="number" inputmode="numeric" value="@cantHoja" @onchange="@(e => cantHoja = int.TryParse(e.Value?.ToString(), out var n) ? Math.Max(0, n) : cantHoja)" />
+                <button class="pm" @onclick="() => cantHoja++">+</button>
+            </div>
+            @if (otros.Count > 0)
+            {
+                <div class="rc-tog">
+                    <button class="@(moverHoja ? "on" : "")" @onclick="() => moverHoja = true">Lo muevo todo acá</button>
+                    <button class="@(!moverHoja ? "on" : "")" @onclick="() => moverHoja = false">Está en los dos</button>
+                </div>
+            }
+            <button class="rc-btn rc-verde" disabled="@guardando" @onclick="() => GuardarHoja(false)">Guardar @cantHoja en @est.Codigo</button>
+            <button class="rc-btn rc-gris" disabled="@guardando" @onclick="() => GuardarHoja(true)">📦 Todo el stock acá (@elegido.Stock) · sin contar</button>
+        }
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "e")] public string? EstanteQ { get; set; }
+
+    private const string CLAVE_PASE = "ideal_celu_pase";
+    private const string CLAVE_OPERADOR = "recorrido_operador";
+
+    private string? pase, error, aviso;
+    private bool cargando = true, guardando;
+    private RecorridoInicioDto? inicio;
+    private RecorridoOperadorDto? operador;
+    private RecorridoEstanteDto? est;
+    private string vista = "calles";
+    private string? proximo;
+
+    // lo que el usuario está tocando con + y − (por producto, en este estante)
+    private readonly Dictionary<int, int> valores = new();
+
+    // resumen del rack que se está recorriendo
+    private (int Contados, int Nuevos, int Ajustes, int Sacados) resRack;
+    private int ajustesEstante;
+    private string? rackActual;
+
+    // hoja de abajo
+    private string? hoja;
+    private string busca = "";
+    private List<RecorridoProductoDto> resultados = new();
+    private RecorridoProductoDto? elegido;
+    private int cantHoja;
+    private bool moverHoja = true;
+    private string? errorCamara;
+    private CancellationTokenSource? ctsBusca;
+    private DotNetObjectReference<DepoRecorrer>? refJs;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { pase = await JS.InvokeAsync<string?>("localStorage.getItem", CLAVE_PASE); } catch { }
+        if (string.IsNullOrEmpty(pase)) { Nav.NavigateTo("/depo"); return; }
+        await CargarInicio();
+        if (inicio is null) { cargando = false; return; }
+        string? opId = null;
+        try { opId = await JS.InvokeAsync<string?>("localStorage.getItem", CLAVE_OPERADOR); } catch { }
+        operador = inicio.Operadores.FirstOrDefault(o => o.Id.ToString() == opId);
+        if (operador is not null && !string.IsNullOrWhiteSpace(EstanteQ)) await AbrirEstante(EstanteQ);
+        cargando = false;
+    }
+
+    private bool Vencido<T>(ApiClient.RespuestaCelu<T> r)
+    {
+        if (!r.Vencido) return false;
+        try { _ = JS.InvokeVoidAsync("localStorage.removeItem", CLAVE_PASE); } catch { }
+        Nav.NavigateTo("/depo");
+        return true;
+    }
+
+    private async Task CargarInicio()
+    {
+        var r = await Api.GetRecorridoInicioAsync(pase!);
+        if (Vencido(r)) return;
+        if (r.Dato is null) { error = r.Error ?? "No se pudo cargar."; return; }
+        inicio = r.Dato;
+        error = null;
+    }
+
+    private async Task ElegirOperador(RecorridoOperadorDto o)
+    {
+        operador = o;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", CLAVE_OPERADOR, o.Id.ToString()); } catch { }
+        if (!string.IsNullOrWhiteSpace(EstanteQ)) await AbrirEstante(EstanteQ);
+    }
+
+    private async Task CambiarOperador()
+    {
+        operador = null;
+        try { await JS.InvokeVoidAsync("localStorage.removeItem", CLAVE_OPERADOR); } catch { }
+    }
+
+    private async Task VolverACalles()
+    {
+        vista = "calles"; est = null; aviso = null;
+        await CargarInicio();
+    }
+
+    private async Task AbrirEstante(string codigo)
+    {
+        guardando = true; aviso = null;
+        var r = await Api.GetRecorridoEstanteAsync(pase!, codigo);
+        guardando = false;
+        if (Vencido(r)) return;
+        if (r.Dato is null) { error = r.Error ?? "No encontré ese estante."; StateHasChanged(); return; }
+        error = null;
+        est = r.Dato;
+        valores.Clear();
+        ajustesEstante = 0;
+        var rk = $"{est.RackId}-{est.Cara}";
+        if (rk != rackActual) { rackActual = rk; resRack = default; }
+        vista = "estante";
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("window.scrollTo", 0, 0); } catch { }
+    }
+
+    private async Task Recargar()
+    {
+        if (est is null) return;
+        var r = await Api.GetRecorridoEstanteAsync(pase!, est.Codigo);
+        if (Vencido(r)) return;
+        if (r.Dato is not null) est = r.Dato;
+    }
+
+    private int Valor(RecorridoProductoDto p) => valores.TryGetValue(p.ProductoId, out var v) ? v : p.Contado ?? p.Stock;
+    private void Sumar(RecorridoProductoDto p, int d) => valores[p.ProductoId] = Math.Max(0, Valor(p) + d);
+    private void Poner(RecorridoProductoDto p, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var n)) valores[p.ProductoId] = Math.Max(0, n);
+    }
+
+    private async Task<bool> Contar(RecorridoProductoDto p, int cantidad, bool todo, bool mover, bool esNuevo = false)
+    {
+        if (est is null || operador is null) return false;
+        guardando = true; error = null;
+        var r = await Api.ContarRecorridoAsync(pase!, est.Codigo, operador.Id, p.ProductoId, cantidad, todo, mover);
+        guardando = false;
+        if (Vencido(r)) return false;
+        if (r.Dato is null) { error = r.Error ?? "No se pudo guardar."; return false; }
+        var d = r.Dato;
+        resRack.Contados++;
+        if (d.Nuevo) resRack.Nuevos++;
+        if (d.Ajustado) { resRack.Ajustes++; ajustesEstante++; }
+        aviso = d.Aviso ?? (d.Ajustado ? $"{p.Nombre}: stock corregido de {d.StockAntes} a {d.StockDespues}." : todo ? $"{p.Nombre}: ubicado acá con todo el stock ({d.StockDespues})." : null);
+        valores.Remove(p.ProductoId);
+        await Recargar();
+        return true;
+    }
+
+    private async Task Sacar(RecorridoProductoDto p)
+    {
+        if (est is null) return;
+        bool ok;
+        try { ok = await JS.InvokeAsync<bool>("confirm", $"¿{p.Nombre} no está en {est.Codigo}? Lo saco de este estante (el stock no se toca)."); } catch { ok = true; }
+        if (!ok) return;
+        var r = await Api.SacarRecorridoAsync(pase!, est.Codigo, p.ProductoId);
+        if (Vencido(r)) return;
+        if (!r.Dato) { error = r.Error ?? "No se pudo sacar."; return; }
+        resRack.Sacados++;
+        aviso = $"{p.Nombre}: sacado de {est.Codigo}.";
+        await Recargar();
+    }
+
+    private async Task Listo()
+    {
+        if (est is null || operador is null) return;
+        guardando = true;
+        var r = await Api.RevisadoRecorridoAsync(pase!, est.Codigo, operador.Id, ajustesEstante);
+        guardando = false;
+        if (Vencido(r)) return;
+        if (!r.Dato) { error = r.Error ?? "No se pudo marcar."; return; }
+        if (est.Siguiente is null) { proximo = null; vista = "fin"; return; }
+        if (est.CambiaRack) { proximo = est.Siguiente; vista = "fin"; return; }
+        await AbrirEstante(est.Siguiente);
+    }
+
+    // ── cámara / buscar ──
+    private async Task EscanearProducto() => await AbrirCamara("camara");
+    private async Task EscanearEstante() => await AbrirCamara("qr");
+
+    private async Task AbrirCamara(string modo)
+    {
+        await PararCamara();
+        hoja = modo; errorCamara = null;
+        refJs ??= DotNetObjectReference.Create(this);
+        StateHasChanged();
+        await Task.Delay(50);
+        try { await JS.InvokeVoidAsync("scannerBarcode.start", "rc-lector", refJs); }
+        catch { errorCamara = "No se pudo abrir la cámara."; }
+    }
+
+    private async Task PararCamara()
+    {
+        if (hoja is "camara" or "qr") { try { await JS.InvokeVoidAsync("scannerBarcode.stop"); } catch { } }
+    }
+
+    private async Task CerrarHoja()
+    {
+        await PararCamara();
+        hoja = null; elegido = null;
+    }
+
+    private async Task AbrirBuscar()
+    {
+        await PararCamara();
+        hoja = "buscar"; busca = ""; resultados = new();
+    }
+
+    [JSInvokable]
+    public async Task OnScanDetected(string text, string format)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        var modo = hoja;
+        if (modo is not ("camara" or "qr")) return;
+        await PararCamara();
+        text = text.Trim();
+        if (modo == "qr")
+        {
+            // el QR del estante trae la dirección .../deposito/estante/C3-R4-A3
+            var i = text.LastIndexOf("/estante/", StringComparison.OrdinalIgnoreCase);
+            var cod = Uri.UnescapeDataString(i >= 0 ? text[(i + 9)..] : text).Split('?', '#')[0];
+            hoja = null;
+            await AbrirEstante(cod);
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+        try { await JS.InvokeVoidAsync("scanBeep", true); } catch { }
+        var r = await Api.BuscarRecorridoAsync(pase!, text);
+        if (Vencido(r)) return;
+        var lista = r.Dato ?? new();
+        if (lista.Count == 1) Elegir(lista[0]);
+        else { hoja = "buscar"; busca = text; resultados = lista; if (lista.Count == 0) error = $"No encontré ningún producto con el código {text}."; }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnScanError(string message)
+    {
+        errorCamara = message;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Buscando(ChangeEventArgs e)
+    {
+        busca = e.Value?.ToString() ?? "";
+        ctsBusca?.Cancel();
+        var cts = ctsBusca = new CancellationTokenSource();
+        try { await Task.Delay(300, cts.Token); } catch { return; }
+        if (busca.Trim().Length < 2) { resultados = new(); return; }
+        var r = await Api.BuscarRecorridoAsync(pase!, busca.Trim());
+        if (cts.IsCancellationRequested || Vencido(r)) return;
+        resultados = r.Dato ?? new();
+    }
+
+    private void Elegir(RecorridoProductoDto p)
+    {
+        elegido = p;
+        var ya = est?.Productos.FirstOrDefault(x => x.ProductoId == p.ProductoId);
+        cantHoja = ya?.Contado ?? (p.Lugares.Count == 0 ? p.Stock : 0);
+        moverHoja = true;
+        hoja = "producto";
+        error = null;
+    }
+
+    private async Task GuardarHoja(bool todo)
+    {
+        if (elegido is null) return;
+        var p = elegido;
+        var ok = await Contar(p, todo ? p.Stock : cantHoja, todo, moverHoja || todo);
+        if (!ok) return;
+        // la cámara queda abierta para el siguiente
+        elegido = null;
+        await AbrirCamara("camara");
+    }
+
+    private static string ColorCalle(int c) => (c % 6) switch
+    {
+        1 => "#2563eb", 2 => "#059669", 3 => "#7c3aed", 4 => "#ea580c", 5 => "#0891b2", _ => "#db2777",
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        ctsBusca?.Cancel();
+        await PararCamara();
+        refJs?.Dispose();
+    }
+}

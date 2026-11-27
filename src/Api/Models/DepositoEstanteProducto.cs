@@ -21,6 +21,13 @@ public class DepositoEstanteProducto
     [MaxLength(50)]
     public string? Cantidad { get; set; }
 
+    /// <summary>2026-11-27: "Recorrer estantes" — cuántas unidades se contaron en ESTE estante
+    /// (si el producto está en varios, el stock total es la suma), cuándo y quién.</summary>
+    public int? CantidadNum { get; set; }
+    public DateTime? ContadoAt { get; set; }
+    [MaxLength(100)]
+    public string? ContadoPor { get; set; }
+
     [MaxLength(200)]
     public string? Nota { get; set; }
 

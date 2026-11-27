@@ -9371,3 +9371,26 @@ BEGIN
     CREATE UNIQUE INDEX UX_Deposito_EstanteProductos ON Deposito_EstanteProductos(ElementoId, Cara, Posicion, Nivel, ProductoId);
 END
 GO
+
+-- 27/11/2026: RECORRER ESTANTES (celu del depósito) — conteo por estante y estantes revisados.
+-- ⚠ En PROD correr a mano ANTES de publicar la API.
+IF OBJECT_ID('Deposito_EstanteProductos','U') IS NOT NULL AND COL_LENGTH('Deposito_EstanteProductos','CantidadNum') IS NULL
+    ALTER TABLE Deposito_EstanteProductos ADD CantidadNum INT NULL, ContadoAt DATETIME2 NULL, ContadoPor NVARCHAR(100) NULL;
+GO
+IF OBJECT_ID('Deposito_EstanteRevisiones','U') IS NULL
+BEGIN
+    CREATE TABLE Deposito_EstanteRevisiones (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ElementoId INT NOT NULL,
+        Cara INT NOT NULL CONSTRAINT DF_Deposito_EstanteRevisiones_Cara DEFAULT 1,
+        Posicion INT NOT NULL CONSTRAINT DF_Deposito_EstanteRevisiones_Pos DEFAULT 1,
+        Nivel INT NOT NULL,
+        At DATETIME2 NOT NULL CONSTRAINT DF_Deposito_EstanteRevisiones_At DEFAULT SYSUTCDATETIME(),
+        OperadorId INT NULL,
+        Por NVARCHAR(100) NULL,
+        Productos INT NOT NULL CONSTRAINT DF_Deposito_EstanteRevisiones_Prod DEFAULT 0,
+        Ajustes INT NOT NULL CONSTRAINT DF_Deposito_EstanteRevisiones_Aj DEFAULT 0
+    );
+    CREATE INDEX IX_Deposito_EstanteRevisiones_Estante ON Deposito_EstanteRevisiones(ElementoId, Cara, Posicion, Nivel, At);
+END
+GO
