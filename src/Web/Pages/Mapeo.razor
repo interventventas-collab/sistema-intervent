@@ -58,6 +58,8 @@
     .isla-tabs { display: flex; gap: 0.35rem; padding: 0.2rem 0.7rem 0.5rem; flex-wrap: wrap; }
     .isla-tab { padding: 0.15rem 0.65rem; border-radius: 12px; background: #262626; font-size: 0.75rem; cursor: pointer; }
     .isla-tab.on { background: #fff; color: #111; }
+    .isla-ic.cobrar { background: #fbbf24; color: #451a03; }
+    .isla-deu { color: #fca5a5; font-weight: 700; font-size: 0.8rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .isla-bus { display: flex; align-items: center; gap: 0.5rem; padding: 0.15rem 0.7rem 0.45rem; }
     .isla-bus input { flex: 1; background: #1f1f1f; border: 1px solid #333; border-radius: 9px; color: #fff; padding: 0.35rem 0.6rem; font-size: 0.8rem; outline: none; }
     .isla-bus input:focus { border-color: #737373; }
@@ -1386,7 +1388,50 @@
                                 : novedades.Count(x => x.Tipo == t && x.ParaElDia && !x.EnMapa);
                             <span class="isla-tab @(islaTab == t ? "on" : "")" @onclick:stopPropagation="true" @onclick="() => islaTab = t">@TipoLargo(t)@(nt > 0 ? $" · {nt}" : "")</span>
                         }
+                        @* 27/11/2026: los clientes que deben, para mandarles un repartidor a cobrar. *@
+                        <span class="isla-tab @(islaTab == "deben" ? "on" : "")" @onclick:stopPropagation="true" @onclick="AbrirTabDeben">Deben@(islaDeudores is { Count: > 0 } ? $" · {islaDeudores.Count}" : "")</span>
                     </div>
+                    @if (islaTab == "deben")
+                    {
+                        <div class="isla-list" @onclick:stopPropagation="true">
+                            @{
+                                var q = islaBuscar.Trim();
+                                var deu = (islaDeudores ?? new()).Where(d => q.Length < 2 || d.Nombre.Contains(q, StringComparison.OrdinalIgnoreCase)
+                                                                          || (d.Direccion ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+                            }
+                            @if (islaDeudores is null)
+                            {
+                                <div class="isla-vacio">Buscando quién debe…</div>
+                            }
+                            else if (deu.Count == 0)
+                            {
+                                <div class="isla-vacio">@(q.Length >= 2 ? $"Nadie que deba con «{q}»." : "Nadie debe nada.")</div>
+                            }
+                            @foreach (var d in deu)
+                            {
+                                var dd = d;
+                                <div class="isla-it @(d.EnEsteDia ? "ya" : "")">
+                                    <span class="isla-ic cobrar">COBRAR</span>
+                                    <span class="isla-t" style="cursor:pointer;" title="Tocá para elegir repartidor y día" @onclick="() => AbrirCobIsla(dd)">@d.Nombre<span>@(d.Cantidad == 1 ? "1 comprobante" : $"{d.Cantidad} comprobantes") · el más viejo @d.FechaMasAntigua.ToString("dd/MM") (@d.Dias días)@(string.IsNullOrWhiteSpace(d.Direccion) ? "" : " · " + d.Direccion)@(string.IsNullOrWhiteSpace(d.UltimoNoPago) ? "" : " · ⚠ " + d.UltimoNoPago)</span></span>
+                                    <span class="isla-deu">$ @d.Saldo.ToString("N0")</span>
+                                    @if (d.StopIdAbierta.HasValue)
+                                    {
+                                        <span class="isla-ok" style="cursor:pointer;" title="Tocá para cambiarla" @onclick="() => AbrirCobIsla(dd)">✓ @(d.EnEsteDia ? "en el mapa" : d.FechaAbierta?.ToString("dd/MM"))@(string.IsNullOrWhiteSpace(d.RepartidorAbierta) ? "" : " · " + d.RepartidorAbierta)</span>
+                                    }
+                                    <button type="button" class="isla-tr" title="Imprimir el recibo de visita por cobranza" @onclick="() => ImprimirReciboCob(dd)">🖨</button>
+                                    @if (!d.StopIdAbierta.HasValue)
+                                    {
+                                        <button type="button" class="isla-tr" disabled="@islaTrayendo" title="Ponerla en el mapa de este día (después le asignás el repartidor)" @onclick="() => TraerCobranza(dd)">+ Traer</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="isla-pie" @onclick:stopPropagation="true">
+                            <span>"+ Traer" la pone en el mapa de este día · tocá el nombre para elegir repartidor</span>
+                        </div>
+                    }
+                    else
+                    {
                     <div class="isla-list" @onclick:stopPropagation="true">
                         @{
                             var delTab = IslaFuente.Where(x => x.Tipo == islaTab && PasaFechaIsla(x)).ToList();
@@ -1433,6 +1478,7 @@
                             <button type="button" class="isla-tr" disabled="@islaTrayendo" @onclick="TraerTodasNovedades">@(islaTrayendo ? "Trayendo…" : $"Traer los {nPend} de este día")</button>
                         }
                     </div>
+                    }
                 }
                 else
                 {
@@ -4005,6 +4051,12 @@
 @* 2026-10-08: si en otra pestaña se carga o corrige un cliente, esta lista se refresca sola (antes había que apretar F5). *@
 <ClientesSync OnCambio="RecargarClientesPorOtraPestana" />
 
+@* 27/11/2026: "Mandar a cobrar" desde la pestaña Deben de la isla. *@
+@if (cobIslaDeudor is not null)
+{
+    <MandarACobrarModal ClienteId="cobIslaDeudor.ClienteId" FechaInicial="FechaMapa.Date" OnClose="CerrarCobIsla" />
+}
+
 @code {
     private async Task RecargarClientesPorOtraPestana()
     {
@@ -5760,6 +5812,7 @@
     {
         "venta_cafe" => ("🧾", "VENTA", "#dcfce7", "#15803d"),
         "visita"     => ("📋", "VISITA", "#e0e7ff", "#3730a3"),
+        "cobranza"   => ("💰", "COBRANZA", "#fef3c7", "#92400e"),
         "alquiler"   => ("📅", "ALQUILER", "#fef9c3", "#854d0e"),
         "flex"       => ("📦", "FLEX", "#dbeafe", "#1e40af"),
         "me1"        => ("🏎", "ME1", "#fce7f3", "#9d174d"),
@@ -7564,6 +7617,7 @@
         "favorito" => "⭐ Favorito",
         "venta_cafe" => "☕ Café",
         "visita" => "📋 Visita",
+        "cobranza" => "💰 Cobranza",
         _ => "✏️ Manual"
     };
 
@@ -8803,7 +8857,7 @@
             if (ct.IsCancellationRequested) return;
             islaResultados = r?.Items ?? new();
             // Si en la solapa elegida no hay nada pero en otra sí, saltamos a esa.
-            if (!islaResultados.Any(x => x.Tipo == islaTab) && islaResultados.Count > 0)
+            if (islaTab != "deben" && !islaResultados.Any(x => x.Tipo == islaTab) && islaResultados.Count > 0)
                 islaTab = islaResultados[0].Tipo;
         }
         catch { }
@@ -8886,6 +8940,60 @@
     }
 
     private void AchicarIsla() { islaModo = "min"; islaNoti = null; }
+
+    // ── 27/11/2026: pestaña "Deben" — mandar a cobrar desde el mapa ──
+    private List<CobDeudorDto>? islaDeudores;
+    private DateTime? islaDeudoresDia;
+    private CobDeudorDto? cobIslaDeudor;
+
+    private async Task AbrirTabDeben()
+    {
+        islaTab = "deben";
+        if (islaDeudores is null || islaDeudoresDia != FechaMapa.Date) await CargarDeudoresIsla();
+    }
+
+    private async Task CargarDeudoresIsla()
+    {
+        islaDeudoresDia = FechaMapa.Date;
+        try { islaDeudores = await Api.CobDeudoresAsync(FechaMapa.Date) ?? new(); }
+        catch { islaDeudores = new(); }
+        StateHasChanged();
+    }
+
+    private void AbrirCobIsla(CobDeudorDto d) { if (!DiaPasadoNoSeToca()) cobIslaDeudor = d; }
+
+    private async Task CerrarCobIsla(bool cambio)
+    {
+        cobIslaDeudor = null;
+        if (!cambio) return;
+        await CargarDeudoresIsla();
+        await LoadStops();
+        await RenderMap(keepView: true);
+    }
+
+    private async Task TraerCobranza(CobDeudorDto d)
+    {
+        if (islaTrayendo || DiaPasadoNoSeToca()) return;
+        islaTrayendo = true;
+        try
+        {
+            var (res, err) = await Api.CobMandarAsync(new CobMandarRequest { ClienteId = d.ClienteId, Todas = true, Fecha = FechaMapa.Date });
+            if (res is null) { ToastService.Error(err ?? "No se pudo traer"); return; }
+            if (res.Mensaje.Contains("sin ubicación")) ToastService.Warning(res.Mensaje); else ToastService.Success(res.Mensaje);
+            await LoadStops();
+            await RenderMap(keepView: true);
+            await CargarDeudoresIsla();
+        }
+        catch (Exception ex) { ToastService.Error("No se pudo traer: " + ex.Message); }
+        finally { islaTrayendo = false; StateHasChanged(); }
+    }
+
+    private async Task ImprimirReciboCob(CobDeudorDto d)
+    {
+        var (bytes, err) = await Api.CobReciboPdfAsync(d.StopIdAbierta, d.StopIdAbierta.HasValue ? null : d.ClienteId, null, true);
+        if (bytes is null) { ToastService.Error(err ?? "No se pudo generar el recibo"); return; }
+        await JS.InvokeVoidAsync("openPdfInNewTab", Convert.ToBase64String(bytes));
+    }
 
     private void AbrirIsla()
     {

@@ -1618,6 +1618,11 @@
     </div>
 }
 
+@if (cobClienteId.HasValue)
+{
+    <MandarACobrarModal ClienteId="cobClienteId" OnClose="CerrarMandarACobrar" />
+}
+
 @code {
     /// <summary>13/11/2026: "GLOBAL FOOD S.R.L · proveedor (oficial · Factura A 0003-…)" → nombre y detalle
     /// por separado, para mostrar el nombre grande al lado del monto y el detalle chico abajo.</summary>
@@ -2780,6 +2785,7 @@
         var tMaq = Api.GetMaquinasDeudoresAsync();
         try { deudores = await Api.GetCafeClientesSaldosPendientesAsync() ?? new(); }
         catch { deudores = new(); }
+        try { cobAbiertas = await Api.CobAbiertasAsync() ?? new(); } catch { cobAbiertas = new(); }
         try { maqPorCliente = ((await tMaq) ?? new()).GroupBy(m => m.ClienteId).ToDictionary(g => g.Key, g => g.ToList()); }
         catch { maqPorCliente = new(); }
         deudorPorId = deudores.GroupBy(d => d.ClienteId).ToDictionary(g => g.Key, g => g.First());
@@ -2856,10 +2862,32 @@
                     {
                         <div style="color:#6b7280; font-size:0.72rem;">alquiler</div>
                     }
+                    @* 27/11/2026: mandar la cobranza con un repartidor. Si ya está mandada, dice a quién y qué día. *@
+                    @{ var cobAb = cobAbiertas.FirstOrDefault(a => a.ClienteId == ciId); }
+                    @if (deu.SaldoVentas <= 0.5m && cobAb is null) { }
+                    else if (cobAb is not null)
+                    {
+                        <button type="button" title="Mandada a cobrar · tocá para cambiarla o sacarla" @onclick="() => cobClienteId = ciId" @onclick:stopPropagation="true"
+                                style="margin-top:0.25rem; border:1px solid #e5e7eb; background:#f9fafb; color:#4b5563; border-radius:7px; padding:0.15rem 0.5rem; font-size:0.74rem; cursor:pointer;">@CobTexto.Etiqueta(cobAb)</button>
+                    }
+                    else
+                    {
+                        <button type="button" title="Mandar a un repartidor a cobrarle (sale el recibo para imprimir)" @onclick="() => cobClienteId = ciId" @onclick:stopPropagation="true"
+                                style="margin-top:0.25rem; border:1px solid #d1d5db; background:white; color:#1f2937; border-radius:7px; padding:0.15rem 0.5rem; font-size:0.74rem; cursor:pointer;">🚚 Mandar a cobrar</button>
+                    }
                 </div>
             }
         </div>
     };
+
+    // ── 27/11/2026: "Mandar a cobrar" ──
+    private int? cobClienteId;
+    private List<CobAbiertaDto> cobAbiertas = new();
+    private async Task CerrarMandarACobrar(bool cambio)
+    {
+        cobClienteId = null;
+        if (cambio) { try { cobAbiertas = await Api.CobAbiertasAsync() ?? new(); } catch { } }
+    }
 
     private async Task SelectCliente(int id)
     {

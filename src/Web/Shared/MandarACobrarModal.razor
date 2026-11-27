@@ -1,0 +1,224 @@
+@inject ApiClient Api
+@inject ToastService Toast
+@inject IJSRuntime JS
+
+@* 27/11/2026: "MANDAR A COBRAR". La misma ventanita desde Ventas (menú ⋮), Nueva cobranza (los que
+   deben) y el En vivo del mapa. Elige repartidor y día, deja una nota, y la cobranza queda como
+   parada COBRANZA en el mapa de ese día: le llega al celu del repartidor como cualquier parada.
+   Ver Api/Services/CobranzaVisitaService.cs. *@
+
+<div style="position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:20000; display:flex; align-items:center; justify-content:center; padding:1rem;" @onclick="Cerrar">
+    <div style="background:#fff; border-radius:11px; padding:1.1rem 1.2rem; width:100%; max-width:520px; box-shadow:0 10px 30px rgba(0,0,0,.18); color:#1f2937; max-height:92vh; overflow:auto;" @onclick:stopPropagation="true">
+        <div style="font-size:1.1rem; font-weight:700;">💰 Mandar a cobrar</div>
+        @if (datos is null)
+        {
+            <div style="color:#6b7280; font-size:.88rem; margin-top:.6rem;">@(errorCarga ?? "Buscando lo que debe…")</div>
+            <div style="display:flex; justify-content:flex-end; margin-top:1rem;">
+                <button type="button" class="cob-btn" @onclick="Cerrar">Cerrar</button>
+            </div>
+        }
+        else
+        {
+            <div style="font-size:.9rem; margin-top:.4rem;"><b>@datos.Nombre</b>@(string.IsNullOrWhiteSpace(datos.Direccion) ? "" : " · " + datos.Direccion)</div>
+            @if (datos.Comprobantes.Count == 0)
+            {
+                <div style="font-size:.9rem; margin-top:.5rem; color:#6b7280;">@(datos.SaldoAlquileres > 0.5m ? $"No debe ventas. Lo que debe es de alquileres ($ {datos.SaldoAlquileres:N0}): eso se cobra desde la reserva." : "No debe nada: no hay qué cobrar.")</div>
+                <div style="display:flex; justify-content:flex-end; margin-top:1rem;">
+                    <button type="button" class="cob-btn" @onclick="Cerrar">Cerrar</button>
+                </div>
+            }
+            else
+            {
+                <div style="font-size:.9rem; margin-top:.25rem;">
+                    Saldo a cobrar <b style="color:#b91c1c; font-variant-numeric:tabular-nums;">$ @SaldoElegido.ToString("N0")</b>
+                    <span style="color:#9ca3af; font-size:.8rem;"> · @TextoComprobantes</span>
+                </div>
+                @if (datos.SaldoAlquileres > 0.5m && !VentaId.HasValue)
+                {
+                    <div style="font-size:.78rem; color:#9ca3af;">No incluye lo que debe de alquileres ($ @datos.SaldoAlquileres.ToString("N0")): eso se cobra desde la reserva.</div>
+                }
+
+                @if (datos.Abierta is not null)
+                {
+                    <div style="font-size:.84rem; margin-top:.6rem; padding:.45rem .6rem; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap;">
+                        <span style="flex:1; min-width:180px;">Ya está mandada: <b>@CobTexto.Etiqueta(datos.Abierta)</b>. Si cambiás algo abajo, se actualiza.</span>
+                        <button type="button" class="cob-btn" disabled="@ocupado" @onclick="Imprimir">🖨 Recibo</button>
+                        <button type="button" class="cob-btn" style="color:#b91c1c;" disabled="@ocupado" @onclick="CancelarEnvio">Sacarla del reparto</button>
+                    </div>
+                }
+
+                <div class="cob-lbl">¿Quién va?</div>
+                <div class="cob-chips">
+                    @foreach (var r in datos.Repartidores)
+                    {
+                        var rid = r.Id;
+                        <button type="button" class="cob-chip @(repartidorId == rid ? "on" : "")" @onclick="() => repartidorId = rid">@r.Nombre</button>
+                    }
+                    <button type="button" class="cob-chip @(repartidorId is null ? "on" : "")" @onclick="() => repartidorId = null">Todavía no sé</button>
+                </div>
+
+                <div class="cob-lbl">¿Qué día?</div>
+                <div class="cob-chips" style="align-items:center;">
+                    <button type="button" class="cob-chip @(fecha == Hoy ? "on" : "")" @onclick="() => fecha = Hoy">Hoy</button>
+                    <button type="button" class="cob-chip @(fecha == Hoy.AddDays(1) ? "on" : "")" @onclick="() => fecha = Hoy.AddDays(1)">Mañana @Hoy.AddDays(1).ToString("ddd dd/MM", EsAr)</button>
+                    @if (fecha > Hoy.AddDays(1) || verOtroDia)
+                    {
+                        <input type="date" class="cob-chip on" style="padding:.28rem .6rem;" min="@Hoy.ToString("yyyy-MM-dd")"
+                               value="@fecha.ToString("yyyy-MM-dd")" @onchange="OnOtraFecha" />
+                    }
+                    else
+                    {
+                        <button type="button" class="cob-chip" @onclick="() => verOtroDia = true">Otro día…</button>
+                    }
+                </div>
+
+                <div class="cob-lbl">Nota para el repartidor (opcional)</div>
+                <input type="text" maxlength="300" style="width:100%; border:1px solid #d1d5db; border-radius:8px; padding:.45rem .6rem; font-size:.88rem;"
+                       placeholder="Ej: preguntar por Carlos, paga en efectivo" @bind="nota" @bind:event="oninput" />
+
+                @if (HayOtras)
+                {
+                    <label style="display:flex; gap:.45rem; align-items:center; font-size:.84rem; margin-top:.7rem; color:#4b5563; cursor:pointer;">
+                        <input type="checkbox" @bind="todas" />
+                        Sumar las otras @(datos.Comprobantes.Count - 1) facturas que debe este cliente ($ @datos.SaldoTodas.ToString("N0") en total)
+                    </label>
+                }
+
+                @if (!string.IsNullOrEmpty(error))
+                {
+                    <div style="color:#b91c1c; font-size:.84rem; margin-top:.6rem;">@error</div>
+                }
+
+                <div style="display:flex; justify-content:flex-end; gap:.5rem; margin-top:1rem; flex-wrap:wrap;">
+                    <button type="button" class="cob-btn" disabled="@ocupado" @onclick="Cerrar">Cancelar</button>
+                    <button type="button" class="cob-btn" disabled="@ocupado" @onclick="() => Mandar(false)">Solo mandar</button>
+                    <button type="button" class="cob-btn prim" disabled="@ocupado" @onclick="() => Mandar(true)">@(ocupado ? "Mandando…" : "Mandar e imprimir recibo")</button>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .cob-lbl { font-size:.78rem; color:#4b5563; margin:.8rem 0 .3rem; }
+    .cob-chips { display:flex; gap:.4rem; flex-wrap:wrap; }
+    .cob-chip { border:1px solid #d1d5db; background:#fff; color:#1f2937; border-radius:999px; padding:.3rem .75rem; font-size:.84rem; cursor:pointer; }
+    .cob-chip.on { background:#1f2937; color:#fff; border-color:#1f2937; }
+    .cob-btn { border:1px solid #d1d5db; background:#fff; color:#1f2937; border-radius:8px; padding:.45rem .8rem; font-size:.85rem; cursor:pointer; }
+    .cob-btn.prim { background:#1f2937; color:#fff; border-color:#1f2937; font-weight:600; }
+    .cob-btn:disabled { opacity:.55; cursor:default; }
+</style>
+
+@code {
+    /// <summary>Cliente al que se le cobra (desde Nueva cobranza o el mapa).</summary>
+    [Parameter] public int? ClienteId { get; set; }
+    /// <summary>Venta puntual (desde el listado de Ventas). El cliente sale de la venta.</summary>
+    [Parameter] public int? VentaId { get; set; }
+    /// <summary>Día propuesto (desde el mapa: el día que se está mirando).</summary>
+    [Parameter] public DateTime? FechaInicial { get; set; }
+    /// <summary>Se cierra. true = se mandó/canceló algo (para recargar la pantalla de atrás).</summary>
+    [Parameter] public EventCallback<bool> OnClose { get; set; }
+
+    private static readonly System.Globalization.CultureInfo EsAr = new("es-AR");
+    private static DateTime Hoy => DateTime.UtcNow.ToArTime().Date;
+
+    private CobPrepararDto? datos;
+    private string? errorCarga, error;
+    private int? repartidorId;
+    private DateTime fecha;
+    private string? nota;
+    private bool todas = true, verOtroDia, ocupado, cambio;
+
+    private bool HayOtras => VentaId.HasValue && datos is not null && datos.ClienteId > 0 && datos.Comprobantes.Count > 1;
+    private bool CobraTodas => !VentaId.HasValue || (HayOtras && todas);
+    private decimal SaldoElegido => datos is null ? 0m : (CobraTodas ? datos.SaldoTodas : datos.SaldoSolo);
+    private string TextoComprobantes
+    {
+        get
+        {
+            if (datos is null) return "";
+            var lista = CobraTodas ? datos.Comprobantes : datos.Comprobantes.Where(c => c.VentaId == VentaId).ToList();
+            if (lista.Count == 1) return $"{lista[0].Numero} · {lista[0].Fecha:dd/MM} · hace {lista[0].Dias} días";
+            return $"{lista.Count} comprobantes · el más viejo {lista.FirstOrDefault()?.Fecha:dd/MM}";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        fecha = (FechaInicial ?? Hoy).Date;
+        if (fecha < Hoy) fecha = Hoy;
+        try
+        {
+            datos = await Api.CobPrepararAsync(ClienteId, VentaId);
+            if (datos is null) { errorCarga = "No pude traer lo que debe."; return; }
+            if (datos.Abierta is not null)
+            {
+                repartidorId = datos.Abierta.RepartidorId;
+                if (datos.Abierta.Fecha.Date >= Hoy && FechaInicial is null) fecha = datos.Abierta.Fecha.Date;
+                nota = datos.Abierta.Nota;
+                if (datos.Abierta.VentaId.HasValue) todas = false;
+            }
+        }
+        catch (Exception ex) { errorCarga = "No pude traer lo que debe: " + ex.Message; }
+    }
+
+    private void OnOtraFecha(ChangeEventArgs e)
+    {
+        if (DateTime.TryParse(e.Value?.ToString(), out var d) && d.Date >= Hoy) fecha = d.Date;
+    }
+
+    private async Task Mandar(bool imprimir)
+    {
+        if (datos is null) return;
+        ocupado = true; error = null;
+        try
+        {
+            var (res, err) = await Api.CobMandarAsync(new CobMandarRequest
+            {
+                ClienteId = datos.ClienteId > 0 ? datos.ClienteId : null,
+                VentaId = VentaId,
+                Todas = CobraTodas,
+                RepartidorId = repartidorId,
+                Fecha = fecha,
+                Nota = string.IsNullOrWhiteSpace(nota) ? null : nota.Trim()
+            });
+            if (res is null) { error = err ?? "No se pudo mandar"; return; }
+            cambio = true;
+            Toast.Success("💰 " + res.Mensaje);
+            if (imprimir && res.StopId.HasValue) await AbrirRecibo(res.StopId, null, null, true);
+            await OnClose.InvokeAsync(true);
+        }
+        finally { ocupado = false; }
+    }
+
+    private async Task Imprimir()
+    {
+        if (datos?.Abierta is null) return;
+        ocupado = true;
+        try { await AbrirRecibo(datos.Abierta.StopId, null, null, true); }
+        finally { ocupado = false; }
+    }
+
+    private async Task AbrirRecibo(int? stopId, int? clienteId, int? ventaId, bool todasFact)
+    {
+        var (bytes, err) = await Api.CobReciboPdfAsync(stopId, clienteId, ventaId, todasFact);
+        if (bytes is null) { Toast.Error(err ?? "No se pudo generar el recibo"); return; }
+        await JS.InvokeVoidAsync("openPdfInNewTab", Convert.ToBase64String(bytes));
+    }
+
+    private async Task CancelarEnvio()
+    {
+        if (datos?.Abierta is null) return;
+        ocupado = true; error = null;
+        try
+        {
+            var (ok, err) = await Api.CobCancelarAsync(datos.Abierta.StopId);
+            if (!ok) { error = err; return; }
+            Toast.Success("Listo: la saqué del reparto");
+            await OnClose.InvokeAsync(true);
+        }
+        finally { ocupado = false; }
+    }
+
+    private Task Cerrar() => ocupado ? Task.CompletedTask : OnClose.InvokeAsync(cambio);
+}
