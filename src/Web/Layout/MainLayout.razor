@@ -3993,6 +3993,9 @@
                 if (MenuCatalog.TryGetValue(k, out var entry))
                     permitidasDeposito.Add(entry.Href.TrimStart('/'));
             }
+            // 2026-11-27: si tiene el plano del depósito, también la hoja para imprimirlo / PDF
+            if (permitidasDeposito.Contains("deposito/plano"))
+                permitidasDeposito.Add("deposito/plano/imprimir");
 
             // 2026-11-26: el QR pegado en cada estante abre /deposito/estante/{codigo}: siempre permitido
             if (!permitidasDeposito.Contains(relativePath)
