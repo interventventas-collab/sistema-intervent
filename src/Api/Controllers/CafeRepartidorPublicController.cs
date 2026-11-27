@@ -1912,7 +1912,10 @@ public class CafeRepartidorPublicController : ControllerBase
         // de bajarse. Si la parada se marcó como no entregada, el motivo va adelante con "⚠ ... · ".
         string? Notas = null,
         // Domicilio COMERCIAL segun MercadoLibre (lo que la etiqueta imprime asi).
-        bool EsComercial = false
+        bool EsComercial = false,
+        // 27/11/2026: parada de COBRANZA ("Mandar a cobrar"): cuánto cobrar y de qué comprobantes.
+        decimal? CobrarSaldo = null,
+        string? CobrarDetalle = null
     );
 
     /// <summary>Paradas del Mapeo asignadas a este repartidor (vía MapeoDrivers.CafeRepartidorId),
@@ -1951,6 +1954,25 @@ public class CafeRepartidorPublicController : ControllerBase
         var noEntregadas = await _entregas.NoEntregadasAsync(stops);
         var vistos = await LeerVistosAsync(r.Id);
 
+        // 27/11/2026: cobranzas mandadas → cuánto cobrar HOY (se calcula al momento: si la oficina
+        // ya imputó un pago, el monto baja solo).
+        var cobrar = new Dictionary<int, (decimal saldo, string detalle)>();
+        var stopsCob = stops.Where(s => s.Origin == CobranzaVisitaService.Origin).ToList();
+        if (stopsCob.Count > 0)
+        {
+            var cobSvc = HttpContext.RequestServices.GetRequiredService<CobranzaVisitaService>();
+            foreach (var s in stopsCob)
+            {
+                var (cid, vid) = CobranzaVisitaService.ParseRef(s.OriginRefId);
+                var comps = await cobSvc.ComprobantesAsync(cid, vid);
+                var saldo = await cobSvc.SaldoAsync(cid, vid, comps);
+                var det = comps.Count == 0 ? "ya no debe nada"
+                    : comps.Count == 1 ? $"{comps[0].Numero} · {comps[0].Fecha:dd/MM}"
+                    : $"{comps.Count} comprobantes · el más viejo {comps[0].Fecha:dd/MM}";
+                cobrar[s.Id] = (saldo, det);
+            }
+        }
+
         var result = stops.Select(s =>
         {
             string? comprador = null; long? numeroVenta = null;
@@ -1973,7 +1995,9 @@ public class CafeRepartidorPublicController : ControllerBase
                 s.Notas,
                 (s.Origin == "flex" || s.Origin == "me1") && s.OriginRefId != null
                     && long.TryParse(s.OriginRefId, out var sid2) && ships.TryGetValue(sid2, out var m2)
-                    && string.Equals(m2.DeliveryPreference, "business", StringComparison.OrdinalIgnoreCase));
+                    && string.Equals(m2.DeliveryPreference, "business", StringComparison.OrdinalIgnoreCase),
+                cobrar.TryGetValue(s.Id, out var cb) ? cb.saldo : null,
+                cobrar.TryGetValue(s.Id, out var cb2) ? cb2.detalle : null);
         }).ToList();
 
         return Ok(result);
@@ -2009,6 +2033,60 @@ public class CafeRepartidorPublicController : ControllerBase
                    ?? new HashSet<int>();
         }
         catch { return new HashSet<int>(); }   // dato raro: arrancamos limpio, no rompemos la pantalla
+    }
+
+    public record CobranzaVisitaCobroRequest(decimal Importe, string? Notas);
+
+    /// <summary>27/11/2026: el repartidor cobró una cobranza que le mandaron ("Mandar a cobrar").
+    /// Queda como cobro PENDIENTE para que la oficina lo apruebe e impute (igual que los cobros de
+    /// ventas), contra el comprobante más viejo que debe. La parada se cierra como hecha.</summary>
+    [HttpPost("mis-pedidos/{tokenRepartidor}/cobranza/{stopId:int}")]
+    public async Task<IActionResult> CobrarCobranzaVisita(string tokenRepartidor, int stopId, [FromBody] CobranzaVisitaCobroRequest req)
+    {
+        var r = await _db.CafeRepartidores.FirstOrDefaultAsync(x => x.PublicToken == tokenRepartidor && x.IsActive);
+        if (r is null) return NotFound(new { error = "Enlace invalido o repartidor inactivo" });
+        if (req is null || req.Importe <= 0m) return BadRequest(new { error = "Ingresá un importe mayor a 0" });
+
+        var driverIds = await _db.MapeoDrivers.Where(d => d.CafeRepartidorId == r.Id).Select(d => d.Id).ToListAsync();
+        var stop = await _db.MapeoStops.FirstOrDefaultAsync(s => s.Id == stopId && s.Origin == CobranzaVisitaService.Origin);
+        if (stop is null) return NotFound(new { error = "Cobranza no encontrada" });
+        if (stop.AssignedDriverId == null || !driverIds.Contains(stop.AssignedDriverId.Value))
+            return BadRequest(new { error = "Esa cobranza no es tuya" });
+
+        var cobSvc = HttpContext.RequestServices.GetRequiredService<CobranzaVisitaService>();
+        var (cid, vid) = CobranzaVisitaService.ParseRef(stop.OriginRefId);
+        var comps = await cobSvc.ComprobantesAsync(cid, vid);
+        int? ventaId = comps.Count > 0 ? comps[0].VentaId : vid;
+        if (ventaId is null)
+        {
+            // Ya no debe nada en el sistema: igual se registra contra su última venta, así la plata no se pierde.
+            ventaId = await _db.CafeVentas.Where(v => v.ClienteId == cid && v.Estado != "anulado")
+                .OrderByDescending(v => v.Fecha).Select(v => (int?)v.Id).FirstOrDefaultAsync();
+        }
+        if (ventaId is null) return BadRequest(new { error = "No encontré a qué venta cargarlo: avisá a la oficina" });
+
+        var notas = "Cobranza mandada (" + (comps.Count <= 1 ? (comps.FirstOrDefault()?.Numero ?? "sin deuda") : $"{comps.Count} comprobantes") + ")";
+        if (!string.IsNullOrWhiteSpace(req.Notas)) notas += " · " + req.Notas.Trim();
+        if (notas.Length > 500) notas = notas[..500];
+        _db.CafeCobranzasPendientes.Add(new CafeCobranzaPendiente
+        {
+            VentaId = ventaId.Value,
+            RepartidorId = r.Id,
+            Importe = req.Importe,
+            MarcadoEntregado = false,
+            Notas = notas,
+            Estado = "PENDIENTE",
+            CreatedAt = DateTime.UtcNow
+        });
+        _db.CafeQrEscaneos.Add(new CafeQrEscaneo
+        {
+            VentaId = ventaId.Value, RepartidorId = r.Id, Accion = "cobrado_suelto", CreatedAt = DateTime.UtcNow,
+            Ip = Request.HttpContext.Connection.RemoteIpAddress?.ToString()
+        });
+        stop.InternalStatus = "entregado";
+        stop.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true, mensaje = $"💰 Cobro $ {req.Importe:N2} cargado (pendiente de aprobar)" });
     }
 
     public record NoEntregadaRequest(string Motivo);

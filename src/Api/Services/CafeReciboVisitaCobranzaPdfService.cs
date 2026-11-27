@@ -33,13 +33,56 @@ public class CafeReciboVisitaCobranzaPdfService
         _logger = logger;
     }
 
+    /// <summary>Un comprobante que el repartidor va a cobrar.</summary>
+    public sealed record ReciboCobranzaItem(string Numero, DateTime Fecha, decimal Total, decimal Saldo);
+
+    /// <summary>27/11/2026: lo que va impreso en el recibo. Puede ser una sola venta (como antes) o
+    /// todas las que debe el cliente, y ahora dice a qué repartidor y qué día se mandó.</summary>
+    public sealed class ReciboCobranzaDatos
+    {
+        public string NumeroRecibo { get; set; } = "";
+        public string ClienteNombre { get; set; } = "(sin cliente)";
+        public string? RazonSocial { get; set; }
+        public string? Cuit { get; set; }
+        public string? Direccion { get; set; }
+        public string? LocalidadLinea { get; set; }
+        public string? Telefono { get; set; }
+        public List<ReciboCobranzaItem> Comprobantes { get; set; } = new();
+        public decimal SaldoTotal { get; set; }
+        public string? Repartidor { get; set; }
+        public DateTime? FechaVisita { get; set; }
+        public string? Nota { get; set; }
+    }
+
+    /// <summary>Arma los datos del recibo a partir de UNA venta (el recibo de siempre).</summary>
+    public static ReciboCobranzaDatos DatosDeVenta(CafeVenta v, decimal saldoPendiente)
+    {
+        var totalCobrable = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+        var locParts = new[] { v.ClienteLocalidadSnapshot, v.ClienteCiudadSnapshot, v.ClienteCpSnapshot }
+            .Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+        return new ReciboCobranzaDatos
+        {
+            NumeroRecibo = $"VIS-{DateTime.Now.Year:0000}-{v.Id:0000}",
+            ClienteNombre = v.ClienteNombreSnapshot ?? "(sin cliente)",
+            RazonSocial = v.ClienteRazonSocialSnapshot,
+            Cuit = v.ClienteCuitSnapshot,
+            Direccion = string.IsNullOrWhiteSpace(v.ClienteDomicilioEntregaSnapshot) ? v.ClienteDireccionSnapshot : v.ClienteDomicilioEntregaSnapshot,
+            LocalidadLinea = locParts.Count > 0 ? string.Join(" · ", locParts) : null,
+            Telefono = v.ClienteTelefonoSnapshot,
+            Comprobantes = new() { new ReciboCobranzaItem(v.Numero, v.Fecha, totalCobrable, saldoPendiente) },
+            SaldoTotal = saldoPendiente
+        };
+    }
+
     public byte[] GenerarPdf(CafeVenta v, decimal saldoPendiente, CafeSetting? cfg, byte[]? qrRepartidor)
+        => GenerarPdf(DatosDeVenta(v, saldoPendiente), cfg, qrRepartidor);
+
+    public byte[] GenerarPdf(ReciboCobranzaDatos d, CafeSetting? cfg, byte[]? qrRepartidor)
     {
         cfg ??= new CafeSetting();
-        var numero = $"VIS-{DateTime.Now.Year:0000}-{v.Id:0000}";
+        var numero = d.NumeroRecibo;
         var logoBytes = TryLoadLogoBytes(cfg.NegocioLogoUrl) ?? TryLoadLogoFallback(cfg.NegocioCuit);
-        // Monto cobrable (con IVA si aplica) para mostrar el total real del comprobante
-        var totalCobrable = (v.ArcaImpTotal.HasValue && v.ArcaImpTotal.Value > 0m) ? v.ArcaImpTotal.Value : v.Total;
+        var saldoPendiente = d.SaldoTotal;
 
         var pdf = Document.Create(container =>
         {
@@ -73,6 +116,10 @@ public class CafeReciboVisitaCobranzaPdfService
                             .Padding(6).Text("🚪 VISITA POR COBRANZA").FontSize(11).Bold().FontColor(Colors.Amber.Darken3);
                         c.Item().AlignRight().PaddingTop(4).Text($"N° {numero}").FontSize(10).Bold().FontFamily("Courier");
                         c.Item().AlignRight().Text($"Fecha: {DateTime.Now:dd/MM/yyyy}").FontSize(9);
+                        if (!string.IsNullOrWhiteSpace(d.Repartidor))
+                            c.Item().AlignRight().PaddingTop(2).Text($"Repartidor: {d.Repartidor}").FontSize(10).Bold();
+                        if (d.FechaVisita.HasValue)
+                            c.Item().AlignRight().Text($"Visita: {d.FechaVisita.Value.ToString("ddd dd/MM", Es)}").FontSize(10).Bold();
                     });
                 });
 
@@ -83,56 +130,83 @@ public class CafeReciboVisitaCobranzaPdfService
                     col.Item().Background(Colors.Blue.Lighten5).Border(1).BorderColor(Colors.Blue.Medium).Padding(12).Column(c =>
                     {
                         c.Item().Text("CLIENTE").FontSize(8).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.08f);
-                        c.Item().PaddingTop(4).Text(v.ClienteNombreSnapshot ?? "(sin cliente)").FontSize(16).Bold();
-                        if (!string.IsNullOrWhiteSpace(v.ClienteRazonSocialSnapshot))
-                            c.Item().Text(v.ClienteRazonSocialSnapshot!).FontSize(10).Italic().FontColor(Colors.Grey.Darken1);
-                        if (!string.IsNullOrWhiteSpace(v.ClienteCuitSnapshot))
-                            c.Item().PaddingTop(2).Text($"CUIT/DNI: {v.ClienteCuitSnapshot}").FontSize(9);
+                        c.Item().PaddingTop(4).Text(d.ClienteNombre).FontSize(16).Bold();
+                        if (!string.IsNullOrWhiteSpace(d.RazonSocial) && d.RazonSocial != d.ClienteNombre)
+                            c.Item().Text(d.RazonSocial!).FontSize(10).Italic().FontColor(Colors.Grey.Darken1);
+                        if (!string.IsNullOrWhiteSpace(d.Cuit))
+                            c.Item().PaddingTop(2).Text($"CUIT/DNI: {d.Cuit}").FontSize(9);
                         // Dirección y zona BIEN GRANDES para que se lean en el celu del repartidor
-                        if (!string.IsNullOrWhiteSpace(v.ClienteDireccionSnapshot))
+                        if (!string.IsNullOrWhiteSpace(d.Direccion))
                         {
                             c.Item().PaddingTop(6).Row(r =>
                             {
                                 r.ConstantItem(22).Text("📍").FontSize(16);
-                                r.RelativeItem().Text(v.ClienteDireccionSnapshot!).FontSize(13).Bold();
+                                r.RelativeItem().Text(d.Direccion!).FontSize(13).Bold();
                             });
                         }
-                        var locParts = new[] { v.ClienteLocalidadSnapshot, v.ClienteCiudadSnapshot, v.ClienteCpSnapshot }
-                            .Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
-                        if (locParts.Count > 0)
-                            c.Item().PaddingLeft(22).Text(string.Join(" · ", locParts)).FontSize(11);
-                        if (!string.IsNullOrWhiteSpace(v.ClienteTelefonoSnapshot))
+                        if (!string.IsNullOrWhiteSpace(d.LocalidadLinea))
+                            c.Item().PaddingLeft(22).Text(d.LocalidadLinea!).FontSize(11);
+                        if (!string.IsNullOrWhiteSpace(d.Telefono))
                         {
                             c.Item().PaddingTop(4).Row(r =>
                             {
                                 r.ConstantItem(22).Text("📞").FontSize(13);
-                                r.RelativeItem().Text(v.ClienteTelefonoSnapshot!).FontSize(12).Bold();
+                                r.RelativeItem().Text(d.Telefono!).FontSize(12).Bold();
                             });
                         }
+                        if (!string.IsNullOrWhiteSpace(d.Nota))
+                            c.Item().PaddingTop(6).Text($"Nota: {d.Nota}").FontSize(11).Bold().FontColor(Colors.Grey.Darken3);
                     });
 
                     // COMPROBANTE A COBRAR
                     col.Item().PaddingTop(10).Background(Colors.Red.Lighten5).Border(1).BorderColor(Colors.Red.Medium).Padding(12).Column(c =>
                     {
-                        c.Item().Text("COMPROBANTE A COBRAR").FontSize(8).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.08f);
-                        c.Item().PaddingTop(4).Row(r =>
+                        if (d.Comprobantes.Count == 1)
                         {
-                            r.RelativeItem().Column(cc =>
+                            var it = d.Comprobantes[0];
+                            c.Item().Text("COMPROBANTE A COBRAR").FontSize(8).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.08f);
+                            c.Item().PaddingTop(4).Row(r =>
                             {
-                                cc.Item().Text("Número").FontSize(8).FontColor(Colors.Grey.Darken1);
-                                cc.Item().Text(v.Numero).FontSize(13).Bold().FontFamily("Courier");
+                                r.RelativeItem().Column(cc =>
+                                {
+                                    cc.Item().Text("Número").FontSize(8).FontColor(Colors.Grey.Darken1);
+                                    cc.Item().Text(it.Numero).FontSize(13).Bold().FontFamily("Courier");
+                                });
+                                r.RelativeItem().Column(cc =>
+                                {
+                                    cc.Item().Text("Fecha emisión").FontSize(8).FontColor(Colors.Grey.Darken1);
+                                    cc.Item().Text(it.Fecha.ToString("dd/MM/yyyy")).FontSize(13).Bold();
+                                });
+                                r.RelativeItem().Column(cc =>
+                                {
+                                    cc.Item().Text("Total comprobante").FontSize(8).FontColor(Colors.Grey.Darken1);
+                                    cc.Item().Text($"$ {it.Total.ToString("N2", Es)}").FontSize(13).Bold();
+                                });
                             });
-                            r.RelativeItem().Column(cc =>
+                        }
+                        else
+                        {
+                            // 27/11/2026: varias facturas del mismo cliente en un solo recibo.
+                            c.Item().Text($"COMPROBANTES A COBRAR ({d.Comprobantes.Count})").FontSize(8).Bold().FontColor(Colors.Grey.Darken2).LetterSpacing(0.08f);
+                            c.Item().PaddingTop(4).Table(t =>
                             {
-                                cc.Item().Text("Fecha emisión").FontSize(8).FontColor(Colors.Grey.Darken1);
-                                cc.Item().Text(v.Fecha.ToString("dd/MM/yyyy")).FontSize(13).Bold();
+                                t.ColumnsDefinition(cd => { cd.RelativeColumn(3); cd.RelativeColumn(2); cd.RelativeColumn(2); cd.RelativeColumn(2); });
+                                t.Header(h =>
+                                {
+                                    h.Cell().Text("Número").FontSize(8).FontColor(Colors.Grey.Darken1);
+                                    h.Cell().Text("Fecha").FontSize(8).FontColor(Colors.Grey.Darken1);
+                                    h.Cell().AlignRight().Text("Total").FontSize(8).FontColor(Colors.Grey.Darken1);
+                                    h.Cell().AlignRight().Text("Saldo").FontSize(8).FontColor(Colors.Grey.Darken1);
+                                });
+                                foreach (var it in d.Comprobantes)
+                                {
+                                    t.Cell().PaddingVertical(2).Text(it.Numero).FontSize(10).Bold().FontFamily("Courier");
+                                    t.Cell().PaddingVertical(2).Text(it.Fecha.ToString("dd/MM/yyyy")).FontSize(10);
+                                    t.Cell().PaddingVertical(2).AlignRight().Text($"$ {it.Total.ToString("N2", Es)}").FontSize(10);
+                                    t.Cell().PaddingVertical(2).AlignRight().Text($"$ {it.Saldo.ToString("N2", Es)}").FontSize(10).Bold();
+                                }
                             });
-                            r.RelativeItem().Column(cc =>
-                            {
-                                cc.Item().Text("Total comprobante").FontSize(8).FontColor(Colors.Grey.Darken1);
-                                cc.Item().Text($"$ {totalCobrable.ToString("N2", Es)}").FontSize(13).Bold();
-                            });
-                        });
+                        }
                         c.Item().PaddingTop(8).Background(Colors.Red.Lighten4).Padding(8).Row(r =>
                         {
                             r.RelativeItem().AlignCenter().Text("SALDO PENDIENTE A COBRAR").FontSize(9).Bold().FontColor(Colors.Red.Darken3);

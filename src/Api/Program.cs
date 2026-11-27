@@ -266,6 +266,7 @@ builder.Services.AddScoped<CafeRotuloPdfService>();
 builder.Services.AddScoped<AlqReservaPdfService>();
 builder.Services.AddScoped<CafeComodatoPdfService>();
 builder.Services.AddScoped<CafeReciboVisitaCobranzaPdfService>();
+builder.Services.AddScoped<CobranzaVisitaService>();
 builder.Services.AddScoped<CafeListaPreciosPdfService>();
 builder.Services.AddScoped<CafePedidoProveedorPdfService>();
 builder.Services.AddScoped<CafeFichaTecnicaPdfService>();
