@@ -71,9 +71,34 @@ public partial class ApiClient
         => await GetAsync<List<PlanoSinEstanteDto>>("/api/deposito/plano/sin-estante"
             + (string.IsNullOrWhiteSpace(planta) ? "" : "?planta=" + Uri.EscapeDataString(planta))) ?? new();
 
-    /// <summary>2026-11-26: ¿la zona de un producto es un estante del plano? (ej. "H-1-2").</summary>
+    /// <summary>¿la zona de un producto es un estante del plano? 2026-11-27: "D2-3" (rack-nivel),
+    /// "D2-3B" (nivel 3, posición B) o el formato viejo "D2-1-3".</summary>
     public static bool EsCodigoEstante(string? zona)
-        => !string.IsNullOrWhiteSpace(zona) && System.Text.RegularExpressions.Regex.IsMatch(zona.Trim(), @"^[A-Z0-9]+-\d+-\d+$");
+        => !string.IsNullOrWhiteSpace(zona) && System.Text.RegularExpressions.Regex.IsMatch(zona.Trim(), @"^[A-Z0-9]+-\d+([A-Z]|-\d+)?$");
+
+    /// <summary>2026-11-27: código del estante, igual que en el servidor (DepositoPlanoController.CodigoEstante).
+    /// Rack con una posición: "D2-3"; con varias: "D2-3A", "D2-3B" (la posición es la letra).</summary>
+    public static string CodigoEstante(string? rack, int? posiciones, int pos, int nivel)
+        => (posiciones ?? 1) <= 1 ? $"{rack}-{nivel}" : $"{rack}-{nivel}{LetraPosicion(pos)}";
+
+    public static string LetraPosicion(int pos) => pos >= 1 && pos <= 26 ? ((char)('A' + pos - 1)).ToString() : pos.ToString();
+
+    /// <summary>2026-11-27: parte el código del estante: "D2-3" → (D2, 1, 3); "D2-3B" → (D2, 2, 3, conLetra);
+    /// el viejo "D2-1-3" → (D2, 1, 3). Si no es un estante, Niv = 0.</summary>
+    public static (string Rack, int Pos, int Niv, bool ConLetra) PartirEstante(string? cod)
+    {
+        var c = (cod ?? "").Trim().ToUpperInvariant();
+        var m = System.Text.RegularExpressions.Regex.Match(c, @"^([A-Z0-9]+)-(\d{1,3})([A-Z])?$");
+        if (m.Success)
+            return (m.Groups[1].Value, m.Groups[3].Success ? m.Groups[3].Value[0] - 'A' + 1 : 1, int.Parse(m.Groups[2].Value), m.Groups[3].Success);
+        m = System.Text.RegularExpressions.Regex.Match(c, @"^([A-Z0-9]+)-(\d{1,3})-(\d{1,3})$");
+        if (m.Success) return (m.Groups[1].Value, int.Parse(m.Groups[2].Value), int.Parse(m.Groups[3].Value), false);
+        return (c, 0, 0, false);
+    }
+
+    /// <summary>2026-11-27: "Rack D2 · nivel 3 (el piso)" y, si el rack tiene varias posiciones, "· lugar B".</summary>
+    public static string TextoEstante(string? rack, int? posiciones, int pos, int nivel)
+        => $"Rack {rack} · nivel {nivel}{(nivel == 1 ? " (el piso)" : "")}{((posiciones ?? 1) > 1 ? $" · lugar {LetraPosicion(pos)}" : "")}";
 
     /// <summary>Dirección del ZPL con una etiqueta QR por estante (se la pasa a zebraImprimir).</summary>
     public static string UrlEtiquetasRackPlano(int rackId, string origen)
