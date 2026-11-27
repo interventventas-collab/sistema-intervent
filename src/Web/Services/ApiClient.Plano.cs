@@ -170,6 +170,7 @@ public partial class ApiClient
         => $"Rack {rack} · nivel {nivel}{(nivel == 1 ? " (el piso)" : "")}{((posiciones ?? 1) > 1 ? $" · lugar {LetraPosicion(pos)}" : "")}";
 
     /// <summary>Dirección del ZPL con una etiqueta QR por estante (se la pasa a zebraImprimir).</summary>
-    public static string UrlEtiquetasRackPlano(int rackId, string origen)
-        => $"/api/deposito/plano/racks/{rackId}/etiquetas.zpl?origen={Uri.EscapeDataString(origen)}";
+    public static string UrlEtiquetasRackPlano(int rackId, string origen, string? estante = null)
+        => $"/api/deposito/plano/racks/{rackId}/etiquetas.zpl?origen={Uri.EscapeDataString(origen)}"
+           + (string.IsNullOrWhiteSpace(estante) ? "" : $"&estante={Uri.EscapeDataString(estante)}");
 }
