@@ -44,20 +44,23 @@ public class DepoRecorridoController : ControllerBase
         return DateTime.TryParse(v, CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var d) ? d : DateTime.MinValue;
     }
 
-    // Un lado de un rack que da a una calle
-    private record Lado(DepositoPlanoElemento Rack, int Cara, int Calle, int Nro);
+    // Un lado de un rack que da a una calle. Orden dentro de la calle: desde la entrada (Y) y por fila.
+    private record Lado(DepositoPlanoElemento Rack, int Cara, int Calle, int Orden);
 
     private async Task<List<Lado>> LadosAsync()
     {
         var racks = await _db.DepositoPlanoElementos.AsNoTracking()
             .Where(e => e.Tipo == "rack" && (e.Calle1 != null || e.Calle2 != null)).ToListAsync();
-        var l = new List<Lado>();
+        var l = new List<(DepositoPlanoElemento R, int Cara, int Calle)>();
         foreach (var r in racks)
         {
-            if (r.Calle1 is int c1 && r.Nro1 is int n1) l.Add(new(r, 1, c1, n1));
-            if (r.Calle2 is int c2 && r.Nro2 is int n2) l.Add(new(r, 2, c2, n2));
+            if (r.Calle1 is int c1) l.Add((r, 1, c1));
+            if (r.Calle2 is int c2) l.Add((r, 2, c2));
         }
-        return l.OrderBy(x => x.Calle).ThenBy(x => x.Nro).ToList();
+        return l.GroupBy(x => x.Calle).OrderBy(g => g.Key)
+            .SelectMany(g => g.OrderBy(x => x.R.Y).ThenBy(x => x.R.Fila).ThenBy(x => x.R.NroFila)
+                .Select((x, i) => new Lado(x.R, x.Cara, x.Calle, i + 1)))
+            .ToList();
     }
 
     /// <summary>(rack, cara, pos, nivel) de los estantes revisados en este recorrido.</summary>
@@ -91,7 +94,7 @@ public class DepoRecorridoController : ControllerBase
                     }
             // donde seguir: el primer estante sin revisar de la calle
             string? seguir = null;
-            foreach (var x in g.OrderBy(y => y.Nro))
+            foreach (var x in g.OrderBy(y => y.Orden))
             {
                 for (int p = 1; p <= (x.Rack.Posiciones ?? 1) && seguir is null; p++)
                     for (int n = 1; n <= (x.Rack.Niveles ?? 1) && seguir is null; n++)
@@ -99,7 +102,7 @@ public class DepoRecorridoController : ControllerBase
                             seguir = DepositoPlanoController.CodigoEstante(x.Rack, x.Cara, p, n);
                 if (seguir is not null) break;
             }
-            var primero = g.OrderBy(y => y.Nro).First();
+            var primero = g.OrderBy(y => y.Orden).First();
             return new
             {
                 calle = g.Key,
@@ -153,9 +156,11 @@ public class DepoRecorridoController : ControllerBase
         string? siguiente = null; bool cambiaRack = false;
         if (niv < (rack.Niveles ?? 1)) siguiente = DepositoPlanoController.CodigoEstante(rack, cara, pos, niv + 1);
         else if (pos < (rack.Posiciones ?? 1)) siguiente = DepositoPlanoController.CodigoEstante(rack, cara, pos + 1, 1);
-        else if (calle is int c && nro is int n0)
+        else if (calle is int c)
         {
-            var prox = (await LadosAsync()).Where(x => x.Calle == c && x.Nro > n0).OrderBy(x => x.Nro).FirstOrDefault();
+            var lados = await LadosAsync();
+            var yo = lados.FirstOrDefault(x => x.Calle == c && x.Rack.Id == rack.Id && x.Cara == cara);
+            var prox = yo is null ? null : lados.Where(x => x.Calle == c && x.Orden > yo.Orden).OrderBy(x => x.Orden).FirstOrDefault();
             if (prox is not null) { siguiente = DepositoPlanoController.CodigoEstante(prox.Rack, prox.Cara, 1, 1); cambiaRack = true; }
         }
 
@@ -166,7 +171,7 @@ public class DepoRecorridoController : ControllerBase
             planta = rack.Planta,
             rackId = rack.Id,
             rack = rack.Codigo,
-            calle, nro, cara, posicion = pos, nivel = niv, niveles = rack.Niveles ?? 1,
+            calle, nro, fila = rack.Fila, nombreRack = DepositoPlanoController.NombreRack(rack), cara, posicion = pos, nivel = niv, niveles = rack.Niveles ?? 1,
             revisado = revisados.Contains((rack.Id, cara, pos, niv)),
             alturas,
             siguiente,

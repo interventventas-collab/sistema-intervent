@@ -36,7 +36,7 @@
                 <div class="pe-cod">@Codigo</div>
                 @if (est is not null)
                 {
-                    <div class="pe-sub">@(est.Desglose ?? ApiClient.TextoEstante(est.Rack, est.Posiciones, est.Posicion, est.Nivel))@(est.Nivel == 1 && est.Desglose is not null ? " (el piso)" : "")@(est.Planta == "P1" ? " · planta alta" : " · planta baja") <span style="color:#9ca3af">· rack @est.Rack</span></div>
+                    <div class="pe-sub">@(est.Desglose ?? ApiClient.TextoEstante(est.Rack, est.Posiciones, est.Posicion, est.Nivel))@(est.Nivel == 1 && est.Desglose is not null ? " (el piso)" : "")@(est.Planta == "P1" ? " · planta alta" : " · planta baja")</div>
                 }
             </div>
             @if (est is not null && rack is not null)
@@ -66,7 +66,7 @@
             var niv = Math.Max(1, rack.Niveles ?? 1);
             const int CW = 74, CH = 34, M = 26;
             var w = M + pos * CW + 6; var h = niv * CH + 26;
-            <div class="pe-lbl">@(est.Calle is int ca && est.Nro is int nr ? $"Calle {ca} · rack {nr} de frente" : $"Rack {rack.Codigo} de frente")</div>
+            <div class="pe-lbl">@(ApiClient.CarasDe(rack).FirstOrDefault(c => c.Cara == est.Cara).Titulo ?? $"Rack {rack.Codigo}") · de frente</div>
             <div class="pe-frente">
                 <svg width="@w" height="@h" viewBox="0 0 @w @h" xmlns="http://www.w3.org/2000/svg">
                     @for (var n = 1; n <= niv; n++)

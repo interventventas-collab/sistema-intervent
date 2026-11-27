@@ -35,6 +35,8 @@ public class RecorridoEstanteDto
     public string? Rack { get; set; }
     public int? Calle { get; set; }
     public int? Nro { get; set; }
+    public int? Fila { get; set; }
+    public string? NombreRack { get; set; }
     public int Cara { get; set; }
     public int Posicion { get; set; }
     public int Nivel { get; set; }

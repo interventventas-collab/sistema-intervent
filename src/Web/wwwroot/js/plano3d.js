@@ -107,8 +107,11 @@
     // viejos "D2-3B" y "D2-1-3" → { calle, nro, rack, pos, niv }
     function partir(cod) {
         const c = String(cod || '').trim().toUpperCase();
-        let m = c.match(/^C(\d{1,2})-R(\d{1,2})-A(\d{1,2})(?:-P(\d{1,2}))?$/);
-        if (m) return { calle: +m[1], nro: +m[2], rack: null, niv: +m[3], pos: m[4] ? +m[4] : 1, letra: null };
+        // C3-F4-R2-A3 (calle, fila, rack de la fila, altura) / F4-R2-A3 / anterior C3-R4-A3
+        let m = c.match(/^(?:C(\d{1,2})-)?F(\d{1,2})-R(\d{1,2})-A(\d{1,2})(?:-P(\d{1,2}))?$/);
+        if (m) return { calle: m[1] ? +m[1] : null, fila: +m[2], nro: +m[3], rack: null, niv: +m[4], pos: m[5] ? +m[5] : 1, letra: null };
+        m = c.match(/^C(\d{1,2})-R(\d{1,2})-A(\d{1,2})(?:-P(\d{1,2}))?$/);
+        if (m) return { calle: +m[1], nro: +m[2], viejo: true, rack: null, niv: +m[3], pos: m[4] ? +m[4] : 1, letra: null };
         m = c.match(/^([A-Z0-9]+)-(\d{1,3})([A-Z])?$/);
         if (m) return { rack: m[1], niv: +m[2], pos: m[3] ? m[3].charCodeAt(0) - 64 : 1, letra: m[3] || null };
         m = c.match(/^([A-Z0-9]+)-(\d{1,3})-(\d{1,3})$/);
@@ -119,6 +122,7 @@
     function desglose(p) {
         if (!p) return '';
         const alt = `Altura ${p.niv}${p.niv === 1 ? ' (el piso)' : ''}`;
+        if (p.fila != null) return `${p.calle != null ? 'Calle ' + p.calle + ' · ' : ''}Fila ${p.fila} · Rack ${p.nro} · ${alt}${p.pos > 1 ? ' · Posición ' + p.pos : ''}`;
         if (p.calle != null) return `Calle ${p.calle} · Rack ${p.nro} · ${alt}${p.pos > 1 ? ' · Posición ' + p.pos : ''}`;
         return `Rack ${p.rack} · ${alt}${p.letra ? ' · Posición ' + p.letra : ''}`;
     }
@@ -187,10 +191,13 @@
                 }
             }
             const top = div('p3-rcod', { width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${H + 2}px)`, fontSize: Math.max(12, Math.min(26, r.h * 0.5)) + 'px' }, d);
-            top.textContent = e.codigo;
+            // 2026-11-27: el rack se llama fila-rack ("F4-R2"); sin fila, el código de siempre
+            top.textContent = (e.fila != null && e.nroFila != null) ? 'F' + e.fila + '-R' + e.nroFila : e.codigo;
+            top.style.fontSize = Math.max(10, Math.min(22, r.h * 0.42, r.w / 3.2)) + 'px';
             racks[e.codigo.toUpperCase()] = { e, r, H, N, d, niveles };
             if (e.calle1 != null && e.nro1 != null) porCalle[e.calle1 + '-' + e.nro1] = e.codigo.toUpperCase();
             if (e.calle2 != null && e.nro2 != null) porCalle[e.calle2 + '-' + e.nro2] = e.codigo.toUpperCase();
+            if (e.fila != null && e.nroFila != null) porCalle['F' + e.fila + '-' + e.nroFila] = e.codigo.toUpperCase();
         }
 
         // paredes bajitas alrededor de los ambientes con racks (para que se entienda el espacio)
@@ -255,7 +262,8 @@
             const p = partir(it.est);
             const pl = (it.planta || 'PB').toUpperCase();
             const esc = p ? escenaDe(pl) : null;
-            if (p && esc && p.calle != null) p.rack = esc.porCalle[p.calle + '-' + p.nro] || null;
+            if (p && esc && p.fila != null) p.rack = esc.porCalle['F' + p.fila + '-' + p.nro] || null;
+            else if (p && esc && p.calle != null) p.rack = esc.porCalle[p.calle + '-' + p.nro] || null;
             const k = esc && p && p.rack ? esc.racks[p.rack] : null;
             return { ...it, i, p, pl, k, ok: !!k };
         });

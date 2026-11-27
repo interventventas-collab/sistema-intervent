@@ -38,6 +38,9 @@ public class PlanoElementoDto
     public int? Nro1 { get; set; }
     public int? Calle2 { get; set; }
     public int? Nro2 { get; set; }
+    /// <summary>2026-11-27: fila (línea de estanterías) y número de rack en la fila → "F4-R2".</summary>
+    public int? Fila { get; set; }
+    public int? NroFila { get; set; }
 
     public PlanoElementoDto Copia() => (PlanoElementoDto)MemberwiseClone();
 }
@@ -66,6 +69,9 @@ public class PlanoElementoGuardarDto
     public int? Nro1 { get; set; }
     public int? Calle2 { get; set; }
     public int? Nro2 { get; set; }
+    /// <summary>2026-11-27: fila (línea de estanterías) y número de rack en la fila → "F4-R2".</summary>
+    public int? Fila { get; set; }
+    public int? NroFila { get; set; }
 
     public static PlanoElementoGuardarDto De(PlanoElementoDto e) => new()
     {
@@ -73,7 +79,7 @@ public class PlanoElementoGuardarDto
         X = e.X, Y = e.Y, Ancho = e.Ancho, Largo = e.Largo, Alto = e.Alto, Rotacion = e.Rotacion,
         Posiciones = e.Posiciones, Niveles = e.Niveles, Color = e.Color, Puntos = e.Puntos,
         Notas = e.Notas, Orden = e.Orden, Estilo = e.Estilo,
-        Calle1 = e.Calle1, Nro1 = e.Nro1, Calle2 = e.Calle2, Nro2 = e.Nro2,
+        Calle1 = e.Calle1, Nro1 = e.Nro1, Calle2 = e.Calle2, Nro2 = e.Nro2, Fila = e.Fila, NroFila = e.NroFila,
     };
 }
 
@@ -132,6 +138,7 @@ public class PlanoEstanteDetalleDto
     public int? Calle { get; set; }
     public int? Nro { get; set; }
     public string? Desglose { get; set; }
+    public int? Fila { get; set; }
     public List<PlanoAsignacionDto> Productos { get; set; } = new();
 }
 

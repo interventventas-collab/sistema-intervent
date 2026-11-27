@@ -38,7 +38,7 @@
                 <option value="">— elegí —</option>
                 @foreach (var r in racks)
                 {
-                    <option value="@r.Id">Rack @r.Codigo · @r.Planta@(r.Calle1 is not null || r.Calle2 is not null ? " · " + string.Join(" / ", ApiClient.CarasDe(r).Select(c => c.Titulo)) : "")</option>
+                    <option value="@r.Id">Rack @ApiClient.NombreRack(r) · @r.Planta</option>
                 }
             </select>
         </span>
@@ -110,7 +110,7 @@
             racks = planos.Where(p => p is not null).SelectMany(p => p!.Elementos)
                 .Where(e => e.Tipo == "rack" && !string.IsNullOrWhiteSpace(e.Codigo))
                 .OrderBy(e => string.Equals(e.Planta, Planta, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
-                .ThenBy(e => e.Planta).ThenBy(e => e.Codigo)
+                .ThenBy(e => e.Planta).ThenBy(e => e.Fila ?? 99).ThenBy(e => e.NroFila).ThenBy(e => e.Codigo)
                 .ToList();
         }
         catch (Exception ex) { ToastService.Error("No pude traer los racks del plano: " + ex.Message); racks = new(); }

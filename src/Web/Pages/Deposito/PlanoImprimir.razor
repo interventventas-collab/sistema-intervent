@@ -74,7 +74,7 @@
             </div>
             <PlanoDibujo Elementos="elementos" Vista="vista" Nombres="true" Posiciones="true" Clase="pi-svg"
                          Estilo="@($"aspect-ratio:{F(vista.W)} / {F(vista.H)}; max-height:{(zona is null ? "165mm" : "170mm")};")" />
-            <div class="pi-nota">Cada rack lleva su código (fila + número; el 1 es la punta más cerca de la calle). Cada estante se llama <b>calle-rack-altura</b>, ej. <b>C3-R4-A2</b> = calle 3, rack 4 de esa calle, altura 2 (A1 es el piso). Los racks del medio tienen un código por cada lado.</div>
+            <div class="pi-nota">Cada rack lleva el código de su calle (C3-R2 = calle 3, rack 2; los del medio, uno por cada lado). Cada estante se llama <b>calle-rack-altura</b>, ej. <b>C3-R4-A2</b> = calle 3, rack 4 de esa calle, altura 2 (A1 es el piso). Los racks del medio tienen un código por cada lado.</div>
         </div>
 
         @if (frentes && racks.Count > 0)
@@ -92,12 +92,12 @@
                         var w = M + pos * CW + 4; var h = niv * CH + 8;
                         <div class="pi-rack">
                             <h3>@tit</h3>
-                            <div class="pi-sub">rack @r.Codigo · @(pos > 1 ? $"{pos} posiciones · " : "")@niv alturas@(string.IsNullOrWhiteSpace(r.Notas) ? "" : " · " + r.Notas)</div>
+                            <div class="pi-sub">@(pos > 1 ? $"{pos} posiciones · " : "")@niv alturas@(string.IsNullOrWhiteSpace(r.Notas) ? "" : " · " + r.Notas)</div>
                             <svg width="@w" height="@h" viewBox="0 0 @w @h" xmlns="http://www.w3.org/2000/svg">
                                 @for (var n = 1; n <= niv; n++)
                                 {
                                     var y = (niv - n) * CH + 2;
-                                    <g><text x="@(M - 5)" y="@(y + CH / 2 + 3)" font-size="10" text-anchor="end" fill="#6b7280">A@n</text></g>
+                                    <g><text x="@(M - 5)" y="@(y + CH / 2 + 3)" font-size="10" text-anchor="end" fill="#6b7280">A@(n)</text></g>
                                     @for (var p = 1; p <= pos; p++)
                                     {
                                         var x = M + (p - 1) * CW;
