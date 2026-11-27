@@ -683,8 +683,10 @@ public class DepositoPlanoController : ControllerBase
     /// (812×1624 puntos a 203 dpi, troquel arriba): el código grande (C3-R4-A3), escrito "Calle 3 · Rack 4 ·
     /// Altura 3" y un QR que abre la página del estante. Se la pasa a window.zebraImprimir(url).</summary>
     [HttpGet("racks/{id:int}/etiquetas.zpl")]
-    public async Task<IActionResult> Etiquetas(int id, [FromQuery] string? origen)
+    public async Task<IActionResult> Etiquetas(int id, [FromQuery] string? origen, [FromQuery] string? estante = null)
     {
+        // 2026-11-27: ?estante=C3-F4-R1-A3 imprime solo la etiqueta de ese estante
+        var solo = string.IsNullOrWhiteSpace(estante) ? null : estante.Trim();
         var o = (origen ?? "").Trim().TrimEnd('/');
         if (!o.StartsWith("http://", StringComparison.OrdinalIgnoreCase) && !o.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
             || !Uri.TryCreate(o, UriKind.Absolute, out _) || o.Contains('^') || o.Contains('~'))
@@ -701,6 +703,7 @@ public class DepositoPlanoController : ControllerBase
             for (int niv = 1; niv <= e.Niveles; niv++)
             {
                 var cod = CodigoEstante(e, cara, pos, niv);
+                if (solo is not null && !string.Equals(cod, solo, StringComparison.OrdinalIgnoreCase)) continue;
                 var desglose = DesgloseEstante(e, cara, pos, niv);
                 var url = $"{o}/deposito/estante/{cod}";
                 // 2026-11-27: mismo rollo que las etiquetas de envío de MeLi (10 x 20 cm, troquel arriba).
@@ -726,6 +729,7 @@ public class DepositoPlanoController : ControllerBase
                 sb.Append($"^FO226,{T0 + 920}^BQN,2,11^FDLA,{url}^FS\n");
                 sb.Append("^XZ\n");
             }
+        if (sb.Length == 0) return ErrorZpl(404, "Ese estante no está en este rack.");
         return Content(sb.ToString(), "text/plain; charset=utf-8");
     }
 }
