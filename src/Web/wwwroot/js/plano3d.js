@@ -271,8 +271,8 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
                 for (let j = 0; j < n; j++) put(4 + j * w + 2, y0, w - 4, ch, 4, '#8a6a40', z);   // pallet
                 if (tipo === 'pallet') return;
                 // bolsas de yute apiladas: un poco más anchas que el pallet, cada una corrida un poquito (como en la foto)
-                // cada bolsa ~0,9 m de largo y ~0,2 m de alto (las de 60/70 kg)
-                const nb = Math.max(1, Math.round((r.w - 8) / 36)), wb = (r.w - 8) / nb;
+                // cada bolsa ~1,1 m de largo y ~0,22 m de alto (60/70 kg): en un rack de 2,45 m entran DOS a lo ancho (dato del dueño)
+                const nb = Math.max(1, Math.round((r.w - 8) / (1.1 * S))), wb = (r.w - 8) / nb;
                 // máximo 5 bolsas estibadas (pedido del dueño); cada una ~25 cm de alto
                 const capas = Math.max(1, Math.min(5, Math.floor((hz - 4) / (0.22 * S)))), ac = Math.min((hz - 4) / capas, 0.26 * S);
                 for (let c = 0; c < capas; c++)
