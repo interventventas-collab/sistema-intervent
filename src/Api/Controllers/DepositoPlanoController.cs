@@ -45,7 +45,7 @@ public class DepositoPlanoController : ControllerBase
         string? Notas, int Orden, int Productos, string? Estilo,
         int? Calle1, int? Nro1, int? Calle2, int? Nro2, int? Fila, int? NroFila,
         string? Forma = null, decimal? Elevacion = null, int? CallePunta1 = null, int? CallePunta2 = null,
-        List<DibujoDto>? Dibujos = null);
+        List<DibujoDto>? Dibujos = null, string? AlturasCm = null);
 
     /// <summary>2026-11-28: lo que se dibuja en un estante del rack (ver DepositoEstanteNota.Dibujo).</summary>
     public record DibujoDto(int Cara, int Posicion, int Nivel, string? Dibujo, int? Cant, string? Texto, string? Foto);
@@ -83,6 +83,8 @@ public class DepositoPlanoController : ControllerBase
         // 2026-11-28: calles de las puntas (caras 3 y 4)
         public int? CallePunta1 { get; set; }
         public int? CallePunta2 { get; set; }
+        // 2026-11-28: alto de cada altura en cm, de abajo hacia arriba ("136,100,60")
+        public string? AlturasCm { get; set; }
     }
 
     public record AsignacionDto(int Id, int ProductoId, string? Sku, string Nombre,
@@ -187,7 +189,7 @@ public class DepositoPlanoController : ControllerBase
     private static ElementoDto ADto(DepositoPlanoElemento e, int productos) => new(
         e.Id, e.Planta, e.Tipo, e.Codigo, e.Nombre, e.X, e.Y, e.Ancho, e.Largo, e.Alto,
         e.Rotacion, e.Posiciones, e.Niveles, e.Color, e.Puntos, e.Notas, e.Orden, productos, e.Estilo,
-        e.Calle1, e.Nro1, e.Calle2, e.Nro2, e.Fila, e.NroFila, e.Forma, e.Elevacion, e.CallePunta1, e.CallePunta2);
+        e.Calle1, e.Nro1, e.Calle2, e.Nro2, e.Fila, e.NroFila, e.Forma, e.Elevacion, e.CallePunta1, e.CallePunta2, AlturasCm: e.AlturasCm);
 
     private static bool EsRack(string? tipo) => string.Equals(tipo, "rack", StringComparison.OrdinalIgnoreCase);
 
@@ -397,6 +399,20 @@ public class DepositoPlanoController : ControllerBase
                 if (r.Elevacion is not null && (r.Elevacion < 0 || r.Elevacion > 10)) return "La altura desde el piso va de 0 a 10 metros.";
             }
             else r.Elevacion = null;
+            // 2026-11-28: alto de cada altura (cm, de abajo hacia arriba); tiene que haber uno por altura
+            if (string.IsNullOrWhiteSpace(r.AlturasCm) || r.Forma == "piso") r.AlturasCm = null;
+            else
+            {
+                var partes = r.AlturasCm.Split(new[] { ',', ';', ' ', '/' }, StringSplitOptions.RemoveEmptyEntries);
+                var cms = new List<int>();
+                foreach (var t in partes)
+                {
+                    if (!int.TryParse(t.Trim(), out var cm) || cm < 5 || cm > 500) return "El alto de cada altura va en centímetros, por ejemplo 136, 100, 60.";
+                    cms.Add(cm);
+                }
+                if (cms.Count != r.Niveles) return $"Poné un alto por cada altura: el rack tiene {r.Niveles} y pusiste {cms.Count}.";
+                r.AlturasCm = string.Join(",", cms);
+            }
         }
         else
         {
@@ -418,6 +434,7 @@ public class DepositoPlanoController : ControllerBase
         e.Fila = rack ? r.Fila : null; e.NroFila = rack ? r.NroFila : null;
         e.Forma = rack ? r.Forma : null; e.Elevacion = rack ? r.Elevacion : null;
         e.CallePunta1 = rack ? r.CallePunta1 : null; e.CallePunta2 = rack ? r.CallePunta2 : null;
+        e.AlturasCm = rack ? r.AlturasCm : null;
     }
 
     /// <summary>2026-11-27: ¿algún otro rack ya es esa fila + número? Devuelve el error o null.</summary>

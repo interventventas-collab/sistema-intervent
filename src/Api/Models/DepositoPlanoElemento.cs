@@ -94,6 +94,11 @@ public class DepositoPlanoElemento
     public int? CallePunta1 { get; set; }
     public int? CallePunta2 { get; set; }
 
+    /// <summary>2026-11-28: alto de cada altura en cm, de abajo hacia arriba, separado por coma ("136,100,60").
+    /// Null = todas iguales (el alto del rack repartido). En el 3D cada estante va a su altura real.</summary>
+    [MaxLength(80)]
+    public string? AlturasCm { get; set; }
+
     public DateTime CreadoAt { get; set; } = DateTime.UtcNow;
     public DateTime? ModificadoAt { get; set; }
 
