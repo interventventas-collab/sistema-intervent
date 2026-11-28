@@ -3,6 +3,16 @@
 @code {
     protected override void OnInitialized()
     {
+        // 2026-11-28: el QR de un estante (/deposito/estante/X) abierto por alguien SIN usuario no pide login:
+        // le muestra el estante solo para mirar (productos con foto y stock).
+        var rel = Navigation.ToBaseRelativePath(Navigation.Uri);
+        const string qr = "deposito/estante/";
+        if (rel.StartsWith(qr, StringComparison.OrdinalIgnoreCase) && rel.Length > qr.Length)
+        {
+            var cod = rel[qr.Length..].Split('?', '#')[0];
+            Navigation.NavigateTo("/ver-estante/" + cod, replace: true);
+            return;
+        }
         Navigation.NavigateTo("/login");
     }
 }

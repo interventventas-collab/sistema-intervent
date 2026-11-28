@@ -1,0 +1,207 @@
+@page "/ver-estante/{Codigo}"
+@attribute [AllowAnonymous]
+@layout Web.Layout.EmptyLayout
+@inject HttpClient Http
+@inject NavigationManager Nav
+@using System.Net.Http.Json
+
+@* 2026-11-28: lo que ve CUALQUIERA que escanea el QR de un estante con un celu, SIN usuario (pedido del
+   dueño, sin clave en el QR). Solo para mirar: los productos con su foto y su stock. El que tiene usuario
+   y escanea el mismo QR abre /deposito/estante/{codigo} de siempre (RedirectToLogin lo manda acá si no). *@
+
+<style>
+    body { background: #fff; }
+    .ep { max-width: 560px; margin: 0 auto; padding: 1rem 0.9rem 2.5rem; font-family: system-ui, sans-serif; color: #111827; }
+    .ep-cod { font-family: monospace; font-size: 2.4rem; font-weight: 900; color: #78350f; line-height: 1.1; }
+    .ep-sub { color: #4b5563; font-size: 1rem; margin-top: 2px; }
+    .ep-alts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0.9rem; }
+    .ep-alts a { border: 1px solid #d1d5db; border-radius: 10px; padding: 0.45rem 0.85rem; font-family: monospace; font-weight: 800; font-size: 1rem; color: #374151; text-decoration: none; }
+    .ep-alts a.on { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
+    .ep-lbl { font-size: 0.78rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin: 1.3rem 0 0.4rem; }
+    .ep-prod { display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 0; border-bottom: 1px solid #f3f4f6; }
+    .ep-prod > div { flex: 1; min-width: 0; }
+    .ep-foto { width: 64px; height: 64px; object-fit: contain; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; flex-shrink: 0; display: block; }
+    .ep-foto0 { width: 64px; height: 64px; border-radius: 8px; background: #f3f4f6; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 1.6rem; }
+    .ep-nom { font-weight: 700; font-size: 1.02rem; }
+    .ep-g { color: #6b7280; font-size: 0.88rem; }
+    .ep-stk { font-weight: 700; color: #15803d; }
+    .ep-stk.cero { color: #b91c1c; }
+    .ep-alt { display: flex; align-items: center; width: 100%; border: 2px solid #1f2937; border-radius: 12px; background: #fff; padding: 1rem; margin: 0.5rem 0; text-align: left; text-decoration: none; color: #111827; }
+    .ep-alt b { font-size: 1.6rem; font-family: monospace; }
+    .ep-alt span { margin-left: auto; color: #6b7280; font-size: 0.95rem; }
+    .ep-ve { margin-top: 0.8rem; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 0.6rem 0.75rem; font-size: 0.95rem; display: flex; gap: 0.7rem; align-items: center; }
+    .ep-ve img { height: 72px; border-radius: 6px; display: block; }
+    .ep-pie { margin-top: 1.8rem; color: #6b7280; font-size: 0.88rem; border-top: 1px solid #f3f4f6; padding-top: 0.8rem; }
+    .ep-pie a { color: #1d4ed8; font-weight: 700; text-decoration: none; }
+    .ep-grande { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 1rem; }
+    .ep-grande img { max-width: 100%; max-height: 100%; border-radius: 8px; background: #fff; }
+</style>
+
+<div class="ep">
+    @if (cargando)
+    {
+        <div class="ep-g">Cargando…</div>
+    }
+    else if (est is null)
+    {
+        <div class="ep-cod">@Codigo</div>
+        <div class="ep-sub">@(error ?? "No encontré este estante.")</div>
+    }
+    else if (est.Elegir)
+    {
+        <div class="ep-cod">@est.Codigo</div>
+        <div class="ep-sub">@est.Desglose@PlantaTexto(est.Planta)</div>
+        <div class="ep-lbl">¿Qué altura querés ver?</div>
+        @foreach (var a in est.Alturas)
+        {
+            <a class="ep-alt" href="@($"/ver-estante/{Uri.EscapeDataString(a.Codigo)}")">
+                <b>@EtiquetaAltura(a)</b>
+                <span>@(a.Productos == 0 ? "vacío" : a.Productos == 1 ? "1 producto" : $"{a.Productos} productos")</span>
+            </a>
+        }
+    }
+    else
+    {
+        <div class="ep-cod">@est.Codigo</div>
+        <div class="ep-sub">@est.Desglose@PlantaTexto(est.Planta)</div>
+
+        @if (rack is { Elegir: true, Alturas.Count: > 1 })
+        {
+            <div class="ep-alts">
+                @foreach (var a in rack.Alturas)
+                {
+                    <a class="@(a.Codigo == est.Codigo ? "on" : "")" href="@($"/ver-estante/{Uri.EscapeDataString(a.Codigo)}")">@EtiquetaAltura(a)</a>
+                }
+            </div>
+        }
+
+        @if (est.Dibujo is not null || est.Foto is not null)
+        {
+            <div class="ep-ve">
+                @if (est.Foto is not null)
+                {
+                    <img src="@est.Foto" alt="" @onclick="@(() => grande = est.Foto)" />
+                }
+                @if (est.Dibujo is not null)
+                {
+                    <div>Acá se ve: <b>@NombreDibujo(est.Dibujo)</b>@(est.DibujoCant is int c ? $" · {c}" : "")@(string.IsNullOrWhiteSpace(est.DibujoTexto) ? "" : " · " + est.DibujoTexto)</div>
+                }
+            </div>
+        }
+
+        <div class="ep-lbl">@(est.Productos.Count == 0 ? "Productos" : est.Productos.Count == 1 ? "1 producto" : $"{est.Productos.Count} productos")</div>
+        @if (est.Productos.Count == 0)
+        {
+            <div class="ep-g">No hay productos cargados en este estante.</div>
+        }
+        @foreach (var p in est.Productos)
+        {
+            <div class="ep-prod">
+                @if (p.Foto is not null)
+                {
+                    var f = p.Foto;
+                    <img class="ep-foto" src="@f" loading="lazy" alt="" @onclick="@(() => grande = f)" />
+                }
+                else
+                {
+                    <span class="ep-foto0">📦</span>
+                }
+                <div>
+                    <div class="ep-nom">@p.Nombre</div>
+                    <div class="ep-g">@(string.IsNullOrWhiteSpace(p.Sku) ? "" : $"SKU {p.Sku} · ")<span class="ep-stk @((p.Stock ?? 0) <= 0 ? "cero" : "")">stock @(p.Stock ?? 0)</span></div>
+                </div>
+            </div>
+        }
+    }
+
+    <div class="ep-pie">🔒 Solo para mirar · <a href="/login">Entrar con usuario para cambiar algo</a></div>
+</div>
+
+@if (grande is not null)
+{
+    <div class="ep-grande" @onclick="@(() => grande = null)"><img src="@grande" alt="" /></div>
+}
+
+@code {
+    [Parameter] public string Codigo { get; set; } = "";
+
+    private EstPub? est;
+    private EstPub? rack;   // las alturas del rack, para pasar de una a otra sin volver a escanear
+    private string? error;
+    private string? grande;
+    private bool cargando = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        cargando = true; error = null; grande = null;
+        est = await Traer(Codigo);
+        // las otras alturas del mismo rack, para pasar de una a otra sin volver a escanear
+        if (est is { Elegir: false } && !string.IsNullOrWhiteSpace(est.RackCodigo) && est.RackCodigo != est.Codigo)
+        {
+            if (rack?.Codigo != est.RackCodigo) { var e = error; rack = await Traer(est.RackCodigo); error = e; }
+        }
+        else rack = null;
+        cargando = false;
+    }
+
+    private async Task<EstPub?> Traer(string codigo)
+    {
+        try
+        {
+            var r = await Http.GetAsync($"api/public/estante/{Uri.EscapeDataString(codigo.Trim().ToUpperInvariant())}");
+            if (!r.IsSuccessStatusCode)
+            {
+                if (r.StatusCode == System.Net.HttpStatusCode.NotFound)
+                    try { error = (await r.Content.ReadFromJsonAsync<ErrorResp>())?.Error; } catch { }
+                else error = "No se pudo cargar. Probá de nuevo.";
+                return null;
+            }
+            return await r.Content.ReadFromJsonAsync<EstPub>();
+        }
+        catch { error = "No se pudo cargar. Revisá la conexión y probá de nuevo."; return null; }
+    }
+
+    private string EtiquetaAltura(AlturaPub a)
+        => (est?.Forma ?? rack?.Forma) == "piso" ? $"P{a.Posicion}"
+           : $"A{a.Nivel}" + ((est?.Posiciones ?? rack?.Posiciones ?? 1) > 1 ? $"·P{a.Posicion}" : "");
+
+    private static string NombreDibujo(string d) => d switch
+    {
+        "bolsas" => "Bolsas",
+        "cajas" => "Cajas",
+        "bidones" => "Bidones",
+        "sillas" => "Sillas apiladas",
+        "pallet" => "Pallet",
+        "rollos" => "Rollos",
+        "bultos" => "Bultos",
+        "foto" => "Ver foto",
+        _ => d,
+    };
+
+    private static string PlantaTexto(string? p) => (p ?? "").ToUpperInvariant() switch
+    {
+        "P1" => " · planta alta",
+        "PB" => " · planta baja",
+        _ => "",
+    };
+
+    private class ErrorResp { public string? Error { get; set; } }
+    private class EstPub
+    {
+        public bool Elegir { get; set; }
+        public string Codigo { get; set; } = "";
+        public string? RackCodigo { get; set; }
+        public string? Desglose { get; set; }
+        public string? Planta { get; set; }
+        public string? Forma { get; set; }
+        public int Posiciones { get; set; } = 1;
+        public string? Dibujo { get; set; }
+        public int? DibujoCant { get; set; }
+        public string? DibujoTexto { get; set; }
+        public string? Foto { get; set; }
+        public List<AlturaPub> Alturas { get; set; } = new();
+        public List<ProdPub> Productos { get; set; } = new();
+    }
+    private class AlturaPub { public int Nivel { get; set; } public int Posicion { get; set; } = 1; public string Codigo { get; set; } = ""; public int Productos { get; set; } }
+    private class ProdPub { public string? Nombre { get; set; } public string? Sku { get; set; } public int? Stock { get; set; } public string? Foto { get; set; } }
+}

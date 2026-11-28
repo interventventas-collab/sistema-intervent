@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Api.Data;
 using Api.Models;
+using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -32,7 +33,8 @@ public class DepositoPlanoController : ControllerBase
     private static readonly string[] PlantasValidas = { "PB", "P1" };
 
     private readonly AppDbContext _db;
-    public DepositoPlanoController(AppDbContext db) { _db = db; }
+    private readonly FotoProductoService _fotos;
+    public DepositoPlanoController(AppDbContext db, FotoProductoService fotos) { _db = db; _fotos = fotos; }
 
     private string Usuario => User.Identity?.Name ?? "?";
 
@@ -88,7 +90,7 @@ public class DepositoPlanoController : ControllerBase
     }
 
     public record AsignacionDto(int Id, int ProductoId, string? Sku, string Nombre,
-        string? Cantidad, string? Nota, DateTime At, string? Por, int? Stock = null);
+        string? Cantidad, string? Nota, DateTime At, string? Por, int? Stock = null, string? Foto = null);
 
     public record EstanteDto(int Posicion, int Nivel, string Codigo, List<AsignacionDto> Productos,
         int Cara = 1, string? Desglose = null, string? Nota = null, string? NotaPor = null, DateTime? NotaAt = null,
@@ -309,7 +311,10 @@ public class DepositoPlanoController : ControllerBase
             })
             .OrderBy(x => x.Nombre)
             .ToListAsync();
-        return lista.Select(x => new AsignacionDto(x.Id, x.ProductoId, x.Sku, x.Nombre, x.Cantidad, x.Nota, x.At, x.Por, x.StockUnidades)).ToList();
+        // 2026-11-28: la foto del producto (la propia del sistema o la de MeLi) para verla en el plano, el 3D y el QR
+        var fotos = await _fotos.FotosAsync(lista.Select(x => x.ProductoId).ToList());
+        return lista.Select(x => new AsignacionDto(x.Id, x.ProductoId, x.Sku, x.Nombre, x.Cantidad, x.Nota, x.At, x.Por, x.StockUnidades,
+            fotos.TryGetValue(x.ProductoId, out var f) ? f.Url : null)).ToList();
     }
 
     // ───────────────────────── Plano ─────────────────────────
@@ -805,6 +810,63 @@ public class DepositoPlanoController : ControllerBase
             nivel = niv,
             posiciones = PosicionesDe(rack, cara),
             productos = await AsignacionesDe(rack.Id, pos, niv, cara)
+        });
+    }
+
+    /// <summary>2026-11-28: lo que ve CUALQUIERA que escanea el QR de un estante con el celu, SIN usuario
+    /// (pedido del dueño, sin clave en el QR). Solo para mirar: código, dónde queda, productos con su foto y su
+    /// stock total, y el dibujo/foto del estante. Nada de precios, costos, notas ni quién lo cargó.</summary>
+    [HttpGet("~/api/public/estante/{codigo}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> EstantePublico(string codigo)
+    {
+        var (rackE, caraE, errorE) = await ResolverRackAsync(_db, codigo);
+        if (errorE is not null) return NotFound(new { error = errorE });
+        if (rackE is not null)
+        {
+            var asigs = await _db.DepositoEstanteProductos.AsNoTracking().Where(a => a.ElementoId == rackE.Id)
+                .Select(a => new { a.Cara, a.Posicion, a.Nivel }).ToListAsync();
+            var alturas = new List<object>();
+            for (int n = rackE.Niveles ?? 1; n >= 1; n--)
+                for (int p = 1; p <= PosicionesDe(rackE, caraE); p++)
+                    alturas.Add(new
+                    {
+                        nivel = n,
+                        posicion = p,
+                        codigo = CodigoEstante(rackE, caraE, p, n),
+                        productos = asigs.Count(a => NormCara(rackE, a.Cara) == caraE && a.Posicion == p && a.Nivel == n),
+                    });
+            return Ok(new
+            {
+                elegir = true,
+                codigo = CodigoRack(rackE, caraE),
+                desglose = DesgloseRack(rackE, caraE),
+                planta = rackE.Planta,
+                forma = rackE.Forma,
+                posiciones = PosicionesDe(rackE, caraE),
+                alturas,
+            });
+        }
+
+        var (rack, cara, pos, niv, error) = await ResolverEstante(codigo);
+        if (rack is null) return NotFound(new { error });
+        var nota = await _db.DepositoEstanteNotas.AsNoTracking()
+            .FirstOrDefaultAsync(n => n.ElementoId == rack.Id && n.Cara == cara && n.Posicion == pos && n.Nivel == niv);
+        var prods = await AsignacionesDe(rack.Id, pos, niv, cara);
+        return Ok(new
+        {
+            codigo = CodigoEstante(rack, cara, pos, niv),
+            desglose = DesgloseEstante(rack, cara, pos, niv),
+            rackCodigo = CodigoRack(rack, cara),
+            planta = rack.Planta,
+            forma = rack.Forma,
+            nivel = niv,
+            posiciones = PosicionesDe(rack, cara),
+            dibujo = nota?.Dibujo,
+            dibujoCant = nota?.DibujoCant,
+            dibujoTexto = nota?.DibujoTexto,
+            foto = UrlFoto(nota?.Foto),
+            productos = prods.Select(x => new { nombre = x.Nombre, sku = x.Sku, stock = x.Stock, foto = x.Foto }),
         });
     }
 

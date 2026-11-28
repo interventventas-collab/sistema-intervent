@@ -85,6 +85,8 @@
     .pd-dib .pd-dos input { border: 1px solid #d1d5db; border-radius: 6px; padding: 5px 8px; font: inherit; font-size: .85rem; width: 100%; box-sizing: border-box; }
     .pd-prod { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f3f4f6; font-size: .9rem; }
     .pd-prod > div { flex: 1; }
+    .pd-fp { width: 44px; height: 44px; object-fit: contain; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px; flex-shrink: 0; display: block; }
+    .pd-fp0 { width: 44px; height: 44px; border-radius: 6px; background: #f3f4f6; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
     .pd-x { border: none; background: none; cursor: pointer; color: #6b7280; font-size: 1rem; padding: 0 4px; }
     .pd-sku { font-family: monospace; color: #6b7280; font-size: .8em; }
     .pd-prop label { display: block; font-size: .8rem; color: #6b7280; margin: 10px 0 3px; }
@@ -973,6 +975,15 @@
                             {
                                 var prr = pr;
                                 <div class="pd-prod">
+                                    @* 2026-11-28: la foto del producto; tocándola se ve grande *@
+                                    @if (pr.Foto is not null)
+                                    {
+                                        <a href="@pr.Foto" target="_blank" title="Ver grande"><img class="pd-fp" src="@pr.Foto" loading="lazy" alt="" /></a>
+                                    }
+                                    else
+                                    {
+                                        <span class="pd-fp0" title="Sin foto">📦</span>
+                                    }
                                     <div>
                                         <b>@pr.Nombre</b> <span class="pd-sku">@pr.Sku</span> <span class="pd-g">· stock @(pr.Stock ?? 0)</span>
                                         @if (!string.IsNullOrWhiteSpace(pr.Cantidad)) { <span> · @pr.Cantidad</span> }
