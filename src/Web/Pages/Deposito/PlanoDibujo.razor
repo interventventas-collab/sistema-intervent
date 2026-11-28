@@ -24,6 +24,13 @@
                     <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@col" stroke="#a8a29e" stroke-width="0.04" />
                 }
                 break;
+            case "rack" when e.EsPiso:
+                @* 2026-11-27: lugar en el piso de una calle (punteado) *@
+                var esEstePiso = e.Id == RackMarcado;
+                <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="@(esEstePiso ? "#f97316" : "#fef3c7")" stroke="@(esEstePiso ? "#9a3412" : "#a16207")" stroke-width="0.06" stroke-dasharray="0.25 0.15" />
+                var pfs = Math.Clamp(Math.Min(r.H * 0.4, r.W / (ApiClient.CodigoPiso(e).Length * 0.62)), 0.15, 0.5);
+                <g><text x="@F(r.CX)" y="@F(r.CY + pfs * 0.35)" font-size="@F(pfs)" font-weight="800" text-anchor="middle" fill="@(esEstePiso ? "#fff" : "#78350f")">@ApiClient.CodigoPiso(e)</text></g>
+                break;
             case "rack":
                 var esEste = e.Id == RackMarcado;
                 if (esEste)

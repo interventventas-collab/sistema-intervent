@@ -38,6 +38,14 @@
 .p3-rack.otro .p3-poste { opacity: .45; }
 .p3-rack.otro .p3-rcod { opacity: .6; }
 .p3-marca { position: absolute; width: 0; height: 0; }
+.p3-rack.piso .p3-niv { background: rgba(254,243,199,.75); border: 3px dashed #a16207; }
+.p3-rack.meta.piso .p3-niv.este { background: rgba(249,115,22,.75); }
+.p3-rack.tapa { opacity: .07; pointer-events: none; }
+.p3-mundo.frente .p3-pared { opacity: .06; }
+.p3-alt { position: absolute; transform: translate(-100%, -50%); background: #0f172a; color: #fde68a; font: 800 12px ui-monospace, monospace; padding: 1px 4px; border-radius: 4px; border: 1px solid #a16207; white-space: nowrap; pointer-events: none; }
+.p3-alt.este { background: #f97316; color: #fff; border-color: #fff; }
+.p3-ctl button.on { background: #f97316; border-color: #f97316; color: #fff; }
+.p3-ctl button[hidden] { display: none; }
 .p3-cartel { position: absolute; transition: transform 2.2s cubic-bezier(.65,.02,.25,1); }
 .p3-globo { position: absolute; left: 0; top: -48px; transform: translate(-50%, -100%); white-space: nowrap; pointer-events: none; }
 .p3-globo .g { background: #0f172a; color: #fff; border-radius: 14px; padding: 10px 16px 11px; box-shadow: 0 12px 30px rgba(0,0,0,.45); border: 2px solid #f97316; }
@@ -120,6 +128,11 @@
         // C3-F4-R2-A3 (calle, fila, rack de la fila, altura) / F4-R2-A3 / anterior C3-R4-A3
         let m = c.match(/^(?:C(\d{1,2})-)?F(\d{1,2})-R(\d{1,2})-A(\d{1,2})(?:-P(\d{1,2}))?$/);
         if (m) return { calle: m[1] ? +m[1] : null, fila: +m[2], nro: +m[3], rack: null, niv: +m[4], pos: m[5] ? +m[5] : 1, letra: null };
+        // 2026-11-27: lugar en el piso de una calle (C3-PISO1) y estantería suelta (TOST-A3)
+        m = c.match(/^(?:C(\d{1,2})-)?PISO(\d{1,2})(?:-P(\d{1,2}))?$/);
+        if (m) return { calle: m[1] ? +m[1] : null, piso: +m[2], rack: null, niv: 1, pos: m[3] ? +m[3] : 1, letra: null };
+        m = c.match(/^([A-Z][A-Z0-9]*)-A(\d{1,2})(?:-P(\d{1,2}))?$/);
+        if (m) return { rack: m[1], est: true, niv: +m[2], pos: m[3] ? +m[3] : 1, letra: null };
         m = c.match(/^C(\d{1,2})-R(\d{1,2})-A(\d{1,2})(?:-P(\d{1,2}))?$/);
         if (m) return { calle: +m[1], nro: +m[2], viejo: true, rack: null, niv: +m[3], pos: m[4] ? +m[4] : 1, letra: null };
         m = c.match(/^([A-Z0-9]+)-(\d{1,3})([A-Z])?$/);
@@ -131,6 +144,8 @@
     // escrito para leerlo: "Calle 3 · Rack 4 · Altura 3 (el piso)"
     function desglose(p) {
         if (!p) return '';
+        if (p.piso != null) return `${p.calle != null ? 'Calle ' + p.calle + ' · ' : ''}Lugar en el piso ${p.piso}${p.pos > 1 ? ' · Posición ' + p.pos : ''}`;
+        if (p.est) return `Estantería ${p.rack} · Altura ${p.niv}${p.pos > 1 ? ' · Posición ' + p.pos : ''}`;
         const alt = `Altura ${p.niv}${p.niv === 1 ? ' (el piso)' : ''}`;
         if (p.fila != null) return `${p.calle != null ? 'Calle ' + p.calle + ' · ' : ''}Fila ${p.fila} · Rack ${p.nro} · ${alt}${p.pos > 1 ? ' · Posición ' + p.pos : ''}`;
         if (p.calle != null) return `Calle ${p.calle} · Rack ${p.nro} · ${alt}${p.pos > 1 ? ' · Posición ' + p.pos : ''}`;
@@ -186,13 +201,34 @@
         const racks = {};
         const porCalle = {}; // "3-4" (calle-rack) → código del rack
         const azar = (s) => { const x = Math.sin(s) * 10000; return x - Math.floor(x); };
-        for (const e of els.filter(e => e.tipo === 'rack' && e.codigo)) {
-            const r = R(e), H = (+e.alto || 2.6) * S, N = Math.max(1, e.niveles || 1);
-            const d = div('p3-rack', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
+        for (const e of els.filter(e => e.tipo === 'rack' && e.codigo && e.forma === 'piso')) {
+            // 2026-11-27: lugar en el piso de una calle: rectángulo punteado con cajas apoyadas
+            const r = R(e), cod = (e.calle1 != null ? 'C' + e.calle1 + '-' : '') + 'PISO' + (e.nroFila || 1);
+            const d = div('p3-rack piso', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
+            d.dataset.cod = e.codigo.toUpperCase();
+            const niveles = [div('p3-niv', { width: r.w + 'px', height: r.h + 'px', transform: 'translateZ(1px)' }, d)];
+            const k = 2 + Math.floor(azar(e.id * 3) * 3), H = Math.max(14, (+e.alto || 0.6) * S);
+            for (let j = 0; j < k; j++) {
+                const cw = (r.w - 12) / k - 3, ch = r.h * (0.45 + azar(e.id + j) * 0.3);
+                caja(6 + j * (r.w - 12) / k, (r.h - ch) / 2, cw, ch, H * (0.6 + azar(j + e.id * 5) * 0.4), '#c9a26b', d, 2);
+            }
+            const top = div('p3-rcod', { width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${H + 4}px)` }, d);
+            top.textContent = cod;
+            top.style.fontSize = Math.max(9, Math.min(18, r.h * 0.3, r.w / (cod.length * 0.62))) + 'px';
+            racks[e.codigo.toUpperCase()] = { e, r, H, N: 1, d, niveles, z0: 0, cod, piso: true };
+            porCalle['P' + (e.calle1 != null ? e.calle1 : '') + '-' + (e.nroFila || 1)] = e.codigo.toUpperCase();
+            porCalle['P-' + (e.nroFila || 1)] = porCalle['P-' + (e.nroFila || 1)] || e.codigo.toUpperCase();
+        }
+        for (const e of els.filter(e => e.tipo === 'rack' && e.codigo && e.forma !== 'piso')) {
+            // 2026-11-27: estantería amurada: empieza a "elevacion" metros del piso
+            const z0 = e.forma === 'estanteria' ? (+e.elevacion || 0) * S : 0;
+            const r = R(e), H = (+e.alto || (e.forma === 'estanteria' ? 1 : 2.6)) * S, N = Math.max(1, e.niveles || 1);
+            const d = div('p3-rack', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${z0}px)` });
+            d.dataset.cod = e.codigo.toUpperCase();
             for (const [px, py] of [[0, 0], [r.w - 5, 0], [0, r.h], [r.w - 5, r.h]]) div('p3-poste', { left: px + 'px', top: py + 'px', height: H + 'px', transform: 'rotateX(90deg)' }, d);
             const niveles = [];
             for (let i = 0; i < N; i++) {
-                const z = 4 + i * (H - 10) / N;
+                const z = 4 + i * (H - 10) / N; // (relativo al rack; el rack ya está subido z0)
                 niveles.push(div('p3-niv', { width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${z}px)` }, d));
                 const k = Math.floor(azar(e.id * 7 + i) * 3) + 1, hz = Math.min(30, (H - 10) / N - 8);
                 for (let j = 0; j < k; j++) {
@@ -204,7 +240,7 @@
             // 2026-11-27: el rack se llama fila-rack ("F4-R2"); sin fila, el código de siempre
             top.textContent = (e.fila != null && e.nroFila != null) ? 'F' + e.fila + '-R' + e.nroFila : e.codigo;
             top.style.fontSize = Math.max(10, Math.min(22, r.h * 0.42, r.w / 3.2)) + 'px';
-            racks[e.codigo.toUpperCase()] = { e, r, H, N, d, niveles };
+            racks[e.codigo.toUpperCase()] = { e, r, H, N, d, niveles, z0, cod: top.textContent, est: e.forma === 'estanteria' };
             if (e.calle1 != null && e.nro1 != null) porCalle[e.calle1 + '-' + e.nro1] = e.codigo.toUpperCase();
             if (e.calle2 != null && e.nro2 != null) porCalle[e.calle2 + '-' + e.nro2] = e.codigo.toUpperCase();
             if (e.fila != null && e.nroFila != null) porCalle['F' + e.fila + '-' + e.nroFila] = e.codigo.toUpperCase();
@@ -251,6 +287,8 @@
             <button class="p3-x" title="Cerrar (Esc)">✕</button>
             <div class="p3-ctl">
               <button data-a="todo">🗺 Ver todo el recorrido</button>
+              <button data-a="frente" hidden>👁 Ver de frente</button>
+              <button data-a="lado" hidden>↔ El otro lado</button>
               <button data-a="izq">⟲ Girar</button>
               <button data-a="der">⟳ Girar</button>
             </div>
@@ -273,7 +311,8 @@
             const p = partir(it.est);
             const pl = (it.planta || 'PB').toUpperCase();
             const esc = p ? escenaDe(pl) : null;
-            if (p && esc && p.fila != null) p.rack = esc.porCalle['F' + p.fila + '-' + p.nro] || null;
+            if (p && esc && p.piso != null) p.rack = esc.porCalle['P' + (p.calle != null ? p.calle : '') + '-' + p.piso] || esc.porCalle['P-' + p.piso] || null;
+            else if (p && esc && p.fila != null) p.rack = esc.porCalle['F' + p.fila + '-' + p.nro] || null;
             else if (p && esc && p.calle != null) p.rack = esc.porCalle[p.calle + '-' + p.nro] || null;
             const k = esc && p && p.rack ? esc.racks[p.rack] : null;
             return { ...it, i, p, pl, k, ok: !!k };
@@ -282,7 +321,10 @@
         items.sort((a, b) => (b.ok - a.ok) || (a.ok && b.ok ? (a.pl.localeCompare(b.pl) || (a.k.r.x - b.k.r.x) || (a.p.niv - b.p.niv)) : a.i - b.i));
         const conLugar = items.filter(x => x.ok);
 
-        let act = -1, arriba = true, cam = { rx: 0, rz: 0, s: .5, cx: 0, cy: 0 }, plantaVista = null;
+        let act = -1, arriba = true, cam = { rx: 0, rz: 0, s: .5, cx: 0, cy: 0, cz: 0 }, plantaVista = null;
+        // 2026-11-27: "de frente": { k, cara, niv } mirando la cara del rack/estantería derecho
+        let frenteDe = null, ultK = null;
+        const altTags = [];
         const hechos = new Set();
         // los que ya estaban tildados en la tarjeta del pedido
         const yaTildados = new Set(d.hechos || []);
@@ -299,12 +341,13 @@
         const contra = () => `rotateZ(${-cam.rz}deg) rotateX(${-cam.rx}deg)`;
         function aplicar() {
             const e = escenas[plantaVista]; if (!e) return;
-            e.mundo.style.transform = `rotateX(${cam.rx}deg) rotateZ(${cam.rz}deg) scale(${cam.s}) translate(${-cam.cx}px, ${-cam.cy}px)`;
+            e.mundo.style.transform = `rotateX(${cam.rx}deg) rotateZ(${cam.rz}deg) scale3d(${cam.s}, ${cam.s}, ${cam.s}) translate3d(${-cam.cx}px, ${-cam.cy}px, ${-(cam.cz || 0)}px)`;
             e.mundo.querySelectorAll('.p3-cartel').forEach(c => { c.style.transform = `translateZ(${c.dataset.z}px) ` + contra(); });
         }
         function pintarPines() {
             pines.forEach(p => p.remove()); pines.length = 0;
             const e = escenas[plantaVista]; if (!e) return;
+            if (frenteDe) return; // de frente: sin pines ni globo (lo dice arriba)
             const porRack = {};
             items.forEach((it, idx) => { if (it.ok && it.pl === plantaVista) (porRack[it.p.rack] = porRack[it.p.rack] || []).push(idx); });
             for (const [rk, idx] of Object.entries(porRack)) {
@@ -326,6 +369,7 @@
         }
         function hud() {
             const el = root.querySelector('.p3-hud');
+            if (frenteDe) { hudFrente(); return; }
             if (arriba && d.buscar && !conLugar.length) {
                 el.innerHTML = `<div class="t">Plano del depósito${plantaVista === 'P1' ? ' · planta alta' : ''}</div><div class="d">Buscá un producto</div><div class="s">Te llevo volando hasta su estante</div>`;
                 return;
@@ -367,8 +411,9 @@
                 y0 = 0; y1 = e.WT * S;
             }
             const s = Math.min(b.width / (x1 - x0) * 0.9, b.height / (y1 - y0) * 1.1, 1.1);
-            cam = { rx: 42, rz: 0, s, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
-            Object.values(e.racks).forEach(x => { x.d.classList.remove('meta', 'otro'); x.niveles.forEach(n => n.classList.remove('este')); });
+            cam = { rx: 42, rz: 0, s, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, cz: 0 };
+            frenteDe = null; ultK = null; limpiarFrente();
+            Object.values(e.racks).forEach(x => { x.d.classList.remove('meta', 'otro', 'tapa'); x.niveles.forEach(n => n.classList.remove('este')); });
             e.ruta(null);
             pintarPines(); aplicar(); hud(); lista();
         }
@@ -377,14 +422,97 @@
             act = i; arriba = false;
             mostrarPlanta(it.pl);
             const e = escenas[it.pl], k = it.k;
-            Object.values(e.racks).forEach(x => { x.d.classList.remove('meta'); x.d.classList.add('otro'); x.niveles.forEach(n => n.classList.remove('este')); });
+            const seguirDeFrente = !!frenteDe;
+            frenteDe = null; limpiarFrente();
+            Object.values(e.racks).forEach(x => { x.d.classList.remove('meta', 'tapa'); x.d.classList.add('otro'); x.niveles.forEach(n => n.classList.remove('este')); });
             k.d.classList.remove('otro'); k.d.classList.add('meta');
             (k.niveles[it.p.niv - 1] || k.niveles[0]).classList.add('este');
+            ultK = { k, cara: caraDe(k, it.p), niv: it.p.niv };
+            botones();
+            if (seguirDeFrente) { e.ruta(k); pintarPines(); lista(); frente(ultK.k, ultK.cara, ultK.niv); return; }
             const b = escD.getBoundingClientRect();
-            cam = { rx: 60, rz: cam.rz && !arriba ? cam.rz : -30, s: Math.min(1.6, Math.max(0.9, b.width / 900)), cx: k.r.x + k.r.w / 2, cy: k.r.y + k.r.h / 2 - 20 };
+            cam = { rx: 60, rz: cam.rz && !arriba ? cam.rz : -30, s: Math.min(1.6, Math.max(0.9, b.width / 900)), cx: k.r.x + k.r.w / 2, cy: k.r.y + k.r.h / 2 - 20, cz: k.z0 || 0 };
             e.ruta(k);
             pintarPines(); aplicar(); hud(); lista();
         }
+        // ───── 2026-11-27: ver de frente ─────
+        // lado 1 = el que mira a la pared izq. (y grande en la escena) o, girado, a la entrada (x chica)
+        function caraDe(k, p) {
+            if (!p || p.calle == null) return 1;
+            return k.e.calle2 === p.calle && k.e.calle1 !== p.calle ? 2 : 1;
+        }
+        function carasDe(k) { return k.piso || k.est ? [1] : [k.e.calle1 != null ? 1 : null, k.e.calle2 != null ? 2 : null].filter(Boolean).concat(k.e.calle1 == null && k.e.calle2 == null ? [1] : []); }
+        // hacia dónde mira esa cara en la escena + el giro de cámara para tenerla de frente
+        function normal(k, cara) {
+            const largoX = k.r.w >= k.r.h;
+            if (largoX) return cara === 2 ? { nx: 0, ny: -1, rz: 180 } : { nx: 0, ny: 1, rz: 0 };
+            return cara === 2 ? { nx: 1, ny: 0, rz: 90 } : { nx: -1, ny: 0, rz: -90 };
+        }
+        function limpiarFrente() {
+            altTags.forEach(t => t.remove()); altTags.length = 0;
+            Object.values(escenas).forEach(x => x.mundo.classList.remove('frente'));
+            root.querySelectorAll('.p3-rack.tapa').forEach(x => x.classList.remove('tapa'));
+            botones();
+        }
+        function botones() {
+            const bf = root.querySelector('[data-a="frente"]'), bl = root.querySelector('[data-a="lado"]');
+            const k = frenteDe ? frenteDe.k : ultK ? ultK.k : null;
+            bf.hidden = !k; bf.classList.toggle('on', !!frenteDe);
+            bf.textContent = frenteDe ? '↩ Volver a la vista de arriba' : '👁 Ver de frente';
+            bl.hidden = !(frenteDe && carasDe(frenteDe.k).length > 1);
+        }
+        function frente(k, cara, niv) {
+            const e = escenas[plantaVista]; if (!e || !k) return;
+            limpiarFrente();
+            frenteDe = { k, cara, niv }; arriba = false;
+            pintarPines();
+            const n = normal(k, cara);
+            const cx = k.r.x + k.r.w / 2, cy = k.r.y + k.r.h / 2;
+            // lo que tapa la vista (racks entre la cámara y la cara) se vuelve casi transparente
+            const L = Math.max(k.r.w, k.r.h);
+            Object.values(e.racks).forEach(o => {
+                if (o === k) return;
+                const ox = o.r.x + o.r.w / 2 - cx, oy = o.r.y + o.r.h / 2 - cy;
+                const delante = ox * n.nx + oy * n.ny, lado = Math.abs(ox * n.ny - oy * n.nx);
+                if (delante > 0 && lado < L / 2 + Math.max(o.r.w, o.r.h) / 2 + 40) o.d.classList.add('tapa');
+            });
+            // cartelitos A1, A2… al costado de cada altura
+            const izq = n.rz === 0 ? [k.r.x - 14, k.r.y + k.r.h] : n.rz === 180 ? [k.r.x + k.r.w + 14, k.r.y] : n.rz === -90 ? [k.r.x, k.r.y - 14] : [k.r.x + k.r.w, k.r.y + k.r.h + 14];
+            e.mundo.classList.add('frente');
+            const paso = k.piso ? 20 : (k.H - 10) / k.N;
+            const zs = k.piso ? [k.H / 2] : k.niveles.map((_, i) => (k.z0 || 0) + 4 + i * paso + Math.min(14, paso / 2));
+            const fz = Math.max(6, Math.min(12, paso * 0.55));
+            zs.forEach((z, i) => {
+                const m = h('div', 'p3-marca', { left: izq[0] + 'px', top: izq[1] + 'px' }, e.mundo);
+                const c = h('div', 'p3-cartel', null, m); c.dataset.z = z;
+                const t = h('div', 'p3-alt' + (niv === i + 1 ? ' este' : ''), { fontSize: fz + 'px' }, c);
+                t.textContent = k.piso ? 'PISO' : 'A' + (i + 1);
+                altTags.push(m);
+            });
+            const b = escD.getBoundingClientRect();
+            const s = Math.max(0.5, Math.min(3.2, b.width * 0.6 / (L + 60), b.height * 0.5 / (k.H + 30)));
+            cam = { rx: k.piso ? 62 : 80, rz: n.rz, s, cx: cx + n.nx * 10, cy: cy + n.ny * 10, cz: k.piso ? 0 : (k.z0 || 0) + k.H * 0.5 };
+            botones(); aplicar(); hudFrente();
+        }
+        function hudFrente() {
+            if (!frenteDe) return;
+            const k = frenteDe.k, el = root.querySelector('.p3-hud');
+            const it = act >= 0 && items[act] && items[act].k === k ? items[act] : null;
+            const titulo = k.piso ? 'Lugar en el piso ' + k.cod : k.est ? (k.e.nombre || 'Estantería ' + k.cod) : 'Rack ' + k.cod;
+            const calle = k.piso ? null : frenteDe.cara === 2 ? k.e.calle2 : k.e.calle1;
+            el.innerHTML = `<div class="t">De frente${calle != null ? ' · desde la calle ' + calle : ''}</div><div class="d">${esc(titulo)}</div>`
+                + (it ? `<div class="s" style="color:#fdba74;font-weight:700">${esc(it.est)} · ${esc(it.n)}</div>` : '<div class="s">Arrastrá para girar · tocá otro rack para ir ahí</div>');
+        }
+        function tocarRack(cod) {
+            const e = escenas[plantaVista]; if (!e) return;
+            const k = e.racks[cod]; if (!k) return;
+            Object.values(e.racks).forEach(x => { x.d.classList.remove('meta'); x.d.classList.add('otro'); x.niveles.forEach(n => n.classList.remove('este')); });
+            k.d.classList.remove('otro'); k.d.classList.add('meta');
+            act = -1; ultK = { k, cara: carasDe(k)[0], niv: null };
+            e.ruta(k); pintarPines(); lista();
+            frente(k, ultK.cara, null);
+        }
+
         function loTengo() {
             if (act >= 0 && !arriba && !hechos.has(act)) {
                 hechos.add(act);
@@ -403,6 +531,14 @@
                 else if (a === 'izq') { cam.rz -= 25; aplicar(); }
                 else if (a === 'der') { cam.rz += 25; aplicar(); }
                 else if (a === 'lo') loTengo();
+                else if (a === 'frente') {
+                    if (frenteDe) { const f = frenteDe; frenteDe = null; limpiarFrente(); if (act >= 0 && items[act] && items[act].k === f.k) ir(act); else vistaArriba(); }
+                    else if (ultK) frente(ultK.k, ultK.cara, ultK.niv);
+                }
+                else if (a === 'lado' && frenteDe) {
+                    const cs = carasDe(frenteDe.k), otra = cs.find(c => c !== frenteDe.cara) || frenteDe.cara;
+                    frente(frenteDe.k, otra, frenteDe.niv);
+                }
                 return;
             }
             const it = ev.target.closest('.p3-it');
@@ -455,7 +591,7 @@
 
         // arrastrar con el dedo / mouse para girar
         let arr = null;
-        escD.addEventListener('pointerdown', (ev) => { if (ev.target.closest('button')) return; arr = { x: ev.clientX, rz: cam.rz }; escD.setPointerCapture(ev.pointerId); });
+        escD.addEventListener('pointerdown', (ev) => { if (ev.target.closest('button')) return; arr = { x: ev.clientX, y: ev.clientY, rz: cam.rz, t: ev.target }; escD.setPointerCapture(ev.pointerId); });
         escD.addEventListener('pointermove', (ev) => {
             if (!arr) return;
             const e = escenas[plantaVista]; if (!e) return;
@@ -463,8 +599,14 @@
             e.mundo.style.transition = 'none'; e.mundo.querySelectorAll('.p3-cartel').forEach(c => c.style.transition = 'none');
             aplicar();
         });
-        const soltar = () => {
-            if (!arr) return; arr = null;
+        const soltar = (ev) => {
+            if (!arr) return;
+            const a0 = arr; arr = null;
+            // 2026-11-27: un toque (sin arrastrar) sobre un rack → lo muestra de frente
+            if (ev && ev.type === 'pointerup' && Math.abs(ev.clientX - a0.x) < 6 && Math.abs(ev.clientY - a0.y) < 6) {
+                const rk = a0.t && a0.t.closest ? a0.t.closest('.p3-rack') : null;
+                if (rk && rk.dataset.cod) setTimeout(() => tocarRack(rk.dataset.cod), 0);
+            }
             const e = escenas[plantaVista]; if (!e) return;
             e.mundo.style.transition = ''; e.mundo.querySelectorAll('.p3-cartel').forEach(c => c.style.transition = '');
         };

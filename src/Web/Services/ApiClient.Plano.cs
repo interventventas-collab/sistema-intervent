@@ -82,11 +82,16 @@ public partial class ApiClient
     /// <summary>¿la zona de un producto es un estante del plano? "C3-F4-R2-A3" (calle-fila-rack-altura),
     /// el anterior "C3-R4-A3", "D2-3" (rack-nivel), "D2-3B" o el viejo "D2-1-3".</summary>
     public static bool EsCodigoEstante(string? zona)
-        => !string.IsNullOrWhiteSpace(zona) && (EsCodigoCalle(zona)
+        => !string.IsNullOrWhiteSpace(zona) && (EsCodigoCalle(zona) || RePiso.IsMatch(zona.Trim()) || ReEstanteria.IsMatch(zona.Trim())
             || System.Text.RegularExpressions.Regex.IsMatch(zona.Trim(), @"^[A-Z0-9]+-\d+([A-Z]|-\d+)?$"));
 
     private static readonly System.Text.RegularExpressions.Regex ReFila =
         new(@"^(?:C(\d{1,2})-)?F(\d{1,2})-R(\d{1,2})-A(\d{1,2})(?:-P(\d{1,2}))?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    // 2026-11-27: lugar en el piso de una calle (C3-PISO1) y estantería suelta (TOST-A3)
+    private static readonly System.Text.RegularExpressions.Regex RePiso =
+        new(@"^(?:C(\d{1,2})-)?PISO(\d{1,2})(?:-P(\d{1,2}))?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    private static readonly System.Text.RegularExpressions.Regex ReEstanteria =
+        new(@"^([A-Z][A-Z0-9]*)-A(\d{1,2})(?:-P(\d{1,2}))?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     private static readonly System.Text.RegularExpressions.Regex ReCalle =
         new(@"^C(\d{1,2})-R(\d{1,2})-A(\d{1,2})(?:-P(\d{1,2}))?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
@@ -108,6 +113,14 @@ public partial class ApiClient
                 + $"Fila {int.Parse(m.Groups[2].Value)} · Rack {int.Parse(m.Groups[3].Value)} · Altura {alt}{(alt == 1 ? " (el piso)" : "")}"
                 + (m.Groups[5].Success ? $" · Posición {int.Parse(m.Groups[5].Value)}" : "");
         }
+        m = RePiso.Match(c);
+        if (m.Success)
+            return (m.Groups[1].Success ? $"Calle {int.Parse(m.Groups[1].Value)} · " : "") + $"Piso · Lugar {int.Parse(m.Groups[2].Value)}"
+                + (m.Groups[3].Success ? $" · Posición {int.Parse(m.Groups[3].Value)}" : "");
+        m = ReEstanteria.Match(c);
+        if (m.Success)
+            return $"Estantería {m.Groups[1].Value.ToUpperInvariant()} · Altura {int.Parse(m.Groups[2].Value)}"
+                + (m.Groups[3].Success ? $" · Posición {int.Parse(m.Groups[3].Value)}" : "");
         m = ReCalle.Match(c);
         if (m.Success)
         {
@@ -123,6 +136,9 @@ public partial class ApiClient
     /// "C3-F4-R2-A3" (+ "-P2"); sin calle "F4-R2-A3"; sin fila, el de siempre.</summary>
     public static string CodigoEstante(PlanoElementoDto rack, int cara, int pos, int nivel)
     {
+        var posTxt = (rack.Posiciones ?? 1) > 1 ? $"-P{pos}" : "";
+        if (rack.EsPiso) return CodigoPiso(rack) + posTxt;
+        if (rack.EsEstanteria) return $"{rack.Codigo}-A{nivel}" + posTxt;
         var calle = CalleDe(rack, cara);
         if (rack.Fila is int f && rack.NroFila is int r)
             return (calle is int c ? $"C{c}-" : "") + $"F{f}-R{r}-A{nivel}" + ((rack.Posiciones ?? 1) > 1 ? $"-P{pos}" : "");
@@ -135,16 +151,28 @@ public partial class ApiClient
 
     /// <summary>2026-11-27: cómo se llama el rack: "F4-R2" (fila 4, rack 2). Sin fila, su código de siempre.</summary>
     public static string NombreRack(PlanoElementoDto r)
-        => r.Fila is int f && r.NroFila is int n ? $"F{f}-R{n}" : (r.Codigo ?? "?");
+        => r.EsPiso ? CodigoPiso(r) : r.Fila is int f && r.NroFila is int n ? $"F{f}-R{n}" : (r.Codigo ?? "?");
+
+    /// <summary>2026-11-27: "C3-PISO1" (lugar en el piso de una calle).</summary>
+    public static string CodigoPiso(PlanoElementoDto r) => (r.Calle1 is int c ? $"C{c}-" : "") + $"PISO{r.NroFila ?? 1}";
+
+    /// <summary>2026-11-27: cómo se titula: "Rack F4-R2", "Estantería TOST" (o su nombre), "Piso C3-PISO1".</summary>
+    public static string TituloLugar(PlanoElementoDto r)
+        => r.EsPiso ? $"Lugar en el piso {CodigoPiso(r)}"
+         : r.EsEstanteria ? (string.IsNullOrWhiteSpace(r.Nombre) ? $"Estantería {r.Codigo}" : r.Nombre!)
+         : $"Rack {NombreRack(r)}";
 
     /// <summary>Para dibujar: el nombre del rack (un solo texto).</summary>
     public static List<(int Cara, string Texto)> LadosRack(PlanoElementoDto r)
-        => r.Fila is not null && r.NroFila is not null ? new() { (1, NombreRack(r)) } : new();
+        => r.EsPiso || r.EsEstanteria ? new() { (1, NombreRack(r)) }
+         : r.Fila is not null && r.NroFila is not null ? new() { (1, NombreRack(r)) } : new();
 
     /// <summary>2026-11-27: los lados del rack que dan a una calle: (1, "Calle 1 · Fila 2 · Rack 1"), (2, …).
     /// Sin calles cargadas: un solo lado con el nombre del rack.</summary>
     public static List<(int Cara, string Titulo)> CarasDe(PlanoElementoDto r)
     {
+        if (r.EsPiso) return new() { (1, (r.Calle1 is int cp ? $"Calle {cp} · " : "") + $"Piso · Lugar {r.NroFila ?? 1}") };
+        if (r.EsEstanteria) return new() { (1, TituloLugar(r)) };
         var fr = r.Fila is int f && r.NroFila is int n ? $"Fila {f} · Rack {n}" : $"Rack {r.Codigo}";
         var l = new List<(int, string)>();
         if (r.Calle1 is int c1) l.Add((1, $"Calle {c1} · {fr}"));

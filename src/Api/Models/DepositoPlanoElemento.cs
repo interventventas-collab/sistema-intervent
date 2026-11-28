@@ -78,6 +78,17 @@ public class DepositoPlanoElemento
     public string? Estilo { get; set; }
 
     public int Orden { get; set; }
+
+    /// <summary>2026-11-27: qué clase de lugar es un Tipo='rack'. null = rack (C-F-R-A);
+    /// "piso" = lugar en el piso de una calle (Calle1 = la calle, NroFila = nº de lugar → "C3-PISO1", un solo nivel);
+    /// "estanteria" = estantería suelta (tostadero, arriba del escritorio) que se llama por su Codigo → "TOST-A3".</summary>
+    [MaxLength(12)]
+    public string? Forma { get; set; }
+
+    /// <summary>2026-11-27: estantería amurada: a cuántos metros del piso empieza (null/0 = apoyada en el piso).</summary>
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal? Elevacion { get; set; }
+
     public DateTime CreadoAt { get; set; } = DateTime.UtcNow;
     public DateTime? ModificadoAt { get; set; }
 

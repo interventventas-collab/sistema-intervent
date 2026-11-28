@@ -117,10 +117,10 @@
                 var cc = c;
                 var pct = c.Estantes == 0 ? 0 : c.Revisados * 100 / c.Estantes;
                 <button class="rc-calle" @onclick="() => AbrirEstante(cc.Seguir!)">
-                    <div class="c" style="background:@ColorCalle(c.Calle)">C@(c.Calle)</div>
+                    <div class="c" style="background:@(c.Calle == 0 ? "#475569" : ColorCalle(c.Calle))">@(c.Calle == 0 ? "E" : $"C{c.Calle}")</div>
                     <div style="flex:1">
-                        <div class="n">Calle @c.Calle@(c.Planta == "P1" ? " · planta alta" : "")@(pct >= 100 ? " ✓" : "")</div>
-                        <div class="k">@c.Racks @(c.Racks == 1 ? "rack" : "racks") · @c.Revisados de @c.Estantes estantes revisados · @c.Productos productos</div>
+                        <div class="n">@(c.Calle == 0 ? "Estanterías sueltas" : $"Calle {c.Calle}")@(c.Planta == "P1" ? " · planta alta" : "")@(pct >= 100 ? " ✓" : "")</div>
+                        <div class="k">@c.Racks @(c.Calle == 0 ? (c.Racks == 1 ? "estantería" : "estanterías") : c.Racks == 1 ? "rack o lugar" : "racks y lugares") · @c.Revisados de @c.Estantes estantes revisados · @c.Productos productos</div>
                         <div class="rc-prog"><i style="width:@(pct)%"></i></div>
                     </div>
                 </button>
@@ -131,11 +131,11 @@
     }
     else if (vista == "fin" && est is not null)
     {
-        <div class="rc-bar"><div class="t"><span>Calle @est.Calle · @operador.Nombre</span></div><div class="d">Rack @est.NombreRack listo ✅</div></div>
+        <div class="rc-bar"><div class="t"><span>@(est.Calle is null ? "Estanterías sueltas" : $"Calle {est.Calle}") · @operador.Nombre</span></div><div class="d">@(est.Fila is not null ? "Rack " : "")@est.NombreRack listo ✅</div></div>
         <div class="rc-cont">
             <div style="text-align:center; padding:1rem 0 .6rem">
                 <div style="font-size:3rem">✅</div>
-                <div style="font-weight:800; font-size:1.25rem">Calle @est.Calle · @est.NombreRack revisado</div>
+                <div style="font-weight:800; font-size:1.25rem">@(est.Calle is null ? "" : $"Calle {est.Calle} · ")@(est.Fila is not null ? "Rack " : "")@est.NombreRack revisado</div>
                 <div style="color:#64748b; font-size:.85rem">@est.Niveles alturas · @operador.Nombre</div>
             </div>
             <div class="rc-res-l"><span>Productos contados</span><b>@resRack.Contados</b></div>
@@ -148,7 +148,7 @@
             }
             else
             {
-                <div class="rc-vacio">🎉 Terminaste la calle @est.Calle.</div>
+                <div class="rc-vacio">🎉 @(est.Calle is null ? "Listo." : $"Terminaste la calle {est.Calle}.")</div>
             }
             <button class="rc-btn rc-gris" @onclick="VolverACalles">Volver a las calles</button>
         </div>
@@ -156,9 +156,9 @@
     else if (est is not null)
     {
         <div class="rc-bar">
-            <div class="t"><span>Calle @est.Calle · fila @est.Fila · rack @est.Nro · altura @est.Nivel de @est.Niveles</span><button @onclick="VolverACalles">calles</button></div>
+            <div class="t"><span>@(est.Fila is not null ? $"Calle {est.Calle} · fila {est.Fila} · rack {est.Nro} · altura {est.Nivel} de {est.Niveles}" : est.Calle is not null ? $"Calle {est.Calle} · lugar en el piso" : $"{est.NombreRack} · altura {est.Nivel} de {est.Niveles}")</span><button @onclick="VolverACalles">calles</button></div>
             <div class="rc-cod">@est.Codigo</div>
-            <div class="rc-desg">@est.Desglose@(est.Nivel == 1 ? " (el piso)" : "")@(est.Planta == "P1" ? " · planta alta" : "")</div>
+            <div class="rc-desg">@est.Desglose@(est.Nivel == 1 && est.Fila is not null ? " (el piso)" : "")@(est.Planta == "P1" ? " · planta alta" : "")</div>
         </div>
         <div class="rc-cont">
             @if (error is not null) { <div class="rc-error">@error</div> }

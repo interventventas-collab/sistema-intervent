@@ -35,7 +35,7 @@
     else
     {
         <div class="ed-cod">@est.Codigo</div>
-        <div class="ed-sub">@(est.Desglose ?? $"{RackTexto(est)} · Altura {est.Nivel}")@(est.Nivel == 1 ? " (el piso)" : "")@(PlantaTexto(est.Planta))</div>
+        <div class="ed-sub">@(est.Desglose ?? $"{RackTexto(est)} · Altura {est.Nivel}")@(est.Nivel == 1 && est.Forma is null ? " (el piso)" : "")@(PlantaTexto(est.Planta))</div>
 
         <div class="ed-lbl">Lo que hay acá</div>
         @if (est.Productos.Count == 0)
