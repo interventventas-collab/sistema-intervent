@@ -1263,6 +1263,8 @@
                 etiqueta = "Plano 3D",
                 soloVer = true,
                 buscar = true,
+                editar = true,   // 2026-11-28: agregar / sacar productos tocando una altura en el 3D
+                dotnet = refJs,
                 plantas,
                 items,
                 inicio,
@@ -1343,6 +1345,14 @@
         }
         rack = null; celdaSel = null; cartel = null;
         infoSel = e;
+        StateHasChanged();
+    }
+
+    /// <summary>2026-11-28: desde el 3D se agregó o sacó un producto de un estante de ese rack: refresca el panel.</summary>
+    [JSInvokable]
+    public async Task Cambio3D(int rackId)
+    {
+        if (rack?.Elemento.Id == rackId) await AbrirRack(rackId, celdaSel);
         StateHasChanged();
     }
 
