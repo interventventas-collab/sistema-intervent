@@ -2832,11 +2832,11 @@ public partial class ApiClient
 
     /// <summary>URL del endpoint para imprimir PDF combinado de varias ventas. Para usar con un &lt;a target="_blank"&gt;.</summary>
     public string GetImprimirPdfCombinadoUrl(IEnumerable<int> ids)
-        => $"/api/cafe/ventas/imprimir-pdf-combinado?ids={string.Join(",", ids)}";
+        => $"/api/cafe/ventas/imprimir-pdf-combinado?ids={string.Join(",", ids)}&inline=true";
 
     // 2026-11-16: con los remitos de alquiler tildados en el tablero (van al final del mismo PDF)
     public string GetImprimirPdfCombinadoUrl(IEnumerable<int> ids, IEnumerable<int> alquileres)
-        => $"/api/cafe/ventas/imprimir-pdf-combinado?ids={string.Join(",", ids)}&alq={string.Join(",", alquileres)}";
+        => $"/api/cafe/ventas/imprimir-pdf-combinado?ids={string.Join(",", ids)}&alq={string.Join(",", alquileres)}&inline=true";
 
     // 2026-11-16: alquileres en "Pedidos para armar"
     public async Task<List<AlqTableroItemDto>?> GetAlqTableroAsync(string estado, string? rango = null)
