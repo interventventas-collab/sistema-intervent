@@ -39,9 +39,23 @@
             </button>
         </div>
     }
+    @if (verComprobante)
+    {
+        <div class="prep-visor-fondo" @onclick="() => verComprobante = false">
+            <div class="prep-visor" @onclick:stopPropagation="true">
+                <div class="prep-visor-top">
+                    <span class="prep-visor-tit">@Venta.Numero · @Venta.ClienteNombre</span>
+                    <button type="button" class="prep-visor-btn" @onclick="ImprimirDesdeVisor" title="Imprimir sin descargar">🖨️ Imprimir</button>
+                    <button type="button" class="prep-visor-x" @onclick="() => verComprobante = false" title="Cerrar">×</button>
+                </div>
+                <iframe class="prep-visor-frame" src="@($"/api/cafe/ventas/{Venta.Id}/pdf?inline=true#navpanes=0&view=FitH")" title="Comprobante @Venta.Numero"></iframe>
+            </div>
+        </div>
+    }
     <div class="prep-card-header armar" style="gap:0.7rem;">
         @* Lado izquierdo: icono PDF rojo gigante estilo Drive con el numero del comprobante.
-           Click abre el PDF en Drive (si está subido). *@
+           Click abre el PDF en Drive (si está subido). 2026-11-28: abajo el ojito para verlo acá mismo. *@
+        <div class="prep-pdf-col">
         @if (Venta.DriveSubidoAt.HasValue && !string.IsNullOrEmpty(Venta.DriveFileId))
         {
             <a href="https://drive.google.com/file/d/@Venta.DriveFileId/view" target="_blank"
@@ -64,6 +78,8 @@
                 </svg>
             </div>
         }
+            <button type="button" class="prep-btn-ojito" @onclick="() => verComprobante = true" title="Ver el comprobante acá mismo">👁️</button>
+        </div>
         <div style="flex:1; min-width:0;">
             <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
                 <span class="prep-card-numero" style="font-family:monospace;">@Venta.Numero</span>
@@ -511,6 +527,14 @@
     [Parameter] public EventCallback OnRetroceder { get; set; }
     [Parameter] public EventCallback OnQuitarDelFlujo { get; set; }
     [Parameter] public EventCallback OnImprimir { get; set; }
+
+    // 2026-11-28: ojito → ver el comprobante en una ventanita, con botón imprimir
+    private bool verComprobante;
+    private async Task ImprimirDesdeVisor()
+    {
+        verComprobante = false;
+        await OnImprimir.InvokeAsync();
+    }
     [Parameter] public EventCallback<bool> OnToggleSelectForPrint { get; set; }
     [Parameter] public bool SelectedForPrint { get; set; }
     /// <summary>2026-11-04: vencimientos por ProductoId (solo los que tienen fechas). Lo carga CafePreparacion.</summary>

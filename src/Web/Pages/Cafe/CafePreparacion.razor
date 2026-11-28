@@ -467,6 +467,19 @@
         font-weight: 700;
     }
     /* Icono PDF rojo estilo Drive (caja con esquina doblada). Click → abre en Drive. */
+    /* 2026-11-28: ojito debajo del PDF + ventanita para ver el comprobante */
+    .prep-pdf-col { display:flex; flex-direction:column; align-items:center; gap:0.2rem; flex-shrink:0; }
+    .prep-btn-ojito { background:#fff; border:1px solid #e5e7eb; border-radius:999px; width:30px; height:24px; font-size:0.85rem; line-height:1; cursor:pointer; padding:0; }
+    .prep-btn-ojito:hover { background:#eef2ff; border-color:#c7d2fe; }
+    .prep-visor-fondo { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9800; display:flex; align-items:center; justify-content:center; }
+    .prep-visor { width:min(820px, 94vw); height:90vh; background:#fff; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 16px 46px rgba(0,0,0,0.34); }
+    .prep-visor-top { display:flex; align-items:center; gap:0.5rem; padding:0.45rem 0.7rem; background:#f3f4f6; border-bottom:1px solid #e5e7eb; }
+    .prep-visor-tit { flex:1; font-size:0.85rem; color:#374151; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .prep-visor-btn { background:#1e3a8a; color:#fff; border:none; border-radius:8px; padding:0.35rem 0.8rem; font-size:0.85rem; font-weight:700; cursor:pointer; }
+    .prep-visor-btn:hover { background:#1e40af; }
+    .prep-visor-x { background:none; border:none; font-size:1.5rem; line-height:1; color:#6b7280; cursor:pointer; padding:0 0.2rem; }
+    .prep-visor-x:hover { color:#ef4444; }
+    .prep-visor-frame { flex:1; width:100%; border:none; background:#fff; }
     .prep-drive-icon-link { display:inline-block; text-decoration:none; transition: transform .1s; }
     .prep-drive-icon-link:hover { transform: scale(1.05); }
     .prep-drive-icon {
@@ -1612,7 +1625,7 @@
         v.ImpresaAt = DateTime.UtcNow;
         v.ImpresaCount = v.ImpresaCount + 1;
         StateHasChanged();
-        await JS.InvokeVoidAsync("window.open", url, "_blank");
+        await JS.InvokeVoidAsync("imprimirPdfSinBajar", url);
     }
 
     /// <summary>Imprimir VARIOS: genera un PDF combinado con todos los seleccionados.</summary>
@@ -1634,7 +1647,7 @@
             }
         }
         ToastService.Success($"Generando PDF combinado con {ids.Count + totalAlq} ticket{(ids.Count + totalAlq == 1 ? "" : "s")}...");
-        await JS.InvokeVoidAsync("window.open", url, "_blank");
+        await JS.InvokeVoidAsync("imprimirPdfSinBajar", url);
         seleccionadosParaImprimir.Clear();
         StateHasChanged();
     }

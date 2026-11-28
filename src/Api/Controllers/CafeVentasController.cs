@@ -5050,7 +5050,7 @@ public class CafeVentasController : ControllerBase
     /// IDs van separados por coma: ?ids=1,2,3 — máximo 50 por request.
     /// Pedido 2026-05-28.</summary>
     [HttpGet("imprimir-pdf-combinado")]
-    public async Task<IActionResult> ImprimirPdfCombinado([FromQuery] string? ids, [FromQuery] string? alq = null)
+    public async Task<IActionResult> ImprimirPdfCombinado([FromQuery] string? ids, [FromQuery] string? alq = null, [FromQuery] bool inline = false)
     {
         // 2026-11-16: alq = tareas "Preparar alquiler" del tablero: su remito va al final del mismo PDF.
         var alqList = (alq ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
@@ -5105,6 +5105,8 @@ public class CafeVentasController : ControllerBase
         var fileName = ventas.Count == 1 && alqList.Count == 0
             ? BuildPdfFilename(ventas[0])
             : $"imprimir-{ventas.Count}-comprobantes-{DateTime.Now:yyyyMMddHHmm}.pdf";
+        // 2026-11-28: inline=true → se muestra/imprime en el navegador sin descargarse
+        if (inline) return File(pdfBytes, "application/pdf");
         return File(pdfBytes, "application/pdf", fileName);
     }
 
