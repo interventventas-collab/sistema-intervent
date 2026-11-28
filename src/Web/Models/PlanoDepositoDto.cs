@@ -38,6 +38,9 @@ public class PlanoElementoDto
     public int? Nro1 { get; set; }
     public int? Calle2 { get; set; }
     public int? Nro2 { get; set; }
+    /// <summary>2026-11-28: calles de las puntas (cara 3 = lado entrada / pared izq., cara 4 = la otra).</summary>
+    public int? CallePunta1 { get; set; }
+    public int? CallePunta2 { get; set; }
     /// <summary>2026-11-27: fila (línea de estanterías) y número de rack en la fila → "F4-R2".</summary>
     public int? Fila { get; set; }
     public int? NroFila { get; set; }
@@ -76,6 +79,9 @@ public class PlanoElementoGuardarDto
     public int? Nro1 { get; set; }
     public int? Calle2 { get; set; }
     public int? Nro2 { get; set; }
+    /// <summary>2026-11-28: calles de las puntas (cara 3 = lado entrada / pared izq., cara 4 = la otra).</summary>
+    public int? CallePunta1 { get; set; }
+    public int? CallePunta2 { get; set; }
     /// <summary>2026-11-27: fila (línea de estanterías) y número de rack en la fila → "F4-R2".</summary>
     public int? Fila { get; set; }
     public int? NroFila { get; set; }
@@ -89,7 +95,7 @@ public class PlanoElementoGuardarDto
         Posiciones = e.Posiciones, Niveles = e.Niveles, Color = e.Color, Puntos = e.Puntos,
         Notas = e.Notas, Orden = e.Orden, Estilo = e.Estilo,
         Calle1 = e.Calle1, Nro1 = e.Nro1, Calle2 = e.Calle2, Nro2 = e.Nro2, Fila = e.Fila, NroFila = e.NroFila,
-        Forma = e.Forma, Elevacion = e.Elevacion,
+        Forma = e.Forma, Elevacion = e.Elevacion, CallePunta1 = e.CallePunta1, CallePunta2 = e.CallePunta2,
     };
 }
 

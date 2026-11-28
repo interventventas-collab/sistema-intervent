@@ -9422,3 +9422,9 @@ GO
 IF COL_LENGTH('Deposito_PlanoElementos', 'Forma') IS NULL
     ALTER TABLE Deposito_PlanoElementos ADD Forma NVARCHAR(12) NULL, Elevacion DECIMAL(5,2) NULL;
 GO
+
+-- 28/11/2026: las PUNTAS (cabeceras) del rack también pueden dar a una calle y llevar mercadería:
+-- CallePunta1 = la punta del lado de la entrada (o pared izq. si está girado) = cara 3; CallePunta2 = la otra = cara 4.
+IF COL_LENGTH('Deposito_PlanoElementos', 'CallePunta1') IS NULL
+    ALTER TABLE Deposito_PlanoElementos ADD CallePunta1 INT NULL, CallePunta2 INT NULL;
+GO
