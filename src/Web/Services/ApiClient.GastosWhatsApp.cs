@@ -7,7 +7,10 @@ public partial class ApiClient
     public record GastoWaComentarioDto(int Id, string Texto, string? Usuario, DateTime CreatedAt);
     public record GastoWaDto(int Id, string Numero, string? Quien, string Texto, string? MediaUrl, string? MediaFilename,
         decimal? Importe, string? Medio, string Estado, int? PagoId, string? PagoNumero, string? MotivoRechazo,
-        string? ResueltoPor, DateTime? ResueltoAt, DateTime CreatedAt, List<GastoWaComentarioDto> Comentarios);
+        string? ResueltoPor, DateTime? ResueltoAt, DateTime CreatedAt, List<GastoWaComentarioDto> Comentarios,
+        List<GastoWaAdjuntoDto>? Adjuntos = null);
+    /// <summary>28/11/2026: comprobantes de más (reenvíos, "Responder" con "gas"). El primero sigue en MediaUrl.</summary>
+    public record GastoWaAdjuntoDto(string MediaUrl, string? MediaFilename);
     public record GastoWaPersonaDto(string Nombre, string Numero);
     public record GastoWaNumerosDto(List<string> Numeros, bool UsaAlertas, List<GastoWaPersonaDto> DeAlertas);
 

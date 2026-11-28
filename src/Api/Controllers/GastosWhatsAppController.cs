@@ -25,7 +25,10 @@ public class GastosWhatsAppController : ControllerBase
     public record ComentarioDto(int Id, string Texto, string? Usuario, DateTime CreatedAt);
     public record GastoDto(int Id, string Numero, string? Quien, string Texto, string? MediaUrl, string? MediaFilename,
         decimal? Importe, string? Medio, string Estado, int? PagoId, string? PagoNumero, string? MotivoRechazo,
-        string? ResueltoPor, DateTime? ResueltoAt, DateTime CreatedAt, List<ComentarioDto> Comentarios);
+        string? ResueltoPor, DateTime? ResueltoAt, DateTime CreatedAt, List<ComentarioDto> Comentarios,
+        List<AdjuntoDto>? Adjuntos = null);
+    /// <summary>28/11/2026: comprobantes de más (el primero sigue en MediaUrl).</summary>
+    public record AdjuntoDto(string MediaUrl, string? MediaFilename);
 
     private async Task<Dictionary<string, string>> NombresAsync()
     {
@@ -42,12 +45,15 @@ public class GastosWhatsAppController : ControllerBase
         var ids = gs.Select(g => g.Id).ToList();
         var coms = await _db.GastosWhatsAppComentarios.AsNoTracking().Where(c => ids.Contains(c.GastoId))
             .OrderBy(c => c.Id).ToListAsync();
+        var adjs = await _db.GastosWhatsAppAdjuntos.AsNoTracking().Where(a => ids.Contains(a.GastoId))
+            .OrderBy(a => a.Id).ToListAsync();
         var nombres = await NombresAsync();
         return gs.Select(g => new GastoDto(g.Id, g.Numero,
             nombres.TryGetValue(GastoWhatsAppService.Clave(g.Numero), out var n) ? n : g.NombrePerfil,
             g.Texto, g.MediaUrl, g.MediaFilename, g.Importe, g.Medio, g.Estado, g.PagoId, g.PagoNumero, g.MotivoRechazo,
             g.ResueltoPor, g.ResueltoAt, g.CreatedAt,
-            coms.Where(c => c.GastoId == g.Id).Select(c => new ComentarioDto(c.Id, c.Texto, c.Usuario, c.CreatedAt)).ToList()))
+            coms.Where(c => c.GastoId == g.Id).Select(c => new ComentarioDto(c.Id, c.Texto, c.Usuario, c.CreatedAt)).ToList(),
+            adjs.Where(a => a.GastoId == g.Id).Select(a => new AdjuntoDto(a.MediaUrl, a.MediaFilename)).ToList()))
             .ToList();
     }
 

@@ -341,6 +341,7 @@ public class AppDbContext : DbContext
     // 18/11/2026: "#gasto" por WhatsApp (ver Models/GastoWhatsApp.cs)
     public DbSet<GastoWhatsApp> GastosWhatsApp => Set<GastoWhatsApp>();
     public DbSet<GastoWhatsAppComentario> GastosWhatsAppComentarios => Set<GastoWhatsAppComentario>();
+    public DbSet<GastoWhatsAppAdjunto> GastosWhatsAppAdjuntos => Set<GastoWhatsAppAdjunto>();
     public DbSet<ShellCarga> ShellCargas => Set<ShellCarga>();
     public DbSet<FlotaVehiculo> FlotaVehiculos => Set<FlotaVehiculo>();
     public DbSet<RepCocheDia> RepCocheDias => Set<RepCocheDia>();

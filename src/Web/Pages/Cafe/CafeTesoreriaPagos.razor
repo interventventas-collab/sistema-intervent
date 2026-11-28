@@ -94,9 +94,22 @@
                                 }
                             </a>
                         }
+                        @foreach (var a in gastoWa.Adjuntos ?? new())
+                        {
+                            <a href="@a.MediaUrl" target="_blank" title="Ver el comprobante grande">
+                                @if ((a.MediaFilename ?? "").EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span style="font-size:0.85rem;">📎 @a.MediaFilename</span>
+                                }
+                                else
+                                {
+                                    <img src="@a.MediaUrl" alt="comprobante" style="width:70px; height:90px; object-fit:cover; border-radius:4px; border:1px solid #e5e7eb;" />
+                                }
+                            </a>
+                        }
                         <div style="font-size:0.9rem;">
-                            <div style="color:#6b7280; font-size:0.78rem;">💸 #gasto por WhatsApp · @(gastoWa.Quien ?? gastoWa.Numero) · @gastoWa.CreatedAt.ToArTime().ToString("dd/MM HH:mm")</div>
-                            <b>@gastoWa.Texto</b>
+                            <div style="color:#6b7280; font-size:0.78rem;">💸 gasto por WhatsApp · @(gastoWa.Quien ?? gastoWa.Numero) · @gastoWa.CreatedAt.ToArTime().ToString("dd/MM HH:mm")</div>
+                            <b style="white-space:pre-line;">@gastoWa.Texto</b>
                             @foreach (var c in gastoWa.Comentarios)
                             {
                                 <div style="font-size:0.8rem; color:#374151;">💬 @c.Texto <span style="color:#9ca3af;">· @c.Usuario</span></div>

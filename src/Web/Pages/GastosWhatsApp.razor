@@ -43,7 +43,7 @@
         <div class="gw-top">
             <div>
                 <h3 style="margin:0;">💸 Gastos por WhatsApp</h3>
-                <div class="gw-sub">Escribí <b>#gasto</b> y el detalle al fijo Transradio (11 2081-2933), con la foto del ticket si querés. El sistema no contesta nada, así WhatsApp no cobra.</div>
+                <div class="gw-sub">Escribí <b>gas</b> y el detalle al fijo Transradio (11 2081-2933), con la foto del ticket si querés. Si reenviás el ticket, escribí <b>gas</b> antes o después (10 minutos), o tocá <b>Responder</b> en el ticket y poné <b>gas</b>. Con <b>red</b> en vez de gas va a la bolsita 💰 de redirigidas. El sistema no contesta nada, así WhatsApp no cobra.</div>
             </div>
             <button class="gw-btn" @onclick="CambiarSonido" title="Ruidito de caja registradora cuando entra un gasto (en esta compu / celu)">@(sonido ? "🔊 Sonido de caja: prendido" : "🔇 Sonido de caja: apagado")</button>
         </div>
@@ -70,7 +70,7 @@
                 <div class="gw-row">
                     <div class="gw-est" title="@TituloEstado(g)">@(g.Estado == "APLICADO" ? "✅" : EsIgnorado(g) ? "🙈" : "🕓")</div>
                     <div>
-                        <div class="gw-txt" style="@(EsIgnorado(g) ? "color:#9ca3af;" : "")">@g.Texto</div>
+                        <div class="gw-txt" style="white-space:pre-line; @(EsIgnorado(g) ? "color:#9ca3af;" : "")">@g.Texto</div>
                         <div class="gw-meta">
                             @(g.Quien ?? g.Numero) · @Cuando(g.CreatedAt)@(g.Medio is null ? "" : " · " + MedioLindo(g.Medio))
                             @if (g.Estado == "APLICADO") { <span> · pago <b>@g.PagoNumero</b> · @g.ResueltoPor @(g.ResueltoAt is DateTime ra ? Cuando(ra) : "")</span> }
@@ -85,6 +85,17 @@
                             else
                             {
                                 <div class="gw-meta"><a href="@g.MediaUrl" target="_blank">📎 @(g.MediaFilename ?? "adjunto")</a></div>
+                            }
+                        }
+                        @foreach (var a in g.Adjuntos ?? new())
+                        {
+                            @if (EsImagenArchivo(a.MediaFilename, a.MediaUrl))
+                            {
+                                <img class="gw-foto" src="@a.MediaUrl" alt="comprobante" style="margin-left:.3rem;" @onclick="() => zoom = a.MediaUrl" />
+                            }
+                            else
+                            {
+                                <div class="gw-meta"><a href="@a.MediaUrl" target="_blank">📎 @(a.MediaFilename ?? "adjunto")</a></div>
                             }
                         }
                         @foreach (var c in g.Comentarios)
@@ -120,7 +131,7 @@
         }
 
         <div class="gw-cfg">
-            <b>¿Quién puede mandar #gasto?</b>
+            <b>¿Quién puede mandar gas / red?</b>
             @if (numeros is not null)
             {
                 <div class="gw-sub">
@@ -130,7 +141,7 @@
                     }
                     else
                     {
-                        <span>Valen solo estos números. Los mensajes con #gasto de otros números no entran (quedan en el chat igual).</span>
+                        <span>Valen solo estos números. Los mensajes con gas o red de otros números no entran (quedan en el chat igual).</span>
                     }
                 </div>
                 <div class="gw-comin" style="max-width:560px;">
@@ -222,10 +233,11 @@
         ToastService.Success("Guardado");
     }
 
-    private static bool EsImagen(ApiClient.GastoWaDto g)
+    private static bool EsImagen(ApiClient.GastoWaDto g) => EsImagenArchivo(g.MediaFilename, g.MediaUrl);
+    private static bool EsImagenArchivo(string? nombre, string? url)
     {
-        var n = (g.MediaFilename ?? g.MediaUrl ?? "").ToLowerInvariant();
-        return !n.EndsWith(".pdf") && (n.EndsWith(".jpg") || n.EndsWith(".jpeg") || n.EndsWith(".png") || n.EndsWith(".webp") || g.MediaFilename is null);
+        var n = (nombre ?? url ?? "").ToLowerInvariant();
+        return !n.EndsWith(".pdf") && (n.EndsWith(".jpg") || n.EndsWith(".jpeg") || n.EndsWith(".png") || n.EndsWith(".webp") || nombre is null);
     }
     private static string MedioLindo(string m) => m switch { "EFECTIVO" => "efectivo", "TRANSFERENCIA" => "transferencia", "MERCADOPAGO" => "Mercado Pago", _ => m.ToLowerInvariant() };
     private static string TituloEstado(ApiClient.GastoWaDto g) => g.Estado switch { "APLICADO" => "Aplicado a un pago", "IGNORADO" or "RECHAZADO" => "Ignorado", _ => "Para cargar" };

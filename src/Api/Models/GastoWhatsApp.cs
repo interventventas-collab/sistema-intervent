@@ -46,3 +46,15 @@ public class GastoWhatsAppComentario
     [MaxLength(120)] public string? Usuario { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>28/11/2026: comprobantes de más de un gasto (el primero queda en GastoWhatsApp.MediaUrl).</summary>
+[Table("Gastos_WhatsApp_Adjuntos")]
+public class GastoWhatsAppAdjunto
+{
+    public int Id { get; set; }
+    public int GastoId { get; set; }
+    public int? MensajeId { get; set; }
+    [MaxLength(500)] public string MediaUrl { get; set; } = "";
+    [MaxLength(300)] public string? MediaFilename { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
