@@ -79,6 +79,14 @@
     .rc-fila-res .rc-res { margin-top: 0; flex: 1; }
     .rc-tilde { width: 46px; flex: none; border: 2px solid #cbd5e1; background: #fff; border-radius: 12px; font-size: 1.3rem; cursor: pointer; }
     .rc-tilde.on { background: #16a34a; border-color: #16a34a; color: #fff; }
+    .rc-filtro { display: flex; gap: .4rem; margin-top: .55rem; }
+    .rc-filtro button { flex: 1; border: 2px solid #cbd5e1; background: #fff; border-radius: 999px; padding: .45rem .5rem; font: inherit; font-weight: 800; font-size: .88rem; color: #475569; cursor: pointer; }
+    .rc-filtro button.on { background: #ea580c; border-color: #ea580c; color: #fff; }
+    .rc-filtro button.on.todos { background: #334155; border-color: #334155; }
+    .rc-sin { display: inline-block; background: #ffedd5; color: #9a3412; border-radius: 6px; padding: 0 .4rem; font-weight: 800; font-size: .74rem; }
+    .rc-res.ubicado { background: #f8fafc; border-color: #e2e8f0; }
+    .rc-res.ubicado .rc-res-n { color: #64748b; font-weight: 600; }
+    .rc-donde { font-size: .78rem; color: #0f766e; font-weight: 700; }
     .rc-marca { display: block; width: 100%; margin-top: .45rem; border: 1px dashed #7c3aed; background: #f5f3ff; color: #5b21b6; border-radius: 12px; padding: .6rem; font: inherit; font-weight: 800; cursor: pointer; }
     .rc-varios { position: sticky; bottom: 0; background: #fff; padding: .6rem 0 .2rem; margin-top: .5rem; border-top: 1px solid #e2e8f0; }
     .rc-x { position: absolute; right: .8rem; top: .7rem; border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; width: 38px; height: 38px; font-size: 1rem; cursor: pointer; }
@@ -311,14 +319,27 @@
                 var mm = m;
                 <button class="rc-marca" @onclick="() => TraerMarca(mm.Marca)">Traer todos los de @mm.Marca (@mm.Productos)</button>
             }
-            @if (marcaTraida is not null)
+            @* 2026-11-28: filtro "Sin estante" para cargar los que todavía no tienen lugar, sin mirar uno por uno *@
+            @if (resultados.Count > 0)
             {
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:.5rem; font-size:.85rem; color:#5b21b6; font-weight:700">
-                    <span>Todos los de @marcaTraida (@resultados.Count)</span>
-                    <button class="rc-mini" style="border:none; background:none; color:#5b21b6; font-weight:800; cursor:pointer" @onclick="TildarTodos">@(resultados.All(r => tildados.Contains(r.ProductoId)) ? "Destildar todos" : "Tildar todos")</button>
+                var nSin = resultados.Count(r => r.Lugares.Count == 0);
+                <div class="rc-filtro">
+                    <button class="@(soloSinEstante ? "on" : "")" @onclick="() => soloSinEstante = true">Sin estante (@nSin)</button>
+                    <button class="todos @(soloSinEstante ? "" : "on")" @onclick="() => soloSinEstante = false">Todos (@resultados.Count)</button>
                 </div>
             }
-            @foreach (var r in resultados)
+            @if (marcaTraida is not null && Visibles.Count > 0)
+            {
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:.5rem; font-size:.85rem; color:#5b21b6; font-weight:700">
+                    <span>@(soloSinEstante ? "Sin estante" : "Todos") de @marcaTraida (@Visibles.Count)</span>
+                    <button class="rc-mini" style="border:none; background:none; color:#5b21b6; font-weight:800; cursor:pointer" @onclick="TildarTodos">@(Visibles.All(r => tildados.Contains(r.ProductoId)) ? "Destildar todos" : "Tildar todos")</button>
+                </div>
+            }
+            @if (soloSinEstante && resultados.Count > 0 && Visibles.Count == 0)
+            {
+                <div style="margin-top:.7rem; font-size:.9rem; color:#16a34a; font-weight:700">✓ Todos estos ya tienen estante.</div>
+            }
+            @foreach (var r in Visibles)
             {
                 var rr = r;
                 var on = tildados.Contains(r.ProductoId);
@@ -327,9 +348,13 @@
                     {
                         <button class="rc-tilde @(on ? "on" : "")" title="Tildar para guardar varios juntos" @onclick="() => Tildar(rr)">@(on ? "✓" : "")</button>
                     }
-                    <button class="rc-res" @onclick="() => Elegir(rr)">
-                        <div style="font-weight:700">@r.Nombre</div>
-                        <div style="font-size:.78rem; color:#64748b">@r.Sku · stock @r.Stock@(r.Lugares.Count > 0 ? " · en " + string.Join(", ", r.Lugares.Select(l => l.Codigo)) : " · sin estante")</div>
+                    <button class="rc-res @(r.Lugares.Count > 0 ? "ubicado" : "")" @onclick="() => Elegir(rr)">
+                        <div class="rc-res-n" style="font-weight:700">@r.Nombre</div>
+                        <div style="font-size:.78rem; color:#64748b">@r.Sku · stock @r.Stock @if (r.Lugares.Count == 0) { <span class="rc-sin">SIN ESTANTE</span> }</div>
+                        @if (r.Lugares.Count > 0)
+                        {
+                            <div class="rc-donde">📍 Ya está en @string.Join(", ", r.Lugares.Select(l => l.Codigo))</div>
+                        }
                     </button>
                 </div>
             }
@@ -401,6 +426,8 @@
     // 2026-11-27: buscar por marca, tildar varios, código de barras que no conocía, comentario del estante
     private List<RecorridoMarcaDto> marcas = new();
     private string? marcaTraida;
+    private bool soloSinEstante;
+    private List<RecorridoProductoDto> Visibles => soloSinEstante ? resultados.Where(r => r.Lugares.Count == 0).ToList() : resultados;
     private readonly HashSet<int> tildados = new();
     private string? codigoNuevo;
     private bool editandoNota;
@@ -615,6 +642,8 @@
         resultados = r.Dato ?? new();
         marcaTraida = marca;
         marcas = new();
+        // al traer una marca, arranca mostrando los que todavía no tienen estante (si hay)
+        soloSinEstante = resultados.Any(x => x.Lugares.Count == 0);
     }
 
     private void Tildar(RecorridoProductoDto p)
@@ -624,8 +653,9 @@
 
     private void TildarTodos()
     {
-        if (resultados.All(r => tildados.Contains(r.ProductoId))) foreach (var r in resultados) tildados.Remove(r.ProductoId);
-        else foreach (var r in resultados) tildados.Add(r.ProductoId);
+        var vis = Visibles;
+        if (vis.All(r => tildados.Contains(r.ProductoId))) foreach (var r in vis) tildados.Remove(r.ProductoId);
+        else foreach (var r in vis) tildados.Add(r.ProductoId);
     }
 
     private async Task GuardarVarios()
@@ -696,7 +726,7 @@
         ctsBusca?.Cancel();
         var cts = ctsBusca = new CancellationTokenSource();
         try { await Task.Delay(300, cts.Token); } catch { return; }
-        marcaTraida = null;
+        marcaTraida = null; soloSinEstante = false;
         if (busca.Trim().Length < 2) { resultados = new(); marcas = new(); return; }
         var r = await Api.BuscarRecorridoAsync(pase!, busca.Trim());
         if (cts.IsCancellationRequested || Vencido(r)) return;
