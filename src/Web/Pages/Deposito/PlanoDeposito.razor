@@ -96,6 +96,17 @@
     .pd-aco button { display: block; width: 100%; text-align: left; font: inherit; font-size: .85rem; border: none; border-bottom: 1px solid #f3f4f6; background: none; padding: 6px 2px; cursor: pointer; color: #111827; }
     .pd-aco button:hover { background: #f9fafb; }
     .pd-aco button.on { background: #eff6ff; }
+    /* 2026-11-28: qué se ve en el plano (capas y vistas) */
+    .pd-capas-w { position: relative; }
+    .pd-capas { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 300px; background: #fff; border: 1px solid #d1d5db; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.15); padding: 12px; }
+    .pd-capas h4 { margin: 0 0 6px; font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+    .pd-vista { display: block; width: 100%; text-align: left; font: inherit; border: 1px solid #e5e7eb; border-radius: 8px; padding: 6px 10px; margin: 0 0 5px; background: #fff; cursor: pointer; color: #111827; font-size: .88rem; font-weight: 700; }
+    .pd-vista small { display: block; font-weight: 400; color: #6b7280; font-size: .76rem; }
+    .pd-vista.on { border: 2px solid #111827; padding: 5px 9px; }
+    .pd-vista:disabled { color: #9ca3af; cursor: default; }
+    .pd-capa { display: flex; align-items: center; gap: 8px; font-size: .88rem; padding: 3px 0; cursor: pointer; }
+    .pd-capa input { width: 16px; height: 16px; }
+    .pd-capa.dis { color: #9ca3af; cursor: default; }
     @@media (max-width: 1100px) {
         .pd-main { grid-template-columns: 230px minmax(0, 1fr) 340px; }
     }
@@ -135,6 +146,30 @@
             @if (!editar)
             {
                 @* 2026-11-27: hoja para imprimir / guardar PDF (todo o por zona) *@
+                @* 2026-11-28: elegir qué se ve (racks, PCs, ambientes con medidas…) *@
+                <div class="pd-capas-w">
+                    <button class="pd-btn @(verCapas ? "prim" : "")" @onclick="@(() => verCapas = !verCapas)">👁 Qué ver@(VistaActual() is string va && va != "Todo" ? $" · {va}" : "")</button>
+                    @if (verCapas)
+                    {
+                        <div class="pd-capas">
+                            <h4>Vistas</h4>
+                            @foreach (var v in Vistas)
+                            {
+                                var vv = v;
+                                <button class="pd-vista @(VistaActual() == vv.Nombre ? "on" : "")" @onclick="@(() => ElegirVista(vv.Capas))">@vv.Nombre<small>@vv.Sub</small></button>
+                            }
+                            <button class="pd-vista" disabled>Eléctrica<small>más adelante: enchufes, luces, tablero</small></button>
+                            <h4 style="margin-top:10px">Qué mostrar</h4>
+                            @foreach (var c in Capas)
+                            {
+                                var cc = c;
+                                <label class="pd-capa"><input type="checkbox" checked="@capasOn.Contains(cc.Clave)" @onchange="@(() => TildarCapa(cc.Clave))" /> @cc.Texto</label>
+                            }
+                            <label class="pd-capa dis"><input type="checkbox" disabled /> Eléctrica (próximamente)</label>
+                            <div class="pd-g" style="margin-top:6px">Queda guardado en esta compu.</div>
+                        </div>
+                    }
+                </div>
                 <button class="pd-btn" style="background:#0f172a;color:#fdba74;border-color:#0f172a;font-weight:800" @onclick="Ver3D">🧭 Ver en 3D</button>
                 <a class="pd-btn" href="/deposito/plano/imprimir?planta=@planta" style="text-decoration:none;">🖨 Imprimir / PDF</a>
             }
@@ -419,7 +454,17 @@
                                     <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="0.05" fill="@Col(e, "#e7e5e4")" stroke="#57534e" stroke-width="0.04" />
                                     break;
                                 case "pc":
-                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="0.03" fill="@Col(e, "#1f2937")" />
+                                    @* 2026-11-28: dibujo de PC (monitor con pantalla, pie y teclado), antes era un cuadrado negro *@
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" fill="transparent" />
+                                    <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H * 0.6)" rx="@F(r.Corto * 0.06)" fill="@Col(e, "#1f2937")" />
+                                    <rect x="@F(r.X + r.W * 0.08)" y="@F(r.Y + r.H * 0.07)" width="@F(r.W * 0.84)" height="@F(r.H * 0.44)" fill="#60a5fa" />
+                                    <rect x="@F(r.CX - r.W * 0.07)" y="@F(r.Y + r.H * 0.6)" width="@F(r.W * 0.14)" height="@F(r.H * 0.1)" fill="#374151" />
+                                    <rect x="@F(r.CX - r.W * 0.25)" y="@F(r.Y + r.H * 0.69)" width="@F(r.W * 0.5)" height="@F(r.H * 0.04)" fill="#374151" />
+                                    <rect x="@F(r.X + r.W * 0.06)" y="@F(r.Y + r.H * 0.8)" width="@F(r.W * 0.88)" height="@F(r.H * 0.18)" rx="@F(r.Corto * 0.03)" fill="#e5e7eb" stroke="#6b7280" stroke-width="0.015" />
+                                    @if (!string.IsNullOrWhiteSpace(e.Nombre))
+                                    {
+                                        <g><text x="@F(r.CX)" y="@F(r.Y + r.H + 0.26)" font-size="0.22" font-weight="700" fill="#374151" text-anchor="middle" pointer-events="none">@e.Nombre</text></g>
+                                    }
                                     break;
                                 case "mesa":
                                     <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.W)" height="@F(r.H)" rx="@F(r.Corto / 2)" fill="@Col(e, "#e7e5e4")" stroke="#57534e" stroke-width="0.04" />
@@ -489,6 +534,14 @@
                     @foreach (var e in Ordenados())
                     {
                         @EtiquetaArriba(e)
+                    }
+                    @* 2026-11-28: capa "Medidas y m²": largo × ancho y metros cuadrados de cada ambiente *@
+                    @if (!editar && capasOn.Contains("medidas"))
+                    {
+                        @foreach (var e in Ordenados().Where(x => x.Tipo == "zona"))
+                        {
+                            @Medida(e)
+                        }
                     }
                     @* el borde del terreno arriba de todo (las zonas lo tapaban) *@
                     @foreach (var t in elementos.Where(x => x.Tipo == "terreno"))
@@ -911,8 +964,88 @@
     // modo editar
     private PlanoElementoDto? sel;
 
+    // ───────────── 2026-11-28: qué se ve (capas y vistas), guardado en esta compu ─────────────
+    private const string CLAVE_CAPAS = "plano_capas";
+    private static readonly (string Clave, string Texto)[] Capas =
+    {
+        ("estructura", "Puertas, ventanas y escaleras"), ("ambientes", "Ambientes"), ("medidas", "Medidas y m² de los ambientes"),
+        ("pasillos", "Pasillos y calles"), ("racks", "Racks"), ("estanterias", "Estanterías"), ("piso", "Lugares en el piso"),
+        ("pcs", "PCs"), ("muebles", "Muebles y escritorios"), ("otros", "Vehículos, pallets, sillas y otros"),
+    };
+    private static readonly string[] CapasTodo = { "estructura", "ambientes", "pasillos", "racks", "estanterias", "piso", "pcs", "muebles", "otros" };
+    private static readonly (string Nombre, string Sub, string[] Capas)[] Vistas =
+    {
+        ("Todo", "como siempre", CapasTodo),
+        ("Ambientes y medidas", "solo ambientes, con metros y m²", new[] { "estructura", "ambientes", "pasillos", "medidas" }),
+        ("Depósito", "racks, estanterías y lugares en el piso", new[] { "estructura", "ambientes", "pasillos", "racks", "estanterias", "piso" }),
+        ("Oficina y equipos", "muebles, escritorios y PCs", new[] { "estructura", "ambientes", "pcs", "muebles" }),
+    };
+    private HashSet<string> capasOn = new(CapasTodo);
+    private bool verCapas;
+
+    private static string CapaDe(PlanoElementoDto e) => e.Tipo switch
+    {
+        "terreno" => "",
+        "zona" => "ambientes",
+        "pasillo" => "pasillos",
+        "rack" => e.EsPiso ? "piso" : e.EsEstanteria ? "estanterias" : "racks",
+        "pc" => "pcs",
+        "escritorio" or "mesa" or "mueble" or "heladera" => "muebles",
+        "vehiculo" or "pallet" or "contenedor" or "montacargas" or "sillas" => "otros",
+        _ => "estructura",
+    };
+    private bool Visible(PlanoElementoDto e) { var c = CapaDe(e); return c == "" || capasOn.Contains(c); }
+    private string? VistaActual() => Vistas.FirstOrDefault(v => capasOn.SetEquals(v.Capas)).Nombre;
+
+    private async Task ElegirVista(string[] capas) { capasOn = new(capas); await GuardarCapas(); }
+    private async Task TildarCapa(string c) { if (!capasOn.Remove(c)) capasOn.Add(c); await GuardarCapas(); }
+    private async Task GuardarCapas()
+    {
+        try { await JS.InvokeVoidAsync("localStorage.setItem", CLAVE_CAPAS, string.Join(",", capasOn)); } catch { }
+    }
+    private async Task LeerCapas()
+    {
+        try
+        {
+            var v = await JS.InvokeAsync<string?>("localStorage.getItem", CLAVE_CAPAS);
+            if (v is not null) capasOn = new(v.Split(',', StringSplitOptions.RemoveEmptyEntries).Where(c => Capas.Any(x => x.Clave == c)));
+        }
+        catch { }
+    }
+
+    /// <summary>Largo × ancho (m) y m² de un ambiente (si es un polígono, su área de verdad).</summary>
+    private (decimal L, decimal A, double M2) MedidasZona(PlanoElementoDto e)
+    {
+        var p = LeerPuntos(e);
+        if (p is null) return (Largo(e), Ancho(e), (double)(Largo(e) * Ancho(e)));
+        double a = 0;
+        for (int i = 0; i < p.Count; i++) { var q = p[i]; var w = p[(i + 1) % p.Count]; a += q[0] * w[1] - w[0] * q[1]; }
+        return ((decimal)(p.Max(q => q[1]) - p.Min(q => q[1])), (decimal)(p.Max(q => q[0]) - p.Min(q => q[0])), Math.Abs(a) / 2);
+    }
+
+    private RenderFragment Medida(PlanoElementoDto e)
+    {
+        var r = Rect(e);
+        var (cx, cy) = CentroZona(e, r);
+        var est = Est(e);
+        var fsN = Math.Clamp(Math.Min(r.W, r.H) * 0.16, 0.3, 0.9) * est.Ls;
+        var vert = est.Lv ?? (r.H > r.W * 1.6);
+        var x = cx + est.Lx; var y = cy + est.Ly;
+        var (l, a, m2) = MedidasZona(e);
+        var txt = $"{M(l)} × {M(a)} m · {m2.ToString("0.#", Inv).Replace('.', ',')} m²";
+        var f = Math.Clamp(Math.Min(fsN * 0.62, r.W / 13), 0.22, 0.6);
+        var dy = string.IsNullOrWhiteSpace(e.Nombre) ? 0 : fsN * 0.95;
+        var rot = vert ? $"rotate(-90 {F(x)} {F(y)})" : null;
+        var ancho = txt.Length * f * 0.52 + f * 0.6;
+        return @<g transform="@rot" pointer-events="none">
+            <rect x="@F(x - ancho / 2)" y="@F(y + dy - f * 0.62)" width="@F(ancho)" height="@F(f * 1.25)" rx="0.05" fill="#fff" fill-opacity="0.85" />
+            <text x="@F(x)" y="@F(y + dy + f * 0.35)" font-size="@F(f)" font-weight="700" fill="#1d4ed8" text-anchor="middle">@txt</text>
+        </g>;
+    }
+
     protected override async Task OnInitializedAsync()
     {
+        await LeerCapas();
         try
         {
             var st = await AuthState.GetAuthenticationStateAsync();
@@ -1625,7 +1758,7 @@
     }
 
     private IEnumerable<PlanoElementoDto> Ordenados()
-        => elementos.OrderBy(e => e.Tipo switch { "terreno" => 0, "zona" => 1, "pasillo" => 2, "techo" => 2, "texto" => 4, _ => 3 })
+        => elementos.Where(e => editar || Visible(e)).OrderBy(e => e.Tipo switch { "terreno" => 0, "zona" => 1, "pasillo" => 2, "techo" => 2, "texto" => 4, _ => 3 })
                     .ThenBy(e => e.Orden).ThenBy(e => e.Id);
 
     private static List<double[]>? LeerPuntos(PlanoElementoDto e)
