@@ -23,6 +23,21 @@
     // 2026-11-28: lo que se puede dibujar en un estante aunque no tenga stock
     const DIBUJOS = [['bolsas', 'Bolsas de café'], ['cajas', 'Cajas'], ['bidones', 'Bidones'], ['sillas', 'Sillas apiladas'],
         ['pallet', 'Pallet vacío'], ['rollos', 'Rollos'], ['bultos', 'Bultos'], ['foto', 'Con una foto']];
+    // 2026-11-28: textura de bolsa de yute (como las de café crudo): arpillera, costura y las rayas verde y amarilla
+    const svgUrl = (x) => 'url("data:image/svg+xml;utf8,' + encodeURIComponent(x) + '")';
+    const YUTE_LADO = svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 40' preserveAspectRatio='none'>
+      <defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#e7d9b6'/><stop offset='.55' stop-color='#d4bf93'/><stop offset='1' stop-color='#a99067'/></linearGradient>
+      <pattern id='t' width='3' height='3' patternUnits='userSpaceOnUse'><path d='M0 0H3M0 0V3' stroke='#8e7a55' stroke-width='.35' opacity='.45'/></pattern></defs>
+      <rect width='120' height='40' fill='url(#g)'/><rect width='120' height='40' fill='url(#t)'/>
+      <path d='M2 20 Q60 25 118 20' fill='none' stroke='#7d6845' stroke-width='1.1' stroke-dasharray='3 2'/>
+      <rect x='52' y='0' width='2.6' height='40' fill='#3f8f3a'/><rect x='56' y='0' width='2.6' height='40' fill='#d9b520'/>
+      <rect x='98' y='0' width='1.6' height='40' fill='#c56a7a' opacity='.7'/></svg>`);
+    const YUTE_TAPA = svgUrl(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 60' preserveAspectRatio='none'>
+      <defs><radialGradient id='g' cx='.5' cy='.45' r='.7'><stop offset='0' stop-color='#ecdfbe'/><stop offset='1' stop-color='#bfa77b'/></radialGradient>
+      <pattern id='t' width='3' height='3' patternUnits='userSpaceOnUse'><path d='M0 0H3M0 0V3' stroke='#8e7a55' stroke-width='.35' opacity='.4'/></pattern></defs>
+      <rect width='120' height='60' fill='url(#g)'/><rect width='120' height='60' fill='url(#t)'/>
+      <rect x='52' y='0' width='2.6' height='60' fill='#3f8f3a'/><rect x='56' y='0' width='2.6' height='60' fill='#d9b520'/>
+      <text x='70' y='26' font-family='Arial' font-size='9' font-weight='700' fill='#c0392b' opacity='.75'>CAFÉ</text></svg>`);
     const nombreDibujo = (t) => (DIBUJOS.find(x => x[0] === t) || [t, t])[1];
     function capasApagadas() {
         try {
@@ -138,7 +153,10 @@
 .p3-tip .v { color: #94a3b8; font-style: italic; }
 .p3-tip .h { color: #94a3b8; font-size: 11px; margin-top: 4px; }
 .p3-tip + .p3-tip { margin-top: 4px; }
-.p3-caja.saco > i { border-radius: 45% / 40%; }
+.p3-caja.saco > i { background-size: 100% 100% !important; }
+.p3-caja.saco > i:nth-child(1) { border-radius: 22% / 34%; }
+.p3-caja.saco > i:nth-child(2), .p3-caja.saco > i:nth-child(3) { border-radius: 14% / 48%; }
+.p3-caja.saco > i:nth-child(4), .p3-caja.saco > i:nth-child(5) { border-radius: 48%; }
 .p3-caja.rollo > i { border-radius: 50%; }
 .p3-alt img { display: inline-block; vertical-align: middle; height: 2.4em; border-radius: 3px; margin-left: 4px; }
 .p3-tip img { display: block; max-height: 110px; max-width: 220px; border-radius: 6px; margin-top: 4px; }
@@ -252,9 +270,20 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             if (tipo === 'bolsas' || tipo === 'pallet') {
                 for (let j = 0; j < n; j++) put(4 + j * w + 2, y0, w - 4, ch, 4, '#8a6a40', z);   // pallet
                 if (tipo === 'pallet') return;
-                const capas = Math.max(2, Math.min(5, Math.floor((hz - 4) / 6))), ac = (hz - 4) / capas;
+                // bolsas de yute apiladas: un poco más anchas que el pallet, cada una corrida un poquito (como en la foto)
+                // cada bolsa ~0,9 m de largo y ~0,2 m de alto (las de 60/70 kg)
+                const nb = Math.max(1, Math.round((r.w - 8) / 36)), wb = (r.w - 8) / nb;
+                const capas = Math.max(2, Math.min(5, Math.round((hz - 4) / 8))), ac = (hz - 4) / capas;
                 for (let c = 0; c < capas; c++)
-                    for (let j = 0; j < n; j++) put(4 + j * w + 1 + (c % 2) * 2, y0 + 1, w - 4, ch - 2, ac - 0.5, c % 2 ? '#d2bf94' : '#dccb9f', z + 4 + c * ac, 'saco');
+                    for (let j = 0; j < nb; j++) {
+                        const corr = (azar(seed * 13 + c * 7 + j) - 0.5) * 4;
+                        const b = put(4 + j * wb + corr + 0.5, y0 - 3 + azar(c + j) * 2, wb - 1, ch + 5, ac * 1.12, '#d8c69e', z + 4 + c * ac, 'saco');
+                        const caras = b.children;
+                        caras[0].style.background = YUTE_TAPA;
+                        caras[1].style.background = YUTE_LADO; caras[2].style.background = YUTE_LADO;
+                        caras[3].style.background = 'radial-gradient(ellipse at 50% 45%, #dccb9f, #a99067)';
+                        caras[4].style.background = 'radial-gradient(ellipse at 50% 45%, #dccb9f, #a99067)';
+                    }
                 return;
             }
             if (tipo === 'bidones') {
@@ -341,7 +370,7 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
                 niveles[i].dataset.niv = i + 1;
                 const k = Math.floor(azar(e.id * 7 + i) * 3) + 1, hz = Math.min(30, (H - 10) / N - 8);
                 const db = dibujoDe(e, i + 1, null);
-                if (db && db.dibujo && db.dibujo !== 'cajas' && db.dibujo !== 'foto') { llenar(d, r, z + 2, hz, i + 1, db.dibujo, e.id); continue; }
+                if (db && db.dibujo && db.dibujo !== 'cajas' && db.dibujo !== 'foto') { llenar(d, r, z + 2, Math.max(hz, (H - 10) / N - 4), i + 1, db.dibujo, e.id); continue; }
                 for (let j = 0; j < k; j++) {
                     const ch = r.h * 0.7;
                     caja(6 + j * (r.w - 12) / k + azar(e.id + j) * 4, (r.h - ch) / 2, Math.min(r.w / 3.4, (r.w - 16) / k), ch, hz * (0.6 + azar(i + j + e.id) * 0.4), '#c9a26b', d, z + 2).dataset.niv = i + 1;
@@ -352,7 +381,7 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             top.textContent = (e.fila != null && e.nroFila != null) ? 'F' + e.fila + '-R' + e.nroFila : e.codigo;
             top.style.fontSize = Math.max(10, Math.min(22, r.h * 0.42, r.w / 3.2)) + 'px';
             racks[e.codigo.toUpperCase()] = { e, r, H, N, d, niveles, z0, cod: top.textContent, est: e.forma === 'estanteria',
-                llenar: (niv, t) => llenar(d, r, 4 + (niv - 1) * (H - 10) / N + 2, Math.min(30, (H - 10) / N - 8), niv, t, e.id) };
+                llenar: (niv, t) => llenar(d, r, 4 + (niv - 1) * (H - 10) / N + 2, t && t !== 'cajas' && t !== 'foto' ? Math.max(Math.min(30, (H - 10) / N - 8), (H - 10) / N - 4) : Math.min(30, (H - 10) / N - 8), niv, t, e.id) };
             if (e.calle1 != null && e.nro1 != null) porCalle[e.calle1 + '-' + e.nro1] = e.codigo.toUpperCase();
             if (e.calle2 != null && e.nro2 != null) porCalle[e.calle2 + '-' + e.nro2] = e.codigo.toUpperCase();
             if (e.fila != null && e.nroFila != null) porCalle['F' + e.fila + '-' + e.nroFila] = e.codigo.toUpperCase();
