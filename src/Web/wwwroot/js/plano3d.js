@@ -273,7 +273,8 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
                 // bolsas de yute apiladas: un poco más anchas que el pallet, cada una corrida un poquito (como en la foto)
                 // cada bolsa ~0,9 m de largo y ~0,2 m de alto (las de 60/70 kg)
                 const nb = Math.max(1, Math.round((r.w - 8) / 36)), wb = (r.w - 8) / nb;
-                const capas = Math.max(2, Math.min(5, Math.round((hz - 4) / 8))), ac = (hz - 4) / capas;
+                // máximo 5 bolsas estibadas (pedido del dueño); cada una ~25 cm de alto
+                const capas = Math.max(1, Math.min(5, Math.floor((hz - 4) / (0.22 * S)))), ac = Math.min((hz - 4) / capas, 0.26 * S);
                 for (let c = 0; c < capas; c++)
                     for (let j = 0; j < nb; j++) {
                         const corr = (azar(seed * 13 + c * 7 + j) - 0.5) * 4;
@@ -359,18 +360,27 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
         for (const e of els.filter(e => e.tipo === 'rack' && e.codigo && e.forma !== 'piso')) {
             // 2026-11-27: estantería amurada: empieza a "elevacion" metros del piso
             const z0 = e.forma === 'estanteria' ? (+e.elevacion || 0) * S : 0;
-            const r = R(e), H = (+e.alto || (e.forma === 'estanteria' ? 1 : 2.6)) * S, N = Math.max(1, e.niveles || 1);
+            const r = R(e), N = Math.max(1, e.niveles || 1);
+            // 2026-11-28: alto real de cada altura (cm, de abajo hacia arriba); si no está, todas iguales
+            const cms = String(e.alturasCm || '').split(',').map(x => +x).filter(x => x > 0);
+            const reales = cms.length === N;
+            const H = (+e.alto || (reales ? cms.reduce((a, b) => a + b, 0) / 100 : (e.forma === 'estanteria' ? 1 : 2.6))) * S;
+            const zNiv = [], gapNiv = [];
+            for (let i = 0, acc = 0; i < N; i++) {
+                if (reales) { zNiv.push(4 + acc / 100 * S); gapNiv.push(cms[i] / 100 * S); acc += cms[i]; }
+                else { zNiv.push(4 + i * (H - 10) / N); gapNiv.push((H - 10) / N); }
+            }
             const d = div('p3-rack', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${z0}px)` });
             d.dataset.cod = e.codigo.toUpperCase(); d.dataset.capa = e.forma === 'estanteria' ? 'estanterias' : 'racks';
             for (const [px, py] of [[0, 0], [r.w - 5, 0], [0, r.h], [r.w - 5, r.h]]) div('p3-poste', { left: px + 'px', top: py + 'px', height: H + 'px', transform: 'rotateX(90deg)' }, d);
             const niveles = [];
             for (let i = 0; i < N; i++) {
-                const z = 4 + i * (H - 10) / N; // (relativo al rack; el rack ya está subido z0)
+                const z = zNiv[i]; // (relativo al rack; el rack ya está subido z0)
                 niveles.push(div('p3-niv', { width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${z}px)` }, d));
                 niveles[i].dataset.niv = i + 1;
-                const k = Math.floor(azar(e.id * 7 + i) * 3) + 1, hz = Math.min(30, (H - 10) / N - 8);
+                const k = Math.floor(azar(e.id * 7 + i) * 3) + 1, hz = Math.min(30, gapNiv[i] - 8);
                 const db = dibujoDe(e, i + 1, null);
-                if (db && db.dibujo && db.dibujo !== 'cajas' && db.dibujo !== 'foto') { llenar(d, r, z + 2, Math.max(hz, (H - 10) / N - 4), i + 1, db.dibujo, e.id); continue; }
+                if (db && db.dibujo && db.dibujo !== 'cajas' && db.dibujo !== 'foto') { llenar(d, r, z + 2, Math.max(hz, gapNiv[i] - 4), i + 1, db.dibujo, e.id); continue; }
                 for (let j = 0; j < k; j++) {
                     const ch = r.h * 0.7;
                     caja(6 + j * (r.w - 12) / k + azar(e.id + j) * 4, (r.h - ch) / 2, Math.min(r.w / 3.4, (r.w - 16) / k), ch, hz * (0.6 + azar(i + j + e.id) * 0.4), '#c9a26b', d, z + 2).dataset.niv = i + 1;
@@ -381,7 +391,8 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             top.textContent = (e.fila != null && e.nroFila != null) ? 'F' + e.fila + '-R' + e.nroFila : e.codigo;
             top.style.fontSize = Math.max(10, Math.min(22, r.h * 0.42, r.w / 3.2)) + 'px';
             racks[e.codigo.toUpperCase()] = { e, r, H, N, d, niveles, z0, cod: top.textContent, est: e.forma === 'estanteria',
-                llenar: (niv, t) => llenar(d, r, 4 + (niv - 1) * (H - 10) / N + 2, t && t !== 'cajas' && t !== 'foto' ? Math.max(Math.min(30, (H - 10) / N - 8), (H - 10) / N - 4) : Math.min(30, (H - 10) / N - 8), niv, t, e.id) };
+                zNiv, gapNiv,
+                llenar: (niv, t) => llenar(d, r, zNiv[niv - 1] + 2, t && t !== 'cajas' && t !== 'foto' ? Math.max(Math.min(30, gapNiv[niv - 1] - 8), gapNiv[niv - 1] - 4) : Math.min(30, gapNiv[niv - 1] - 8), niv, t, e.id) };
             if (e.calle1 != null && e.nro1 != null) porCalle[e.calle1 + '-' + e.nro1] = e.codigo.toUpperCase();
             if (e.calle2 != null && e.nro2 != null) porCalle[e.calle2 + '-' + e.nro2] = e.codigo.toUpperCase();
             if (e.fila != null && e.nroFila != null) porCalle['F' + e.fila + '-' + e.nroFila] = e.codigo.toUpperCase();
@@ -825,8 +836,8 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             // cartelitos A1, A2… al costado de cada altura
             const izq = n.rz === 0 ? [k.r.x - 14, k.r.y + k.r.h] : n.rz === 180 ? [k.r.x + k.r.w + 14, k.r.y] : n.rz === -90 ? [k.r.x, k.r.y - 14] : [k.r.x + k.r.w, k.r.y + k.r.h + 14];
             e.mundo.classList.add('frente');
-            const paso = k.piso ? 20 : (k.H - 10) / k.N;
-            const zs = k.piso ? [k.H / 2] : k.niveles.map((_, i) => (k.z0 || 0) + 4 + i * paso + Math.min(14, paso / 2));
+            const paso = k.piso ? 20 : k.gapNiv ? Math.min(...k.gapNiv) : (k.H - 10) / k.N;
+            const zs = k.piso ? [k.H / 2] : k.niveles.map((_, i) => (k.z0 || 0) + (k.zNiv ? k.zNiv[i] + Math.min(14, k.gapNiv[i] / 2) : 4 + i * paso + Math.min(14, paso / 2)));
             const fz = Math.max(6, Math.min(12, paso * 0.55));
             zs.forEach((z, i) => {
                 const m = h('div', 'p3-marca', { left: izq[0] + 'px', top: izq[1] + 'px' }, e.mundo);

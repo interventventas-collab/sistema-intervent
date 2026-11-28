@@ -642,7 +642,7 @@
                             <label>Nombre corto (sale en las etiquetas)</label>
                             <input value="@s.Codigo" placeholder="ej. TOST o ESC" @onchange="@(ev => Cambiar(el => el.Codigo = Txt(ev)?.ToUpperInvariant()))" />
                             <div class="pd-dos">
-                                <div><label>Alturas (estantes)</label><input inputmode="numeric" value="@s.Niveles" @onchange="@(ev => CambiarInt(ev, (el, v) => el.Niveles = v))" /></div>
+                                <div><label>Alturas (estantes)</label><input inputmode="numeric" value="@s.Niveles" @onchange="@(ev => CambiarInt(ev, (el, v) => { el.Niveles = v; if (el.AlturasCm is not null && el.AlturasCm.Split(',').Length != v) el.AlturasCm = null; }))" /></div>
                                 <div><label>Posiciones (a lo largo)</label><input inputmode="numeric" value="@s.Posiciones" @onchange="@(ev => CambiarInt(ev, (el, v) => el.Posiciones = v))" /></div>
                             </div>
                             <label>Amurada: empieza a (m) del piso</label>
@@ -655,9 +655,12 @@
                             <input value="@s.Codigo" @onchange="@(ev => Cambiar(el => el.Codigo = Txt(ev)?.ToUpperInvariant()))" />
                             <div class="pd-dos">
                                 <div><label>Posiciones (a lo largo)</label><input inputmode="numeric" value="@s.Posiciones" @onchange="@(ev => CambiarInt(ev, (el, v) => el.Posiciones = v))" /></div>
-                                <div><label>Niveles (hacia arriba)</label><input inputmode="numeric" value="@s.Niveles" @onchange="@(ev => CambiarInt(ev, (el, v) => el.Niveles = v))" /></div>
+                                <div><label>Niveles (hacia arriba)</label><input inputmode="numeric" value="@s.Niveles" @onchange="@(ev => CambiarInt(ev, (el, v) => { el.Niveles = v; if (el.AlturasCm is not null && el.AlturasCm.Split(',').Length != v) el.AlturasCm = null; }))" /></div>
                             </div>
-                            @* 2026-11-27: CALLE-FILA-RACK-ALTURA (pedido del dueño): fila = línea de estanterías, rack = cuál de
+
+                            @* 2026-11-28: alto real de cada altura (para el 3D y para saber qué entra) *@
+                            <label>Alto de cada altura (cm, de abajo hacia arriba)</label>
+                            <input placeholder="@($"ej. {string.Join(", ", Enumerable.Repeat(s.Niveles is int nv && nv > 0 ? 300 / nv : 75, s.Niveles ?? 4))}")" value="@(s.AlturasCm?.Replace(",", ", "))" @onchange="@(ev => Cambiar(el => el.AlturasCm = Txt(ev)))" />                            @* 2026-11-27: CALLE-FILA-RACK-ALTURA (pedido del dueño): fila = línea de estanterías, rack = cuál de
                                esa fila (1 = el más cerca de la calle). Cada lado dice a qué calle da: el estante se llama
                                C{calle}-F{fila}-R{rack}-A{altura}. Un rack del medio da a dos calles. *@
                             var girado = s.Rotacion == 90 || s.Rotacion == 270;
