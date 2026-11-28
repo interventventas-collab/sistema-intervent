@@ -325,6 +325,17 @@ BEGIN
 END
 GO
 
+-- 2026-11-28: las cámaras están en la cuenta de la APP de Osmar, no en la de desarrollador.
+-- El dueño autoriza por la página de EZVIZ (openauth) y pega el link que le queda: de ahí sale
+-- un token de USUARIO (dura ~7 días) que es el que ve las cámaras.
+IF COL_LENGTH('EzvizAccounts','UserAccessToken') IS NULL
+    ALTER TABLE EzvizAccounts ADD UserAccessToken NVARCHAR(MAX) NULL;
+IF COL_LENGTH('EzvizAccounts','UserTokenExpiresAt') IS NULL
+    ALTER TABLE EzvizAccounts ADD UserTokenExpiresAt DATETIME2 NULL;
+IF COL_LENGTH('EzvizAccounts','UserAreaDomain') IS NULL
+    ALTER TABLE EzvizAccounts ADD UserAreaDomain NVARCHAR(200) NULL;
+GO
+
 -- TelegramAccounts table — bot de Telegram para avisos al celu + consultas. Guarda el token de
 -- @BotFather y el chat del dueño. Pedido de Osmar 2026-07-10 (reemplazo de WhatsApp por Telegram).
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='TelegramAccounts' AND xtype='U')

@@ -2252,41 +2252,63 @@
             } catch (e) {}
         };
     </script>
-    <!-- 2026-07-10: reproductor oficial de EZVIZ (EZUIKit) para ver las cámaras en vivo dentro
-         del dashboard. Se carga async: si no está disponible, la pantalla de Cámaras muestra
-         un aviso en vez de romperse. -->
-    <script src="https://cdn.jsdelivr.net/npm/ezuikit-js@8.1.4/dist/ezuikit.js" async></script>
     <script>
-        // Interop Blazor <-> EZUIKit. La pantalla /integraciones/camaras llama a estas funciones
-        // para arrancar y parar el video en vivo de una cámara EZVIZ.
+        // Cámaras EZVIZ (/integraciones/camaras): video en vivo HLS (.m3u8). hls.js se carga
+        // recién la primera vez que alguien abre una cámara, para no pesar en el resto de las
+        // pantallas. 2026-11-28: reemplaza a EZUIKit (el link del CDN de julio daba 404).
         window.ezvizPlayer = (function () {
-            var player = null;
+            var hls = null, cargando = null;
+            function cargarHls() {
+                if (window.Hls) return Promise.resolve();
+                if (cargando) return cargando;
+                cargando = new Promise(function (ok, mal) {
+                    var sc = document.createElement('script');
+                    sc.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';
+                    sc.onload = function () { ok(); };
+                    sc.onerror = function () { cargando = null; mal(new Error('no cargó hls.js')); };
+                    document.head.appendChild(sc);
+                });
+                return cargando;
+            }
+            function parar() {
+                try { if (hls) { hls.destroy(); hls = null; } } catch (e) {}
+            }
             return {
-                // Devuelve true si la librería EZUIKit terminó de cargar.
-                ready: function () { return typeof window.EZUIKit !== 'undefined'; },
-                // Arranca el video en 'elementId' con el token + url (ezopen://...) que da el backend.
-                // Para cámaras con imagen encriptada, el código de verificación va dentro de la url.
-                play: function (elementId, accessToken, url) {
-                    try {
-                        if (typeof window.EZUIKit === 'undefined') return false;
-                        // Si había un player abierto, lo cerramos antes de abrir el nuevo.
-                        if (player) { try { player.stop(); } catch (e) {} player = null; }
-                        var el = document.getElementById(elementId);
-                        if (!el) return false;
-                        el.innerHTML = '';
-                        player = new window.EZUIKit.EZUIKitPlayer({
-                            id: elementId,
-                            accessToken: accessToken,
-                            url: url,
-                            template: 'security',
-                            width: el.clientWidth || 640,
-                            height: el.clientHeight || 400
+                // Devuelve "" si arrancó, o un texto con el problema.
+                play: async function (videoId, url) {
+                    parar();
+                    var v = document.getElementById(videoId);
+                    if (!v) return 'No se encontró el reproductor.';
+                    try { await cargarHls(); } catch (e) { return 'No se pudo cargar el reproductor de video.'; }
+                    if (window.Hls && window.Hls.isSupported()) {
+                        hls = new window.Hls({ liveDurationInfinity: true });
+                        // Cuando EZVIZ no entrega el video, la lista trae un pedazo ".../ErrCode/NNNN_0.ts"
+                        // en vez de la imagen. Lo detectamos para avisar en lugar de quedar en negro.
+                        var errEzviz = new Promise(function (ok) {
+                            var h = hls;
+                            h.on(window.Hls.Events.LEVEL_LOADED, function (ev, data) {
+                                var frs = (data && data.details && data.details.fragments) || [];
+                                var m = frs.length ? /ErrCode\/(\d+)/.exec(frs[0].url || '') : null;
+                                ok(m ? m[1] : '');
+                            });
+                            setTimeout(function () { ok(''); }, 10000);
                         });
-                        return true;
-                    } catch (e) { console.warn('ezvizPlayer.play', e); return false; }
+                        hls.loadSource(url);
+                        hls.attachMedia(v);
+                        var codigo = await errEzviz;
+                        if (codigo) { parar(); return 'EZVIZ no está mandando el video de esta cámara (código ' + codigo + ').'; }
+                    } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
+                        v.src = url; // Safari / iPhone lo reproduce solo
+                    } else {
+                        return 'Este navegador no puede reproducir el video.';
+                    }
+                    try { await v.play(); } catch (e) {}
+                    return '';
                 },
                 stop: function () {
-                    try { if (player) { player.stop(); player = null; } } catch (e) {}
+                    parar();
+                    var vs = document.querySelectorAll('video[data-ezviz]');
+                    for (var k = 0; k < vs.length; k++) { try { vs[k].pause(); vs[k].removeAttribute('src'); } catch (e) {} }
                     return true;
                 }
             };

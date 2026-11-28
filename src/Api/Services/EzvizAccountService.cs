@@ -17,7 +17,8 @@ public class EzvizAccountService
     public record EzvizAccountDto(int Id, string? Alias, bool HasCredentials, bool IsActive,
         string ApiHost, string? AreaDomain, DateTime? TokenExpiresAt,
         bool LastSyncOk, string? LastError, DateTime? LastSyncAt,
-        DateTime CreatedAt, DateTime? UpdatedAt);
+        DateTime CreatedAt, DateTime? UpdatedAt,
+        bool UsuarioAutorizado, DateTime? UserTokenExpiresAt, string? AuthUrl);
 
     public record SaveEzvizAccountRequest(string? AppKey, string? AppSecret, string? Alias,
         bool IsActive = true, string? ApiHost = null);
@@ -26,7 +27,10 @@ public class EzvizAccountService
         a.Id, string.IsNullOrEmpty(a.Alias) ? null : a.Alias,
         !string.IsNullOrEmpty(a.AppKey) && !string.IsNullOrEmpty(a.AppSecret), a.IsActive,
         a.ApiHost, a.AreaDomain, a.TokenExpiresAt,
-        a.LastSyncOk, a.LastError, a.LastSyncAt, a.CreatedAt, a.UpdatedAt);
+        a.LastSyncOk, a.LastError, a.LastSyncAt, a.CreatedAt, a.UpdatedAt,
+        !string.IsNullOrEmpty(a.UserAccessToken) && a.UserTokenExpiresAt > DateTime.UtcNow,
+        a.UserTokenExpiresAt,
+        string.IsNullOrEmpty(a.AppKey) ? null : $"https://openauth.ezvizlife.com/oauth/ddns/{a.AppKey}");
 
     public async Task<EzvizAccountDto?> GetAsync()
     {
@@ -97,5 +101,18 @@ public class EzvizAccountService
         }
         await _db.SaveChangesAsync();
         return (true, null, Map(a));
+    }
+
+    /// <summary>Guarda el token de USUARIO que sale del link de "Authorization Succeeded".</summary>
+    public async Task<bool> GuardarTokenUsuarioAsync(string token, DateTime expiresAt, string? areaDomain)
+    {
+        var a = await _db.EzvizAccounts.OrderBy(x => x.Id).FirstOrDefaultAsync();
+        if (a is null) return false;
+        a.UserAccessToken = token;
+        a.UserTokenExpiresAt = expiresAt;
+        a.UserAreaDomain = string.IsNullOrWhiteSpace(areaDomain) ? null : areaDomain.Trim().TrimEnd('/');
+        a.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return true;
     }
 }

@@ -52,6 +52,15 @@ public class EzvizAccount
     [MaxLength(200)]
     public string? AreaDomain { get; set; }
 
+    // --- Token de USUARIO (2026-11-28) ---
+    // Las cámaras están en la cuenta de la app EZVIZ de Osmar, no en la de desarrollador: el
+    // token de appKey ve 0 cámaras. Osmar autoriza en openauth.ezvizlife.com/oauth/ddns/{appKey}
+    // con su cuenta de la app y pega acá el link de "Authorization Succeeded", que trae este token.
+    public string? UserAccessToken { get; set; }
+    public DateTime? UserTokenExpiresAt { get; set; }
+    [MaxLength(200)]
+    public string? UserAreaDomain { get; set; }
+
     // --- Último intento de conexión ---
     public bool LastSyncOk { get; set; } = false;
     [MaxLength(500)]
