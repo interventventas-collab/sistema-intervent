@@ -9043,6 +9043,18 @@ CREATE TABLE Gastos_WhatsApp_Comentarios (
     CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_GastosWaCom_Created DEFAULT SYSUTCDATETIME()
 );
 GO
+-- 28/11/2026: más de un comprobante por gasto (reenvíos, "Responder" con "gas", fotos antes o después).
+-- ⚠ En PROD correr a mano ANTES de publicar la API. Idempotente.
+IF OBJECT_ID('Gastos_WhatsApp_Adjuntos','U') IS NULL
+CREATE TABLE Gastos_WhatsApp_Adjuntos (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    GastoId INT NOT NULL,
+    MensajeId INT NULL,
+    MediaUrl NVARCHAR(500) NOT NULL,
+    MediaFilename NVARCHAR(300) NULL,
+    CreatedAt DATETIME2 NOT NULL CONSTRAINT DF_GastosWaAdj_Created DEFAULT SYSUTCDATETIME()
+);
+GO
 
 -- 2026-11-18: segunda sociedad en el Galicia. Cada movimiento/cheque del banco dice de qué
 -- cuenta (GaliciaAccounts.Id) vino. NULL = la cuenta principal (Palanica): todo lo viejo queda así.
