@@ -75,7 +75,7 @@ public class DepositoPlanoController : ControllerBase
     }
 
     public record AsignacionDto(int Id, int ProductoId, string? Sku, string Nombre,
-        string? Cantidad, string? Nota, DateTime At, string? Por);
+        string? Cantidad, string? Nota, DateTime At, string? Por, int? Stock = null);
 
     public record EstanteDto(int Posicion, int Nivel, string Codigo, List<AsignacionDto> Productos,
         int Cara = 1, string? Desglose = null);
@@ -176,11 +176,11 @@ public class DepositoPlanoController : ControllerBase
         var lista = await q
             .Join(_db.CafeProductos.AsNoTracking(), a => a.ProductoId, p => p.Id, (a, p) => new
             {
-                a.Id, a.Posicion, a.Nivel, a.ProductoId, p.Sku, p.Nombre, a.Cantidad, a.Nota, a.At, a.Por
+                a.Id, a.Posicion, a.Nivel, a.ProductoId, p.Sku, p.Nombre, a.Cantidad, a.Nota, a.At, a.Por, p.StockUnidades
             })
             .OrderBy(x => x.Nombre)
             .ToListAsync();
-        return lista.Select(x => new AsignacionDto(x.Id, x.ProductoId, x.Sku, x.Nombre, x.Cantidad, x.Nota, x.At, x.Por)).ToList();
+        return lista.Select(x => new AsignacionDto(x.Id, x.ProductoId, x.Sku, x.Nombre, x.Cantidad, x.Nota, x.At, x.Por, x.StockUnidades)).ToList();
     }
 
     // ───────────────────────── Plano ─────────────────────────
@@ -530,7 +530,7 @@ public class DepositoPlanoController : ControllerBase
         prod.UbicacionDudosaPor = null;
 
         await _db.SaveChangesAsync();
-        return Ok(new AsignacionDto(a.Id, prod.Id, prod.Sku, prod.Nombre, a.Cantidad, a.Nota, a.At, a.Por));
+        return Ok(new AsignacionDto(a.Id, prod.Id, prod.Sku, prod.Nombre, a.Cantidad, a.Nota, a.At, a.Por, prod.StockUnidades));
     }
 
     /// <summary>Saca un producto de un estante. Si la ubicación del producto apuntaba a ese estante,

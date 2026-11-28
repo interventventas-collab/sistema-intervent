@@ -727,6 +727,8 @@
                                         {
                                             var buscado = productoBuscado == pr.ProductoId;
                                             <span>@if (buscado) { <b>@pr.Nombre</b> } else { @pr.Nombre }@if (!string.IsNullOrWhiteSpace(pr.Cantidad)) { <span class="pd-g"> · @pr.Cantidad</span> }</span><br />
+                                            @* 2026-11-27: SKU y stock a la vista *@
+                                            <span class="pd-g pd-skustk">@(string.IsNullOrWhiteSpace(pr.Sku) ? "" : pr.Sku + " · ")stock @(pr.Stock ?? 0)</span><br />
                                         }
                                         @if (est.Productos.Count > 3)
                                         {
@@ -760,7 +762,7 @@
                                 var prr = pr;
                                 <div class="pd-prod">
                                     <div>
-                                        <b>@pr.Nombre</b> <span class="pd-sku">@pr.Sku</span>
+                                        <b>@pr.Nombre</b> <span class="pd-sku">@pr.Sku</span> <span class="pd-g">· stock @(pr.Stock ?? 0)</span>
                                         @if (!string.IsNullOrWhiteSpace(pr.Cantidad)) { <span> · @pr.Cantidad</span> }
                                         @if (!string.IsNullOrWhiteSpace(pr.Nota)) { <div class="pd-g">@pr.Nota</div> }
                                         @if (pr.At is not null || !string.IsNullOrWhiteSpace(pr.Por))
@@ -1560,8 +1562,10 @@
     };
 
     private static string Titulo(PlanoElementoDto e)
-        => !string.IsNullOrWhiteSpace(e.Nombre) ? e.Nombre!
-         : e.Tipo == "rack" ? (e.Fila is not null ? $"Rack {ApiClient.NombreRack(e)}" : $"Rack {e.Codigo}")
+        // 2026-11-27: un rack con fila se llama siempre F4-R1 (el nombre viejo guardado, "Rack D1", ya no va)
+        => e.Tipo == "rack" && e.Fila is not null && e.NroFila is not null ? $"Rack {ApiClient.NombreRack(e)}"
+         : !string.IsNullOrWhiteSpace(e.Nombre) ? e.Nombre!
+         : e.Tipo == "rack" ? $"Rack {e.Codigo}"
          : NombreTipo(e.Tipo);
 
     public async ValueTask DisposeAsync()

@@ -93,6 +93,8 @@ public class PlanoAsignacionDto
     public string? Nota { get; set; }
     public DateTime? At { get; set; }
     public string? Por { get; set; }
+    /// <summary>Stock total del producto (2026-11-27: se ve en la vista de frente del rack).</summary>
+    public int? Stock { get; set; }
 }
 
 public class PlanoEstanteDto
