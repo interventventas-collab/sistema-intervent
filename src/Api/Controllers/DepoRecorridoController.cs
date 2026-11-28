@@ -50,7 +50,7 @@ public class DepoRecorridoController : ControllerBase
     private async Task<List<Lado>> LadosAsync()
     {
         var racks = await _db.DepositoPlanoElementos.AsNoTracking()
-            .Where(e => e.Tipo == "rack" && (e.Calle1 != null || e.Calle2 != null || e.Forma == "estanteria")).ToListAsync();
+            .Where(e => e.Tipo == "rack" && (e.Calle1 != null || e.Calle2 != null || e.CallePunta1 != null || e.CallePunta2 != null || e.Forma == "estanteria")).ToListAsync();
         var l = new List<(DepositoPlanoElemento R, int Cara, int Calle)>();
         foreach (var r in racks)
         {
@@ -58,10 +58,19 @@ public class DepoRecorridoController : ControllerBase
             if (DepositoPlanoController.EsEstanteria(r)) { l.Add((r, 1, 0)); continue; }
             if (r.Calle1 is int c1) l.Add((r, 1, c1));
             if (r.Calle2 is int c2) l.Add((r, 2, c2));
+            // 2026-11-28: las puntas que dan a una calle (calles cruzadas)
+            if (r.Forma != "piso" && r.CallePunta1 is int p1) l.Add((r, 3, p1));
+            if (r.Forma != "piso" && r.CallePunta2 is int p2) l.Add((r, 4, p2));
         }
+        // 2026-11-28: dentro de la calle se recorre a lo largo de la calle: las calles cruzadas (racks
+        // repartidos de pared a pared) van por X; las de siempre por Y (desde la entrada)
         return l.GroupBy(x => x.Calle).OrderBy(g => g.Key)
-            .SelectMany(g => g.OrderBy(x => x.R.Y).ThenBy(x => x.R.Fila).ThenBy(x => x.R.NroFila)
-                .Select((x, i) => new Lado(x.R, x.Cara, x.Calle, i + 1)))
+            .SelectMany(g =>
+            {
+                var cruzada = g.Count() > 1 && g.Max(x => x.R.X) - g.Min(x => x.R.X) > g.Max(x => x.R.Y) - g.Min(x => x.R.Y);
+                var o = cruzada ? g.OrderBy(x => x.R.X).ThenBy(x => x.R.Y) : g.OrderBy(x => x.R.Y).ThenBy(x => x.R.X);
+                return o.ThenBy(x => x.R.Fila).ThenBy(x => x.R.NroFila).Select((x, i) => new Lado(x.R, x.Cara, x.Calle, i + 1));
+            })
             .ToList();
     }
 
@@ -88,7 +97,7 @@ public class DepoRecorridoController : ControllerBase
         {
             int total = 0, rev = 0;
             foreach (var x in g)
-                for (int p = 1; p <= (x.Rack.Posiciones ?? 1); p++)
+                for (int p = 1; p <= DepositoPlanoController.PosicionesDe(x.Rack, x.Cara); p++)
                     for (int n = 1; n <= (x.Rack.Niveles ?? 1); n++)
                     {
                         total++;
@@ -98,7 +107,7 @@ public class DepoRecorridoController : ControllerBase
             string? seguir = null;
             foreach (var x in g.OrderBy(y => y.Orden))
             {
-                for (int p = 1; p <= (x.Rack.Posiciones ?? 1) && seguir is null; p++)
+                for (int p = 1; p <= DepositoPlanoController.PosicionesDe(x.Rack, x.Cara) && seguir is null; p++)
                     for (int n = 1; n <= (x.Rack.Niveles ?? 1) && seguir is null; n++)
                         if (!revisados.Contains((x.Rack.Id, x.Cara, p, n)))
                             seguir = DepositoPlanoController.CodigoEstante(x.Rack, x.Cara, p, n);
@@ -165,7 +174,7 @@ public class DepoRecorridoController : ControllerBase
         // el que sigue: la altura de arriba; si es la última, el próximo rack de la calle
         string? siguiente = null; bool cambiaRack = false;
         if (niv < (rack.Niveles ?? 1)) siguiente = DepositoPlanoController.CodigoEstante(rack, cara, pos, niv + 1);
-        else if (pos < (rack.Posiciones ?? 1)) siguiente = DepositoPlanoController.CodigoEstante(rack, cara, pos + 1, 1);
+        else if (pos < DepositoPlanoController.PosicionesDe(rack, cara)) siguiente = DepositoPlanoController.CodigoEstante(rack, cara, pos + 1, 1);
         else if (calle is int c)
         {
             var lados = await LadosAsync();

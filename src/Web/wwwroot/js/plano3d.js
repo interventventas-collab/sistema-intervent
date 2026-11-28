@@ -437,13 +437,29 @@
         }
         // ───── 2026-11-27: ver de frente ─────
         // lado 1 = el que mira a la pared izq. (y grande en la escena) o, girado, a la entrada (x chica)
+        // 2026-11-28: caras 3 y 4 = las puntas (cabeceras) que dan a una calle
+        function calleCara(k, cara) { return cara === 2 ? k.e.calle2 : cara === 3 ? k.e.callePunta1 : cara === 4 ? k.e.callePunta2 : k.e.calle1; }
         function caraDe(k, p) {
             if (!p || p.calle == null) return 1;
-            return k.e.calle2 === p.calle && k.e.calle1 !== p.calle ? 2 : 1;
+            for (const c of [1, 2, 3, 4]) if (calleCara(k, c) === p.calle) return c;
+            return 1;
         }
-        function carasDe(k) { return k.piso || k.est ? [1] : [k.e.calle1 != null ? 1 : null, k.e.calle2 != null ? 2 : null].filter(Boolean).concat(k.e.calle1 == null && k.e.calle2 == null ? [1] : []); }
+        function carasDe(k) {
+            if (k.piso || k.est) return [1];
+            const l = [k.e.calle1 != null ? 1 : null, k.e.calle2 != null ? 2 : null].filter(Boolean);
+            if (!l.length) l.push(1);
+            if (k.e.callePunta1 != null) l.push(3);
+            if (k.e.callePunta2 != null) l.push(4);
+            return l;
+        }
         // hacia dónde mira esa cara en la escena + el giro de cámara para tenerla de frente
         function normal(k, cara) {
+            if (cara >= 3) {
+                // punta 1 = lado entrada (x chica en la escena) o, girado, pared izq. (y grande)
+                const gir = k.e.rotacion === 90 || k.e.rotacion === 270;
+                if (!gir) return cara === 3 ? { nx: -1, ny: 0, rz: -90 } : { nx: 1, ny: 0, rz: 90 };
+                return cara === 3 ? { nx: 0, ny: 1, rz: 0 } : { nx: 0, ny: -1, rz: 180 };
+            }
             const largoX = k.r.w >= k.r.h;
             if (largoX) return cara === 2 ? { nx: 0, ny: -1, rz: 180 } : { nx: 0, ny: 1, rz: 0 };
             return cara === 2 ? { nx: 1, ny: 0, rz: 90 } : { nx: -1, ny: 0, rz: -90 };
@@ -499,8 +515,8 @@
             const k = frenteDe.k, el = root.querySelector('.p3-hud');
             const it = act >= 0 && items[act] && items[act].k === k ? items[act] : null;
             const titulo = k.piso ? 'Lugar en el piso ' + k.cod : k.est ? (k.e.nombre || 'Estantería ' + k.cod) : 'Rack ' + k.cod;
-            const calle = k.piso ? null : frenteDe.cara === 2 ? k.e.calle2 : k.e.calle1;
-            el.innerHTML = `<div class="t">De frente${calle != null ? ' · desde la calle ' + calle : ''}</div><div class="d">${esc(titulo)}</div>`
+            const calle = k.piso ? null : calleCara(k, frenteDe.cara);
+            el.innerHTML = `<div class="t">De frente${frenteDe.cara >= 3 ? ' · la punta' : ''}${calle != null ? ' · desde la calle ' + calle : ''}</div><div class="d">${esc(titulo)}</div>`
                 + (it ? `<div class="s" style="color:#fdba74;font-weight:700">${esc(it.est)} · ${esc(it.n)}</div>` : '<div class="s">Arrastrá para girar · tocá otro rack para ir ahí</div>');
         }
         function tocarRack(cod) {

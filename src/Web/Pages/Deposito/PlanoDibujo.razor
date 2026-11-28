@@ -73,6 +73,18 @@
                         <g><text x="@F(tx)" y="@F(ty + fs * 0.35)" font-size="@F(fs)" font-weight="800" text-anchor="middle" fill="@(esEste ? "#fff" : "#78350f")">@txt</text></g>
                     }
                 }
+                @* 2026-11-28: puntas que dan a una calle: "C2" chiquito pegado afuera de esa punta *@
+                if (!e.EsPiso && !e.EsEstanteria && (e.CallePunta1 is not null || e.CallePunta2 is not null))
+                {
+                    var gp = e.Rotacion == 90 || e.Rotacion == 270;
+                    foreach (var (cp, punta) in new[] { (e.CallePunta1, 1), (e.CallePunta2, 2) })
+                    {
+                        if (cp is null) continue;
+                        var px = gp ? r.CX : punta == 1 ? r.X - 0.08 : r.X + r.W + 0.08;
+                        var py = gp ? (punta == 1 ? r.Y + r.H + 0.38 : r.Y - 0.12) : r.CY + 0.12;
+                        <g><text x="@F(px)" y="@F(py)" font-size="0.34" font-weight="800" fill="#ea580c" text-anchor="@(gp ? "middle" : punta == 1 ? "end" : "start")">C@(cp)</text></g>
+                    }
+                }
                 break;
             case "texto": case "techo":
                 break;

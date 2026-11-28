@@ -610,6 +610,11 @@
                                 <div><label>Calle · @(girado ? "lado entrada" : "lado pared izq.")</label><input inputmode="numeric" placeholder="vacío = no da" value="@s.Calle1" @onchange="@(ev => CambiarLado(ev, 1))" /></div>
                                 <div><label>Calle · @(girado ? "lado fondo" : "lado pared der.")</label><input inputmode="numeric" placeholder="vacío = no da" value="@s.Calle2" @onchange="@(ev => CambiarLado(ev, 2))" /></div>
                             </div>
+                            @* 2026-11-28: las puntas (cabeceras) también pueden dar a una calle cruzada y llevar mercadería *@
+                            <div class="pd-dos">
+                                <div><label>Punta · @(girado ? "lado pared izq." : "lado entrada")</label><input inputmode="numeric" placeholder="vacío = no da" value="@s.CallePunta1" @onchange="@(ev => CambiarLado(ev, 3))" /></div>
+                                <div><label>Punta · @(girado ? "lado pared der." : "lado fondo")</label><input inputmode="numeric" placeholder="vacío = no da" value="@s.CallePunta2" @onchange="@(ev => CambiarLado(ev, 4))" /></div>
+                            </div>
                             @if (s.Fila is not null)
                             {
                                 <div class="pd-g" style="font-size:.8rem">Estantes: @string.Join(" y ", ApiClient.CarasDe(s).Select(c => ApiClient.CodigoEstante(s, c.Cara, 1, 1) + "…"))</div>
@@ -711,10 +716,12 @@
                 var el = rack.Elemento;
                 var np = Math.Max(1, el.Posiciones ?? (rack.Estantes.Count > 0 ? rack.Estantes.Max(x => x.Posicion) : 1));
                 var nn = Math.Max(1, el.Niveles ?? (rack.Estantes.Count > 0 ? rack.Estantes.Max(x => x.Nivel) : 1));
-                var cols = $"grid-template-columns:34px repeat({np}, minmax(0, 1fr))";
                 // 2026-11-27: racks del medio = dos lados (uno por calle); se ve uno por vez
                 var carasR = rack.Caras.Count > 0 ? rack.Caras : new List<PlanoCaraDto> { new() { Cara = 1, Titulo = "Rack " + el.Codigo } };
                 var caraVista = carasR.Any(c => c.Cara == caraSel) ? caraSel : carasR[0].Cara;
+                // 2026-11-28: las puntas tienen una sola posición
+                if (caraVista >= 3) np = 1;
+                var cols = $"grid-template-columns:34px repeat({np}, minmax(0, 1fr))";
                 var estCara = rack.Estantes.Where(x => x.Cara == caraVista).ToList();
                 <h2>@Titulo(el) · vista de frente</h2>
                 @if (carasR.Count > 1)
@@ -725,7 +732,7 @@
                             var cc = c;
                             var n0 = rack.Estantes.Where(x => x.Cara == cc.Cara).Sum(x => x.Productos.Count);
                             <button class="pd-chico" style="@(cc.Cara == caraVista ? "background:#0f172a;color:#fff;border-color:#0f172a" : "")"
-                                    @onclick="@(() => { caraSel = cc.Cara; celdaSel = null; })">Lado @cc.Titulo@(n0 > 0 ? $" · {n0}" : "")</button>
+                                    @onclick="@(() => { caraSel = cc.Cara; celdaSel = null; })">@(cc.Cara >= 3 ? "" : "Lado ")@cc.Titulo@(n0 > 0 ? $" · {n0}" : "")</button>
                         }
                     </div>
                 }
@@ -1463,7 +1470,7 @@
     {
         if (sel is null) return;
         if (!LeerNum(ev, out var v)) return;
-        if (lado == 1) sel.Calle1 = v; else sel.Calle2 = v;
+        switch (lado) { case 1: sel.Calle1 = v; break; case 2: sel.Calle2 = v; break; case 3: sel.CallePunta1 = v; break; default: sel.CallePunta2 = v; break; }
         await Guardar(sel);
     }
 
@@ -1522,7 +1529,7 @@
         c.Orden = elementos.Max(x => x.Orden) + 1;
         if (c.EsPiso) { c.Codigo = CodigoInterno("PZ"); c.NroFila = LugarPisoLibre(c.Calle1); }
         else if (c.EsEstanteria) { c.Codigo = CodigoInterno("EST"); c.Nombre = null; }
-        else if (c.Tipo == "rack") { c.Codigo = CodigoLibre(sel.Codigo); c.Nombre = null; c.Calle1 = c.Nro1 = c.Calle2 = c.Nro2 = null; if (sel.Fila is int f && sel.NroFila is int nf) { c.Fila = f; c.NroFila = nf + 1; } }
+        else if (c.Tipo == "rack") { c.Codigo = CodigoLibre(sel.Codigo); c.Nombre = null; c.Calle1 = c.Nro1 = c.Calle2 = c.Nro2 = c.CallePunta1 = c.CallePunta2 = null; if (sel.Fila is int f && sel.NroFila is int nf) { c.Fila = f; c.NroFila = nf + 1; } }
         await Crear(c);
     }
 

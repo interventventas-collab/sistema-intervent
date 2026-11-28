@@ -89,6 +89,11 @@ public class DepositoPlanoElemento
     [Column(TypeName = "decimal(5,2)")]
     public decimal? Elevacion { get; set; }
 
+    /// <summary>2026-11-28: calle a la que da la PUNTA del rack del lado de la entrada (girado: pared izq.) = cara 3,
+    /// y la otra punta = cara 4. Null = esa punta no da a una calle. Cada punta tiene sus alturas (una sola posición).</summary>
+    public int? CallePunta1 { get; set; }
+    public int? CallePunta2 { get; set; }
+
     public DateTime CreadoAt { get; set; } = DateTime.UtcNow;
     public DateTime? ModificadoAt { get; set; }
 

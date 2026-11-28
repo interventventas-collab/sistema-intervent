@@ -136,18 +136,24 @@ public partial class ApiClient
     /// "C3-F4-R2-A3" (+ "-P2"); sin calle "F4-R2-A3"; sin fila, el de siempre.</summary>
     public static string CodigoEstante(PlanoElementoDto rack, int cara, int pos, int nivel)
     {
-        var posTxt = (rack.Posiciones ?? 1) > 1 ? $"-P{pos}" : "";
+        var posTxt = cara <= 2 && (rack.Posiciones ?? 1) > 1 ? $"-P{pos}" : "";
         if (rack.EsPiso) return CodigoPiso(rack) + posTxt;
         if (rack.EsEstanteria) return $"{rack.Codigo}-A{nivel}" + posTxt;
         var calle = CalleDe(rack, cara);
         if (rack.Fila is int f && rack.NroFila is int r)
-            return (calle is int c ? $"C{c}-" : "") + $"F{f}-R{r}-A{nivel}" + ((rack.Posiciones ?? 1) > 1 ? $"-P{pos}" : "");
+            return (calle is int c ? $"C{c}-" : "") + $"F{f}-R{r}-A{nivel}" + posTxt;
         return CodigoEstante(rack.Codigo, rack.Posiciones, pos, nivel);
     }
 
     /// <summary>La calle de ese lado (si el rack tiene un solo lado con calle, esa).</summary>
     public static int? CalleDe(PlanoElementoDto r, int cara)
-        => cara == 2 && r.Calle2 is not null ? r.Calle2 : r.Calle1 ?? r.Calle2;
+        => cara switch
+        {
+            3 when r.CallePunta1 is not null => r.CallePunta1,
+            4 when r.CallePunta2 is not null => r.CallePunta2,
+            2 when r.Calle2 is not null => r.Calle2,
+            _ => r.Calle1 ?? r.Calle2,
+        };
 
     /// <summary>2026-11-27: cómo se llama el rack: "F4-R2" (fila 4, rack 2). Sin fila, su código de siempre.</summary>
     public static string NombreRack(PlanoElementoDto r)
@@ -178,6 +184,9 @@ public partial class ApiClient
         if (r.Calle1 is int c1) l.Add((1, $"Calle {c1} · {fr}"));
         if (r.Calle2 is int c2) l.Add((2, $"Calle {c2} · {fr}"));
         if (l.Count == 0) l.Add((1, fr));
+        // 2026-11-28: puntas que dan a una calle
+        if (r.CallePunta1 is int p1) l.Add((3, $"Calle {p1} · {fr} (punta)"));
+        if (r.CallePunta2 is int p2) l.Add((4, $"Calle {p2} · {fr} (punta)"));
         return l;
     }
 
