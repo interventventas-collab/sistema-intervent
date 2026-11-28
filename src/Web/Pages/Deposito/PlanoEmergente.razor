@@ -147,12 +147,21 @@
             : new List<object> { new { id = (int?)null, sku = (string?)null, n = "Estante " + est.Codigo, c = (string?)null, est = est.Codigo, planta } };
         try
         {
+            // 2026-11-27: con buscador adentro: se cargan las dos plantas para poder volar a cualquier estante
+            var plantas = new Dictionary<string, List<PlanoElementoDto>> { [planta.ToUpperInvariant()] = elementos };
+            foreach (var pl in new[] { "PB", "P1" })
+            {
+                if (plantas.ContainsKey(pl)) continue;
+                if (cache.TryGetValue(pl, out var c) && (DateTime.UtcNow - c.At).TotalMinutes < 5) { plantas[pl] = c.Els; continue; }
+                try { var els = (await Api.GetPlanoDepositoAsync(pl))?.Elementos ?? new(); cache[pl] = (DateTime.UtcNow, els); plantas[pl] = els; } catch { }
+            }
             await JS.InvokeVoidAsync("plano3d.abrir", new
             {
                 titulo = "Estante " + est.Codigo,
                 etiqueta = "Dónde está",
                 soloVer = true,
-                plantas = new Dictionary<string, List<PlanoElementoDto>> { [planta.ToUpperInvariant()] = elementos },
+                buscar = true,
+                plantas,
                 items,
                 inicio = est.Codigo,
             });

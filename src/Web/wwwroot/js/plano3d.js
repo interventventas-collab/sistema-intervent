@@ -7,7 +7,8 @@
 // window.plano3d.abrir({ titulo, subtitulo, plantas: { PB: [elementos], P1: [...] },
 //                        items: [{ id, sku, n, c, est, planta }], inicio: "D2-3" | null,
 //                        hechos: [ids ya tildados], dotnet: ref con Tildar3D(id),
-//                        etiqueta: "Dónde está", soloVer: true (sin "Lo tengo"; lo usa el planito de Productos) })
+//                        etiqueta: "Dónde está", soloVer: true (sin "Lo tengo"; lo usa el planito de Productos),
+//                        buscar: true (2026-11-27: buscador de productos arriba de la lista; vuela al estante elegido) })
 // Elementos = PlanoElementoDto tal cual llega de la API (camelCase).
 (function () {
     const S = 40; // 1 metro = 40 px
@@ -84,6 +85,15 @@
 .p3-it.act .p3-lug { border-color: #fb923c; }
 .p3-it.act .p3-lug span { background: #f97316; color: #fff; border-color: #f97316; }
 .p3-sinlug { margin-top: 5px; font-size: 12px; color: #94a3b8; }
+.p3-bus { padding: 10px 10px 0; }
+.p3-bus input { width: 100%; box-sizing: border-box; border: 2px solid #0f172a; border-radius: 12px; padding: 10px 12px; font: inherit; font-size: 15px; }
+.p3-res { max-height: 45vh; overflow: auto; margin-top: 6px; }
+.p3-r { padding: 9px 10px; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 5px; background: #fff; }
+.p3-r .n { font-size: 13.5px; font-weight: 700; line-height: 1.25; }
+.p3-r .k { font-size: 12px; color: #64748b; margin-top: 2px; }
+.p3-r .p3-lug { cursor: pointer; margin-right: 4px; }
+.p3-r .p3-lug:hover { border-color: #f97316; }
+.p3-r.sin { opacity: .6; }
 .p3-pie { padding: 14px; border-top: 1px solid #f1f5f9; display: flex; gap: 8px; }
 .p3-pie button { flex: 1; border-radius: 12px; padding: 13px; font-size: 15px; font-weight: 800; cursor: pointer; border: 1px solid #cbd5e1; background: #fff; font-family: inherit; color: #0f172a; }
 .p3-pie .lo { background: #16a34a; border-color: #16a34a; color: #fff; }
@@ -247,6 +257,7 @@
           </div>
           <div class="p3-pan">
             <div class="p3-cab"><div class="t">${esc(d.etiqueta || 'Armado de pedido')}</div><h2>${esc(d.titulo)}</h2><div class="s"></div>${d.soloVer ? '' : '<div class="p3-barra"><i></i></div>'}</div>
+            ${d.buscar ? '<div class="p3-bus"><input type="search" placeholder="🔎 Buscar producto (nombre, SKU o código)" autocomplete="off" /><div class="p3-res"></div></div>' : ''}
             <div class="p3-items"></div>
             ${d.soloVer ? '' : '<div class="p3-pie"><button data-a="todo">Recorrido</button><button class="lo" data-a="lo">✓ Lo tengo · siguiente</button></div>'}
           </div>`;
@@ -258,7 +269,7 @@
             if (!escenas[pl]) { const els = (d.plantas || {})[pl]; if (!els || !els.length) return null; escenas[pl] = armarEscena(els); }
             return escenas[pl];
         };
-        const items = (d.items || []).map((it, i) => {
+        const prep = (it, i) => {
             const p = partir(it.est);
             const pl = (it.planta || 'PB').toUpperCase();
             const esc = p ? escenaDe(pl) : null;
@@ -266,7 +277,8 @@
             else if (p && esc && p.calle != null) p.rack = esc.porCalle[p.calle + '-' + p.nro] || null;
             const k = esc && p && p.rack ? esc.racks[p.rack] : null;
             return { ...it, i, p, pl, k, ok: !!k };
-        });
+        };
+        const items = (d.items || []).map(prep);
         items.sort((a, b) => (b.ok - a.ok) || (a.ok && b.ok ? (a.pl.localeCompare(b.pl) || (a.k.r.x - b.k.r.x) || (a.p.niv - b.p.niv)) : a.i - b.i));
         const conLugar = items.filter(x => x.ok);
 
@@ -314,6 +326,10 @@
         }
         function hud() {
             const el = root.querySelector('.p3-hud');
+            if (arriba && d.buscar && !conLugar.length) {
+                el.innerHTML = `<div class="t">Plano del depósito${plantaVista === 'P1' ? ' · planta alta' : ''}</div><div class="d">Buscá un producto</div><div class="s">Te llevo volando hasta su estante</div>`;
+                return;
+            }
             if (arriba) {
                 const nr = new Set(conLugar.map(x => x.pl + x.p.rack)).size;
                 el.innerHTML = `<div class="t">Recorrido del armado${plantaVista === 'P1' ? ' · planta alta' : ''}</div><div class="d">${conLugar.length} ${conLugar.length === 1 ? 'producto' : 'productos'} · ${nr} ${nr === 1 ? 'rack' : 'racks'}</div><div class="s">Tocá un producto y te llevo hasta el estante</div>`;
@@ -332,7 +348,7 @@
                         : `<div class="p3-sinlug">${it.est ? 'Lugar: ' + esc(it.est) + ' (no es un estante del plano)' : 'Sin estante en el plano'}</div>`}
                 </div></div>`).join('');
             root.querySelector('.p3-cab .s').textContent = d.soloVer
-                ? (items.length === 1 ? '' : `${items.length} productos en este estante`)
+                ? (items.length <= 1 ? '' : d.buscar ? `${items.length} productos` : `${items.length} productos en este estante`)
                 : `${hechos.size} de ${items.length} juntados · ordenado por recorrido`;
             const barra = root.querySelector('.p3-barra i');
             if (barra) barra.style.width = (items.length ? hechos.size / items.length * 100 : 0) + '%';
@@ -393,6 +409,47 @@
             if (it) ir(+it.dataset.i);
         });
         root.querySelector('.p3-x').addEventListener('click', cerrar);
+
+        // 2026-11-27: buscador adentro del 3D: elegís un producto (o uno de sus estantes) y vuela ahí
+        if (d.buscar) {
+            const inp = root.querySelector('.p3-bus input'), res = root.querySelector('.p3-res');
+            let ult = [], tmo = null, nro = 0;
+            const pintar = () => {
+                res.innerHTML = ult.map((r, i) => `
+                  <div class="p3-r ${r.lugares.length ? '' : 'sin'}">
+                    <div class="n">${esc(r.nombre)}</div>
+                    <div class="k">${esc([r.sku, r.stock != null ? 'stock ' + r.stock : null].filter(Boolean).join(' · '))}</div>
+                    ${r.lugares.length ? r.lugares.map((l, j) => `<div class="p3-lug" data-r="${i}" data-l="${j}" title="${esc(l.desglose || '')}"><b>📍 ${esc(l.codigo)}</b><span>🗺 Ir</span></div>`).join('')
+                                       : '<div class="p3-sinlug">Sin estante en el plano</div>'}
+                  </div>`).join('') || (inp.value.trim().length >= 2 ? '<div class="p3-sinlug" style="padding:6px">No encontré nada.</div>' : '');
+            };
+            inp.addEventListener('input', () => {
+                clearTimeout(tmo);
+                const q = inp.value.trim();
+                if (q.length < 2) { ult = []; pintar(); return; }
+                tmo = setTimeout(async () => {
+                    const yo = ++nro;
+                    try {
+                        const r = await fetch('/api/deposito/plano/buscar?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+                        if (yo !== nro || !r.ok) return;
+                        ult = await r.json(); pintar();
+                    } catch { }
+                }, 300);
+            });
+            res.addEventListener('click', (ev) => {
+                const c = ev.target.closest('.p3-lug'); if (!c) return;
+                const r = ult[+c.dataset.r], l = r && r.lugares[+c.dataset.l]; if (!l) return;
+                let idx = items.findIndex(x => x.est === l.codigo && x.n === r.nombre);
+                if (idx < 0) {
+                    const it = prep({ id: null, sku: r.sku, n: r.nombre, c: r.stock != null ? 'stock ' + r.stock : null, est: l.codigo, planta: l.planta }, items.length);
+                    if (!it.ok) { c.querySelector('span').textContent = 'no está en el plano'; return; }
+                    items.push(it); conLugar.push(it); idx = items.length - 1;
+                }
+                ult = []; inp.value = ''; pintar();
+                ir(idx);
+            });
+            setTimeout(() => inp.focus(), 50);
+        }
         const tecla = (ev) => { if (ev.key === 'Escape') cerrar(); };
         document.addEventListener('keydown', tecla);
 

@@ -675,7 +675,7 @@ public class DepositoPlanoController : ControllerBase
             || (p.Barcode != null && EF.Functions.Like(p.Barcode, patTodo)));
 
         var candidatos = await query
-            .Select(p => new { p.Id, p.Sku, p.Nombre, p.Barcode })
+            .Select(p => new { p.Id, p.Sku, p.Nombre, p.Barcode, p.StockUnidades })
             .OrderBy(p => p.Nombre)
             .Take(200)
             .ToListAsync();
@@ -700,6 +700,7 @@ public class DepositoPlanoController : ControllerBase
                 productoId = c.Id,
                 sku = c.Sku,
                 nombre = c.Nombre,
+                stock = c.StockUnidades,
                 lugares = (lugaresPor.GetValueOrDefault(c.Id) ?? new()).Select(l => new
                 {
                     asignacionId = l.Id,

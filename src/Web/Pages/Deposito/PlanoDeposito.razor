@@ -135,6 +135,7 @@
             @if (!editar)
             {
                 @* 2026-11-27: hoja para imprimir / guardar PDF (todo o por zona) *@
+                <button class="pd-btn" style="background:#0f172a;color:#fdba74;border-color:#0f172a;font-weight:800" @onclick="Ver3D">🧭 Ver en 3D</button>
                 <a class="pd-btn" href="/deposito/plano/imprimir?planta=@planta" style="text-decoration:none;">🖨 Imprimir / PDF</a>
             }
             @if (esAdmin)
@@ -1052,6 +1053,44 @@
 
     private void ElegirCelda(string cod)
         => celdaSel = string.Equals(celdaSel, cod, StringComparison.OrdinalIgnoreCase) ? null : cod;
+
+    /// <summary>2026-11-27: el plano en 3D con buscador adentro. Si hay un estante elegido, vuela a ese
+    /// (con lo que tiene guardado); si no, muestra todo el depósito y se busca desde ahí.</summary>
+    private async Task Ver3D()
+    {
+        try
+        {
+            var plantas = new Dictionary<string, List<PlanoElementoDto>>();
+            foreach (var pl in new[] { "PB", "P1" })
+            {
+                if (pl == planta) { plantas[pl] = elementos; continue; }
+                try { plantas[pl] = (await Api.GetPlanoDepositoAsync(pl))?.Elementos ?? new(); } catch { }
+            }
+            var items = new List<object>();
+            string? inicio = null;
+            if (celdaSel is not null && rack is not null)
+            {
+                var est = rack.Estantes.FirstOrDefault(x => string.Equals(x.Codigo, celdaSel, StringComparison.OrdinalIgnoreCase));
+                var pl = rack.Elemento.Planta ?? planta;
+                if (est is not null && est.Productos.Count > 0)
+                    items.AddRange(est.Productos.Select(a => (object)new { id = (int?)null, sku = a.Sku, n = a.Nombre, c = $"stock {a.Stock ?? 0}", est = est.Codigo, planta = pl }));
+                else
+                    items.Add(new { id = (int?)null, sku = (string?)null, n = "Estante " + celdaSel, c = (string?)null, est = celdaSel, planta = pl });
+                inicio = celdaSel;
+            }
+            await JS.InvokeVoidAsync("plano3d.abrir", new
+            {
+                titulo = celdaSel is null ? "Depósito" : "Estante " + celdaSel,
+                etiqueta = "Plano 3D",
+                soloVer = true,
+                buscar = true,
+                plantas,
+                items,
+                inicio,
+            });
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
 
     private string? notaEditando;
     private string notaTexto = "";
