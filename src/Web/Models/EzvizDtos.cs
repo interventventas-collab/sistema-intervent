@@ -14,6 +14,9 @@ public class EzvizAccountDto
     public DateTime? LastSyncAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+    public bool UsuarioAutorizado { get; set; }
+    public DateTime? UserTokenExpiresAt { get; set; }
+    public string? AuthUrl { get; set; }
 }
 
 public class SaveEzvizAccountRequest
@@ -46,6 +49,19 @@ public class EzvizLiveDto
 {
     public bool Ok { get; set; }
     public string? Url { get; set; }
-    public string? AccessToken { get; set; }
+    public string? Error { get; set; }
+}
+
+public class EzvizAutorizarResultDto
+{
+    public bool Ok { get; set; }
+    public string? Error { get; set; }
+    public int Camaras { get; set; }
+}
+
+public class EzvizFotoDto
+{
+    public bool Ok { get; set; }
+    public string? PicUrl { get; set; }
     public string? Error { get; set; }
 }

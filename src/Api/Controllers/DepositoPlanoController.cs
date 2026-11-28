@@ -7,6 +7,7 @@ using Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Api.Controllers;
 
@@ -813,13 +814,106 @@ public class DepositoPlanoController : ControllerBase
         });
     }
 
-    /// <summary>2026-11-28: lo que ve CUALQUIERA que escanea el QR de un estante con el celu, SIN usuario
-    /// (pedido del dueño, sin clave en el QR). Solo para mirar: código, dónde queda, productos con su foto y su
-    /// stock total, y el dibujo/foto del estante. Nada de precios, costos, notas ni quién lo cargó.</summary>
+    // ───────────── 2026-11-28: QR del estante para los que NO tienen usuario (solo mirar) ─────────────
+    // Pide un PIN corto UNA vez por celu (el dueño lo cambia desde el plano). Con el PIN bien, se le da un pase
+    // firmado por 30 días; cambiar el PIN invalida todos los pases (la firma incluye el PIN).
+    // 5 PIN mal seguidos desde la misma IP = 10 minutos bloqueado.
+
+    public const string ClavePin = "PinEstantePublico";
+    public const string PinInicial = "6138";
+    private const string HeaderPase = "X-Pase-Estante";
+
+    private async Task<string> PinActualAsync()
+        => (await _db.DepositoAjustes.AsNoTracking().Where(a => a.Clave == ClavePin).Select(a => a.Valor).FirstOrDefaultAsync())
+           ?? PinInicial;
+
+    private static string FirmaPase(IConfiguration cfg, long vence, string pin)
+    {
+        var clave = Encoding.UTF8.GetBytes((cfg["Jwt:Secret"] ?? "") + "|estante-publico");
+        using var h = new System.Security.Cryptography.HMACSHA256(clave);
+        var f = h.ComputeHash(Encoding.UTF8.GetBytes($"{vence}|{pin}"));
+        return Convert.ToBase64String(f).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
+
+    private async Task<bool> PaseValidoAsync()
+    {
+        var pase = Request.Headers[HeaderPase].ToString();
+        var partes = pase.Split('.');
+        if (partes.Length != 2 || !long.TryParse(partes[0], out var vence)) return false;
+        if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > vence) return false;
+        var cfg = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var esperado = FirmaPase(cfg, vence, await PinActualAsync());
+        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(esperado), Encoding.UTF8.GetBytes(partes[1]));
+    }
+
+    private IActionResult SinPase() => StatusCode(401, new { error = "pin" });
+
+    public record PinRequest(string? Pin);
+
+    [HttpPost("~/api/public/estante/entrar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> EntrarPublico([FromBody] PinRequest req)
+    {
+        var cache = HttpContext.RequestServices.GetRequiredService<IMemoryCache>();
+        var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "?";
+        var k = "estpin:" + ip;
+        var fallas = cache.TryGetValue<int>(k, out var n) ? n : 0;
+        if (fallas >= 5) return StatusCode(429, new { error = "Pusiste mal el PIN muchas veces. Esperá 10 minutos y probá de nuevo." });
+        var pin = await PinActualAsync();
+        if (!string.Equals((req.Pin ?? "").Trim(), pin, StringComparison.Ordinal))
+        {
+            cache.Set(k, fallas + 1, TimeSpan.FromMinutes(10));
+            return BadRequest(new { error = fallas + 1 >= 5 ? "PIN incorrecto. Esperá 10 minutos y probá de nuevo." : "PIN incorrecto." });
+        }
+        cache.Remove(k);
+        var vence = DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds();
+        var cfg = HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        return Ok(new { pase = $"{vence}.{FirmaPase(cfg, vence, pin)}" });
+    }
+
+    /// <summary>El PIN de hoy, para mostrarlo en el plano (solo admin).</summary>
+    [HttpGet("pin-publico")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> GetPinPublico() => Ok(new { pin = await PinActualAsync() });
+
+    [HttpPut("pin-publico")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> PutPinPublico([FromBody] PinRequest req)
+    {
+        var pin = (req.Pin ?? "").Trim();
+        if (!Regex.IsMatch(pin, @"^\d{4,8}$")) return BadRequest(new { error = "El PIN tiene que ser de 4 a 8 números." });
+        var a = await _db.DepositoAjustes.FirstOrDefaultAsync(x => x.Clave == ClavePin);
+        if (a is null) { a = new DepositoAjuste { Clave = ClavePin }; _db.DepositoAjustes.Add(a); }
+        a.Valor = pin; a.At = DateTime.UtcNow; a.Por = Usuario;
+        await _db.SaveChangesAsync();
+        return Ok(new { pin });
+    }
+
+    /// <summary>El rack de al lado en la misma fila (dir -1 / +1), del lado que da a la misma calle si puede,
+    /// en la misma altura si la tiene. Devuelve el código del estante (o del rack si nivel es null).</summary>
+    private static string? Vecino(List<DepositoPlanoElemento> racks, DepositoPlanoElemento e, int cara, int? nivel, int dir)
+    {
+        if (e.Fila is not int f || e.NroFila is not int nro || EsPiso(e) || EsEstanteria(e)) return null;
+        var v = racks.Where(x => x.Planta == e.Planta && x.Fila == f && x.NroFila is int nn && !EsPiso(x) && !EsEstanteria(x)
+                                 && (dir < 0 ? nn < nro : nn > nro))
+            .OrderBy(x => dir < 0 ? -x.NroFila!.Value : x.NroFila!.Value).FirstOrDefault();
+        if (v is null) return null;
+        var calle = CalleDe(e, cara);
+        var cv = calle is int c && CaraDeCalle(v, c) is int cc and > 0 && cc <= 2 ? cc : Caras(v)[0];
+        if (nivel is not int n) return CodigoRack(v, cv);
+        return CodigoEstante(v, cv, 1, Math.Min(n, v.Niveles ?? 1));
+    }
+
+    /// <summary>Lo que ve CUALQUIERA que escanea el QR de un estante con el celu, sin usuario y con el PIN:
+    /// código, dónde queda, los racks de al lado, productos con su foto y su stock total, y el dibujo/foto del
+    /// estante. Nada de precios, costos, notas ni quién lo cargó.</summary>
     [HttpGet("~/api/public/estante/{codigo}")]
     [AllowAnonymous]
     public async Task<IActionResult> EstantePublico(string codigo)
     {
+        if (!await PaseValidoAsync()) return SinPase();
+        var racks = await _db.DepositoPlanoElementos.AsNoTracking().Where(x => x.Tipo == "rack").ToListAsync();
         var (rackE, caraE, errorE) = await ResolverRackAsync(_db, codigo);
         if (errorE is not null) return NotFound(new { error = errorE });
         if (rackE is not null)
@@ -844,6 +938,8 @@ public class DepositoPlanoController : ControllerBase
                 planta = rackE.Planta,
                 forma = rackE.Forma,
                 posiciones = PosicionesDe(rackE, caraE),
+                anterior = Vecino(racks, rackE, caraE, null, -1),
+                siguiente = Vecino(racks, rackE, caraE, null, +1),
                 alturas,
             });
         }
@@ -862,12 +958,48 @@ public class DepositoPlanoController : ControllerBase
             forma = rack.Forma,
             nivel = niv,
             posiciones = PosicionesDe(rack, cara),
+            anterior = Vecino(racks, rack, cara, niv, -1),
+            siguiente = Vecino(racks, rack, cara, niv, +1),
             dibujo = nota?.Dibujo,
             dibujoCant = nota?.DibujoCant,
             dibujoTexto = nota?.DibujoTexto,
             foto = UrlFoto(nota?.Foto),
             productos = prods.Select(x => new { nombre = x.Nombre, sku = x.Sku, stock = x.Stock, foto = x.Foto }),
         });
+    }
+
+    /// <summary>Todos los racks, estanterías y lugares en el piso, agrupados, para saltar a cualquiera.</summary>
+    [HttpGet("~/api/public/estante-racks")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RacksPublico()
+    {
+        if (!await PaseValidoAsync()) return SinPase();
+        var racks = await _db.DepositoPlanoElementos.AsNoTracking().Where(x => x.Tipo == "rack").ToListAsync();
+        var lista = racks.Select(e =>
+        {
+            var cara = Caras(e)[0];
+            var planta = e.Planta == "P1" ? "Planta alta · " : "";
+            string grupo, nombre; int orden;
+            if (EsPiso(e)) { grupo = planta + "Lugares en el piso"; nombre = CodigoPiso(e); orden = 2; }
+            else if (EsEstanteria(e)) { grupo = planta + "Estanterías"; nombre = e.Codigo ?? "?"; orden = 1; }
+            else if (e.Fila is int f && e.NroFila is int r) { grupo = planta + $"Fila {f}"; nombre = $"R{r}"; orden = 0; }
+            else { grupo = planta + "Otros racks"; nombre = e.Codigo ?? "?"; orden = 3; }
+            return new { e.Planta, orden, fila = e.Fila ?? 0, nro = e.NroFila ?? 0, grupo, nombre, codigo = CodigoRack(e, cara) };
+        })
+        .OrderBy(x => x.Planta == "P1").ThenBy(x => x.orden).ThenBy(x => x.fila).ThenBy(x => x.nro).ThenBy(x => x.nombre)
+        .GroupBy(x => x.grupo)
+        .Select(g => new { grupo = g.Key, racks = g.Select(x => new { x.nombre, x.codigo }) });
+        return Ok(lista);
+    }
+
+    /// <summary>¿Dónde está…? sin usuario: productos con foto, stock y en qué estantes están.</summary>
+    [HttpGet("~/api/public/estante-buscar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> BuscarPublico([FromQuery] string? q)
+    {
+        if (!await PaseValidoAsync()) return SinPase();
+        var res = await BuscarCore(q);
+        return Ok(res.Select(r => new { nombre = r.Nombre, sku = r.Sku, stock = r.Stock, foto = r.Foto, lugares = r.Lugares.Select(l => new { l.Codigo, l.Desglose }) }));
     }
 
     /// <summary>2026-11-28: qué se ve en el estante aunque no tenga stock (dibujo null = nada).</summary>
@@ -1048,11 +1180,25 @@ public class DepositoPlanoController : ControllerBase
 
     /// <summary>Busca productos activos por nombre (sin importar tildes), SKU o código de barras y
     /// dice en qué estantes están. Primero el que coincide exacto, después los que tienen lugar.</summary>
+    public record LugarBuscado(int AsignacionId, string Codigo, string Desglose, int RackId, string? Planta, string? Cantidad);
+    public record ProductoBuscado(int ProductoId, string? Sku, string Nombre, int? Stock, string? Foto, List<LugarBuscado> Lugares);
+
     [HttpGet("buscar")]
     public async Task<IActionResult> Buscar([FromQuery] string? q)
+        => Ok((await BuscarCore(q)).Select(c => new
+        {
+            productoId = c.ProductoId,
+            sku = c.Sku,
+            nombre = c.Nombre,
+            stock = c.Stock,
+            foto = c.Foto,
+            lugares = c.Lugares.Select(l => new { asignacionId = l.AsignacionId, codigo = l.Codigo, desglose = l.Desglose, rackId = l.RackId, planta = l.Planta, cantidad = l.Cantidad }).ToList()
+        }));
+
+    private async Task<List<ProductoBuscado>> BuscarCore(string? q)
     {
         var texto = (q ?? "").Trim();
-        if (texto.Length < 2) return Ok(Array.Empty<object>());
+        if (texto.Length < 2) return new();
 
         var palabras = texto.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var query = _db.CafeProductos.AsNoTracking().Where(p => p.IsActive);
@@ -1087,29 +1233,19 @@ public class DepositoPlanoController : ControllerBase
 
         bool Exacto(string? s) => s != null && string.Equals(s.Trim(), texto, StringComparison.OrdinalIgnoreCase);
 
-        var res = candidatos
+        var top = candidatos
             .OrderByDescending(c => Exacto(c.Barcode) || Exacto(c.Sku))
             .ThenByDescending(c => lugaresPor.ContainsKey(c.Id))
             .ThenBy(c => c.Nombre)
             .Take(30)
-            .Select(c => new
-            {
-                productoId = c.Id,
-                sku = c.Sku,
-                nombre = c.Nombre,
-                stock = c.StockUnidades,
-                lugares = (lugaresPor.GetValueOrDefault(c.Id) ?? new()).Select(l => new
-                {
-                    asignacionId = l.Id,
-                    codigo = CodigoEstante(l.Rack, l.Cara, l.Posicion, l.Nivel),
-                    desglose = DesgloseEstante(l.Rack, l.Cara, l.Posicion, l.Nivel),
-                    rackId = l.RackId,
-                    planta = l.Planta,
-                    cantidad = l.Cantidad
-                }).ToList()
-            })
             .ToList();
-        return Ok(res);
+        var fotos = await _fotos.FotosAsync(top.Select(c => c.Id).ToList());
+        return top.Select(c => new ProductoBuscado(c.Id, c.Sku, c.Nombre, c.StockUnidades,
+                fotos.TryGetValue(c.Id, out var f) ? f.Url : null,
+                (lugaresPor.GetValueOrDefault(c.Id) ?? new()).Select(l => new LugarBuscado(l.Id,
+                    CodigoEstante(l.Rack, l.Cara, l.Posicion, l.Nivel), DesgloseEstante(l.Rack, l.Cara, l.Posicion, l.Nivel),
+                    l.RackId, l.Planta, l.Cantidad)).ToList()))
+            .ToList();
     }
 
     // ───────────────────────── Etiquetas Zebra ─────────────────────────

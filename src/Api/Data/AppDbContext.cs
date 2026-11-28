@@ -187,6 +187,7 @@ public class AppDbContext : DbContext
     public DbSet<DepositoEstanteProducto> DepositoEstanteProductos => Set<DepositoEstanteProducto>();
     public DbSet<DepositoEstanteRevision> DepositoEstanteRevisiones => Set<DepositoEstanteRevision>();
     public DbSet<DepositoEstanteNota> DepositoEstanteNotas => Set<DepositoEstanteNota>();
+    public DbSet<DepositoAjuste> DepositoAjustes => Set<DepositoAjuste>(); // 2026-11-28: PIN del QR público
     public DbSet<DepTarea> DepTareas => Set<DepTarea>();
     public DbSet<DepTareaItem> DepTareaItems => Set<DepTareaItem>();
     // 2026-08-05: estado de la foto por producto (aprobada / reportada errónea) — a nivel sistema

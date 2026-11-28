@@ -7559,9 +7559,17 @@ public partial class ApiClient
         return await resp.Content.ReadFromJsonAsync<List<Web.Models.EzvizCamaraDto>>() ?? new();
     }
 
-    /// <summary>Trae el link + token para reproducir una cámara en vivo (EZUIKit).</summary>
+    /// <summary>Trae el link HLS para ver una cámara en vivo.</summary>
     public async Task<Web.Models.EzvizLiveDto?> GetEzvizLiveAsync(string serial, int channel = 1)
         => await GetAsync<Web.Models.EzvizLiveDto>($"/api/ezviz/live?serial={Uri.EscapeDataString(serial)}&channel={channel}");
+
+    /// <summary>Guarda el permiso de usuario a partir del link de "Authorization Succeeded".</summary>
+    public async Task<Web.Models.EzvizAutorizarResultDto?> AutorizarEzvizAsync(string link)
+        => await PostAsync<Web.Models.EzvizAutorizarResultDto>("/api/ezviz/autorizar", new { link });
+
+    /// <summary>Saca una foto en el momento de la cámara.</summary>
+    public async Task<Web.Models.EzvizFotoDto?> FotoEzvizAsync(string serial, int channel = 1)
+        => await PostAsync<Web.Models.EzvizFotoDto>($"/api/ezviz/foto?serial={Uri.EscapeDataString(serial)}&channel={channel}", new { });
 
     // --- Bot de Telegram (avisos al celu + consultas + preventas). proposito = AVISOS | PREVENTAS ---
     public async Task<Web.Models.TelegramAccountDto?> GetTelegramAccountAsync(string proposito = "AVISOS")

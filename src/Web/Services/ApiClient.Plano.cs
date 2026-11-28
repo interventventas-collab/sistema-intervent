@@ -72,6 +72,24 @@ public partial class ApiClient
         await ThrowIfErrorAsync(resp);
     }
 
+    /// <summary>2026-11-28: PIN que pide el QR del estante a los que no tienen usuario (solo admin).</summary>
+    public async Task<string?> GetPinPublicoAsync()
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.GetAsync("/api/deposito/plano/pin-publico");
+        if (!resp.IsSuccessStatusCode) return null;
+        return (await resp.Content.ReadFromJsonAsync<PinPublicoDto>())?.Pin;
+    }
+
+    public async Task GuardarPinPublicoAsync(string pin)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync("/api/deposito/plano/pin-publico", new { pin });
+        await ThrowIfErrorAsync(resp);
+    }
+
+    public class PinPublicoDto { public string? Pin { get; set; } }
+
     /// <summary>2026-11-28: foto del estante.</summary>
     public async Task SubirFotoEstanteAsync(string codigo, Microsoft.AspNetCore.Components.Forms.IBrowserFile archivo)
     {

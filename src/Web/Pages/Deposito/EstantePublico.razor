@@ -3,18 +3,26 @@
 @layout Web.Layout.EmptyLayout
 @inject HttpClient Http
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 @using System.Net.Http.Json
 
-@* 2026-11-28: lo que ve CUALQUIERA que escanea el QR de un estante con un celu, SIN usuario (pedido del
-   dueño, sin clave en el QR). Solo para mirar: los productos con su foto y su stock. El que tiene usuario
-   y escanea el mismo QR abre /deposito/estante/{codigo} de siempre (RedirectToLogin lo manda acá si no). *@
+@* 2026-11-28: lo que ve CUALQUIERA que escanea el QR de un estante con un celu, SIN usuario. Solo para mirar:
+   los productos con su foto y su stock. Pide un PIN corto UNA vez por celu (el dueño lo cambia desde el plano);
+   después se mueve a los racks de al lado, a cualquier rack, y busca "¿Dónde está…?" un producto.
+   El que tiene usuario y escanea el mismo QR abre /deposito/estante/{codigo} de siempre. *@
 
 <style>
     body { background: #fff; }
-    .ep { max-width: 560px; margin: 0 auto; padding: 1rem 0.9rem 2.5rem; font-family: system-ui, sans-serif; color: #111827; }
-    .ep-cod { font-family: monospace; font-size: 2.4rem; font-weight: 900; color: #78350f; line-height: 1.1; }
-    .ep-sub { color: #4b5563; font-size: 1rem; margin-top: 2px; }
-    .ep-alts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0.9rem; }
+    .ep { max-width: 560px; margin: 0 auto; padding: 0.8rem 0.9rem 2.5rem; font-family: system-ui, sans-serif; color: #111827; }
+    .ep-bus { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 12px; padding: 0.7rem 0.85rem; font-size: 1rem; font-family: inherit; }
+    .ep-bus:focus { outline: none; border-color: #2563eb; }
+    .ep-nav { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.9rem; }
+    .ep-nav .ep-centro { flex: 1; min-width: 0; text-align: center; }
+    .ep-fl { border: 1px solid #d1d5db; background: #fff; border-radius: 10px; padding: 0.55rem 0.6rem; font-weight: 800; font-size: 0.9rem; color: #374151; text-decoration: none; white-space: nowrap; min-width: 58px; text-align: center; }
+    .ep-fl.no { visibility: hidden; }
+    .ep-cod { font-family: monospace; font-size: 1.9rem; font-weight: 900; color: #78350f; line-height: 1.1; word-break: break-all; }
+    .ep-sub { color: #4b5563; font-size: 0.95rem; margin-top: 2px; }
+    .ep-alts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 0.8rem; justify-content: center; }
     .ep-alts a { border: 1px solid #d1d5db; border-radius: 10px; padding: 0.45rem 0.85rem; font-family: monospace; font-weight: 800; font-size: 1rem; color: #374151; text-decoration: none; }
     .ep-alts a.on { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
     .ep-lbl { font-size: 0.78rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.04em; margin: 1.3rem 0 0.4rem; }
@@ -26,15 +34,28 @@
     .ep-g { color: #6b7280; font-size: 0.88rem; }
     .ep-stk { font-weight: 700; color: #15803d; }
     .ep-stk.cero { color: #b91c1c; }
-    .ep-alt { display: flex; align-items: center; width: 100%; border: 2px solid #1f2937; border-radius: 12px; background: #fff; padding: 1rem; margin: 0.5rem 0; text-align: left; text-decoration: none; color: #111827; }
+    .ep-lug { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+    .ep-lug a { font-family: monospace; font-weight: 800; font-size: 0.85rem; background: #dbeafe; color: #1e40af; border-radius: 7px; padding: 0.2rem 0.5rem; text-decoration: none; }
+    .ep-sin { font-weight: 800; font-size: 0.78rem; background: #ffedd5; color: #9a3412; border-radius: 7px; padding: 0.15rem 0.5rem; }
+    .ep-alt { display: flex; align-items: center; width: 100%; box-sizing: border-box; border: 2px solid #1f2937; border-radius: 12px; background: #fff; padding: 1rem; margin: 0.5rem 0; text-decoration: none; color: #111827; }
     .ep-alt b { font-size: 1.6rem; font-family: monospace; }
     .ep-alt span { margin-left: auto; color: #6b7280; font-size: 0.95rem; }
     .ep-ve { margin-top: 0.8rem; background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 0.6rem 0.75rem; font-size: 0.95rem; display: flex; gap: 0.7rem; align-items: center; }
     .ep-ve img { height: 72px; border-radius: 6px; display: block; }
+    .ep-todos { display: block; width: 100%; margin-top: 1.4rem; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 12px; padding: 0.75rem; font: inherit; font-weight: 800; color: #334155; cursor: pointer; }
+    .ep-grupo { margin-top: 0.8rem; }
+    .ep-grupo b { display: block; font-size: 0.85rem; color: #475569; margin-bottom: 0.3rem; }
+    .ep-grupo div { display: flex; flex-wrap: wrap; gap: 6px; }
+    .ep-grupo a { border: 1px solid #d1d5db; border-radius: 9px; padding: 0.4rem 0.65rem; font-family: monospace; font-weight: 800; font-size: 0.92rem; color: #374151; text-decoration: none; }
+    .ep-grupo a.on { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
     .ep-pie { margin-top: 1.8rem; color: #6b7280; font-size: 0.88rem; border-top: 1px solid #f3f4f6; padding-top: 0.8rem; }
     .ep-pie a { color: #1d4ed8; font-weight: 700; text-decoration: none; }
     .ep-grande { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 1rem; }
     .ep-grande img { max-width: 100%; max-height: 100%; border-radius: 8px; background: #fff; }
+    .ep-pin { text-align: center; padding-top: 2.5rem; }
+    .ep-pin input { width: 11rem; text-align: center; font-size: 2rem; letter-spacing: 0.4em; font-family: monospace; border: 2px solid #cbd5e1; border-radius: 12px; padding: 0.5rem; margin-top: 1rem; }
+    .ep-pin button { display: block; margin: 1rem auto 0; border: none; background: #111827; color: #fff; border-radius: 12px; padding: 0.8rem 2.2rem; font: inherit; font-weight: 800; font-size: 1.05rem; cursor: pointer; }
+    .ep-err { color: #b91c1c; font-weight: 700; margin-top: 0.7rem; }
 </style>
 
 <div class="ep">
@@ -42,79 +63,152 @@
     {
         <div class="ep-g">Cargando…</div>
     }
-    else if (est is null)
+    else if (pidePin)
     {
-        <div class="ep-cod">@Codigo</div>
-        <div class="ep-sub">@(error ?? "No encontré este estante.")</div>
-    }
-    else if (est.Elegir)
-    {
-        <div class="ep-cod">@est.Codigo</div>
-        <div class="ep-sub">@est.Desglose@PlantaTexto(est.Planta)</div>
-        <div class="ep-lbl">¿Qué altura querés ver?</div>
-        @foreach (var a in est.Alturas)
-        {
-            <a class="ep-alt" href="@($"/ver-estante/{Uri.EscapeDataString(a.Codigo)}")">
-                <b>@EtiquetaAltura(a)</b>
-                <span>@(a.Productos == 0 ? "vacío" : a.Productos == 1 ? "1 producto" : $"{a.Productos} productos")</span>
-            </a>
-        }
+        <div class="ep-pin">
+            <div style="font-size:2.4rem">🔒</div>
+            <div style="font-weight:800; font-size:1.25rem; margin-top:.4rem">PIN del depósito</div>
+            <div class="ep-g" style="margin-top:.3rem">Se pide una sola vez en este celu.</div>
+            <input type="tel" inputmode="numeric" maxlength="8" autocomplete="off" value="@pin" @oninput="@(e => pin = e.Value?.ToString() ?? "")" @onkeydown="TeclaPin" />
+            @if (errorPin is not null) { <div class="ep-err">@errorPin</div> }
+            <button disabled="@entrando" @onclick="Entrar">@(entrando ? "Entrando…" : "Entrar")</button>
+        </div>
     }
     else
     {
-        <div class="ep-cod">@est.Codigo</div>
-        <div class="ep-sub">@est.Desglose@PlantaTexto(est.Planta)</div>
+        <input class="ep-bus" type="search" placeholder="🔎 ¿Dónde está…? (nombre o SKU)" value="@busca" @oninput="Buscando" autocomplete="off" />
 
-        @if (rack is { Elegir: true, Alturas.Count: > 1 })
+        @if (busca.Trim().Length >= 2)
         {
-            <div class="ep-alts">
-                @foreach (var a in rack.Alturas)
-                {
-                    <a class="@(a.Codigo == est.Codigo ? "on" : "")" href="@($"/ver-estante/{Uri.EscapeDataString(a.Codigo)}")">@EtiquetaAltura(a)</a>
-                }
-            </div>
-        }
-
-        @if (est.Dibujo is not null || est.Foto is not null)
-        {
-            <div class="ep-ve">
-                @if (est.Foto is not null)
-                {
-                    <img src="@est.Foto" alt="" @onclick="@(() => grande = est.Foto)" />
-                }
-                @if (est.Dibujo is not null)
-                {
-                    <div>Acá se ve: <b>@NombreDibujo(est.Dibujo)</b>@(est.DibujoCant is int c ? $" · {c}" : "")@(string.IsNullOrWhiteSpace(est.DibujoTexto) ? "" : " · " + est.DibujoTexto)</div>
-                }
-            </div>
-        }
-
-        <div class="ep-lbl">@(est.Productos.Count == 0 ? "Productos" : est.Productos.Count == 1 ? "1 producto" : $"{est.Productos.Count} productos")</div>
-        @if (est.Productos.Count == 0)
-        {
-            <div class="ep-g">No hay productos cargados en este estante.</div>
-        }
-        @foreach (var p in est.Productos)
-        {
-            <div class="ep-prod">
-                @if (p.Foto is not null)
-                {
-                    var f = p.Foto;
-                    <img class="ep-foto" src="@f" loading="lazy" alt="" @onclick="@(() => grande = f)" />
-                }
-                else
-                {
-                    <span class="ep-foto0">📦</span>
-                }
-                <div>
-                    <div class="ep-nom">@p.Nombre</div>
-                    <div class="ep-g">@(string.IsNullOrWhiteSpace(p.Sku) ? "" : $"SKU {p.Sku} · ")<span class="ep-stk @((p.Stock ?? 0) <= 0 ? "cero" : "")">stock @(p.Stock ?? 0)</span></div>
+            <div class="ep-lbl">@(buscando ? "Buscando…" : resultados.Count == 0 ? "No encontré nada" : resultados.Count == 1 ? "1 producto" : $"{resultados.Count} productos")</div>
+            @foreach (var r in resultados)
+            {
+                <div class="ep-prod">
+                    @if (r.Foto is not null)
+                    {
+                        var f = r.Foto;
+                        <img class="ep-foto" src="@f" loading="lazy" alt="" @onclick="@(() => grande = f)" />
+                    }
+                    else
+                    {
+                        <span class="ep-foto0">📦</span>
+                    }
+                    <div>
+                        <div class="ep-nom">@r.Nombre</div>
+                        <div class="ep-g">@(string.IsNullOrWhiteSpace(r.Sku) ? "" : $"SKU {r.Sku} · ")<span class="ep-stk @((r.Stock ?? 0) <= 0 ? "cero" : "")">stock @(r.Stock ?? 0)</span></div>
+                        <div class="ep-lug">
+                            @if (r.Lugares.Count == 0)
+                            {
+                                <span class="ep-sin">sin estante</span>
+                            }
+                            @foreach (var l in r.Lugares)
+                            {
+                                <a href="@($"/ver-estante/{Uri.EscapeDataString(l.Codigo)}")" title="@l.Desglose" @onclick="LimpiarBusqueda">@l.Codigo</a>
+                            }
+                        </div>
+                    </div>
                 </div>
-            </div>
+            }
         }
-    }
+        else if (est is null)
+        {
+            <div class="ep-cod" style="margin-top:1rem">@Codigo</div>
+            <div class="ep-sub">@(error ?? "No encontré este estante.")</div>
+        }
+        else
+        {
+            <div class="ep-nav">
+                <a class="ep-fl @(est.Anterior is null ? "no" : "")" href="@IrA(est.Anterior)">◀ @CortoRack(est.Anterior)</a>
+                <div class="ep-centro">
+                    <div class="ep-cod">@(est.Elegir ? est.Codigo : est.RackCodigo ?? est.Codigo)</div>
+                </div>
+                <a class="ep-fl @(est.Siguiente is null ? "no" : "")" href="@IrA(est.Siguiente)">@CortoRack(est.Siguiente) ▶</a>
+            </div>
+            <div class="ep-sub" style="text-align:center">@est.Desglose@PlantaTexto(est.Planta)</div>
 
-    <div class="ep-pie">🔒 Solo para mirar · <a href="/login">Entrar con usuario para cambiar algo</a></div>
+            @if (est.Elegir)
+            {
+                <div class="ep-lbl">¿Qué altura querés ver?</div>
+                @foreach (var a in est.Alturas)
+                {
+                    <a class="ep-alt" href="@($"/ver-estante/{Uri.EscapeDataString(a.Codigo)}")">
+                        <b>@EtiquetaAltura(a)</b>
+                        <span>@(a.Productos == 0 ? "vacío" : a.Productos == 1 ? "1 producto" : $"{a.Productos} productos")</span>
+                    </a>
+                }
+            }
+            else
+            {
+                @if (rack is { Elegir: true, Alturas.Count: > 1 })
+                {
+                    <div class="ep-alts">
+                        @foreach (var a in rack.Alturas)
+                        {
+                            <a class="@(a.Codigo == est.Codigo ? "on" : "")" href="@($"/ver-estante/{Uri.EscapeDataString(a.Codigo)}")">@EtiquetaAltura(a)</a>
+                        }
+                    </div>
+                }
+
+                @if (est.Dibujo is not null || est.Foto is not null)
+                {
+                    <div class="ep-ve">
+                        @if (est.Foto is not null)
+                        {
+                            <img src="@est.Foto" alt="" @onclick="@(() => grande = est.Foto)" />
+                        }
+                        @if (est.Dibujo is not null)
+                        {
+                            <div>Acá se ve: <b>@NombreDibujo(est.Dibujo)</b>@(est.DibujoCant is int c ? $" · {c}" : "")@(string.IsNullOrWhiteSpace(est.DibujoTexto) ? "" : " · " + est.DibujoTexto)</div>
+                        }
+                    </div>
+                }
+
+                <div class="ep-lbl">@est.Codigo · @(est.Productos.Count == 0 ? "sin productos" : est.Productos.Count == 1 ? "1 producto" : $"{est.Productos.Count} productos")</div>
+                @if (est.Productos.Count == 0)
+                {
+                    <div class="ep-g">No hay productos cargados en este estante.</div>
+                }
+                @foreach (var p in est.Productos)
+                {
+                    <div class="ep-prod">
+                        @if (p.Foto is not null)
+                        {
+                            var f = p.Foto;
+                            <img class="ep-foto" src="@f" loading="lazy" alt="" @onclick="@(() => grande = f)" />
+                        }
+                        else
+                        {
+                            <span class="ep-foto0">📦</span>
+                        }
+                        <div>
+                            <div class="ep-nom">@p.Nombre</div>
+                            <div class="ep-g">@(string.IsNullOrWhiteSpace(p.Sku) ? "" : $"SKU {p.Sku} · ")<span class="ep-stk @((p.Stock ?? 0) <= 0 ? "cero" : "")">stock @(p.Stock ?? 0)</span></div>
+                        </div>
+                    </div>
+                }
+            }
+
+            <button class="ep-todos" @onclick="VerTodos">@(todos is null ? "▦ Ver todos los racks" : "▲ Ocultar la lista de racks")</button>
+            @if (todos is not null)
+            {
+                var actual = est.Elegir ? est.Codigo : est.RackCodigo;
+                @foreach (var g in todos)
+                {
+                    <div class="ep-grupo">
+                        <b>@g.Grupo</b>
+                        <div>
+                            @foreach (var r in g.Racks)
+                            {
+                                <a class="@(r.Codigo == actual ? "on" : "")" href="@($"/ver-estante/{Uri.EscapeDataString(r.Codigo)}")" @onclick="() => todos = null">@r.Nombre</a>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        }
+
+        <div class="ep-pie">🔒 Solo para mirar · <a href="/login">Entrar con usuario para cambiar algo</a></div>
+    }
 </div>
 
 @if (grande is not null)
@@ -125,30 +219,69 @@
 @code {
     [Parameter] public string Codigo { get; set; } = "";
 
+    private const string ClavePase = "estante_publico_pase";
+    private string? pase;
+    private bool pidePin;
+    private string pin = "";
+    private string? errorPin;
+    private bool entrando;
+
     private EstPub? est;
     private EstPub? rack;   // las alturas del rack, para pasar de una a otra sin volver a escanear
+    private List<GrupoPub>? todos;
     private string? error;
     private string? grande;
     private bool cargando = true;
 
+    private string busca = "";
+    private bool buscando;
+    private List<BuscadoPub> resultados = new();
+    private CancellationTokenSource? ctsBusca;
+
     protected override async Task OnParametersSetAsync()
     {
         cargando = true; error = null; grande = null;
+        if (pase is null)
+        {
+            try { pase = await JS.InvokeAsync<string?>("localStorage.getItem", ClavePase); } catch { }
+        }
+        if (string.IsNullOrWhiteSpace(pase)) { pidePin = true; cargando = false; return; }
+        await Cargar();
+        cargando = false;
+    }
+
+    private async Task Cargar()
+    {
         est = await Traer(Codigo);
+        if (pidePin) return;
         // las otras alturas del mismo rack, para pasar de una a otra sin volver a escanear
         if (est is { Elegir: false } && !string.IsNullOrWhiteSpace(est.RackCodigo) && est.RackCodigo != est.Codigo)
         {
             if (rack?.Codigo != est.RackCodigo) { var e = error; rack = await Traer(est.RackCodigo); error = e; }
         }
         else rack = null;
-        cargando = false;
+    }
+
+    private HttpRequestMessage Pedido(string url)
+    {
+        var m = new HttpRequestMessage(HttpMethod.Get, url);
+        if (!string.IsNullOrWhiteSpace(pase)) m.Headers.Add("X-Pase-Estante", pase);
+        return m;
+    }
+
+    /// <summary>El pase venció o cambiaron el PIN: se borra y se vuelve a pedir.</summary>
+    private async Task PaseVencido()
+    {
+        pase = null; pidePin = true; errorPin = null;
+        try { await JS.InvokeVoidAsync("localStorage.removeItem", ClavePase); } catch { }
     }
 
     private async Task<EstPub?> Traer(string codigo)
     {
         try
         {
-            var r = await Http.GetAsync($"api/public/estante/{Uri.EscapeDataString(codigo.Trim().ToUpperInvariant())}");
+            var r = await Http.SendAsync(Pedido($"api/public/estante/{Uri.EscapeDataString(codigo.Trim().ToUpperInvariant())}"));
+            if (r.StatusCode == System.Net.HttpStatusCode.Unauthorized) { await PaseVencido(); return null; }
             if (!r.IsSuccessStatusCode)
             {
                 if (r.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -161,9 +294,84 @@
         catch { error = "No se pudo cargar. Revisá la conexión y probá de nuevo."; return null; }
     }
 
+    private async Task TeclaPin(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Entrar();
+    }
+
+    private async Task Entrar()
+    {
+        if (entrando) return;
+        errorPin = null;
+        if (pin.Trim().Length < 4) { errorPin = "Poné el PIN."; return; }
+        entrando = true;
+        try
+        {
+            var r = await Http.PostAsJsonAsync("api/public/estante/entrar", new { pin = pin.Trim() });
+            if (!r.IsSuccessStatusCode)
+            {
+                try { errorPin = (await r.Content.ReadFromJsonAsync<ErrorResp>())?.Error; } catch { }
+                errorPin ??= "No se pudo entrar. Probá de nuevo.";
+                return;
+            }
+            pase = (await r.Content.ReadFromJsonAsync<PaseResp>())?.Pase;
+            if (string.IsNullOrWhiteSpace(pase)) { errorPin = "No se pudo entrar. Probá de nuevo."; return; }
+            try { await JS.InvokeVoidAsync("localStorage.setItem", ClavePase, pase); } catch { }
+            pidePin = false; pin = "";
+            cargando = true;
+            await Cargar();
+            cargando = false;
+        }
+        catch { errorPin = "No se pudo entrar. Revisá la conexión."; }
+        finally { entrando = false; }
+    }
+
+    private async Task Buscando(ChangeEventArgs e)
+    {
+        busca = e.Value?.ToString() ?? "";
+        ctsBusca?.Cancel();
+        var cts = ctsBusca = new CancellationTokenSource();
+        if (busca.Trim().Length < 2) { resultados = new(); buscando = false; return; }
+        buscando = true;
+        try { await Task.Delay(300, cts.Token); } catch { return; }
+        try
+        {
+            var r = await Http.SendAsync(Pedido($"api/public/estante-buscar?q={Uri.EscapeDataString(busca.Trim())}"), cts.Token);
+            if (cts.IsCancellationRequested) return;
+            if (r.StatusCode == System.Net.HttpStatusCode.Unauthorized) { await PaseVencido(); return; }
+            resultados = r.IsSuccessStatusCode ? (await r.Content.ReadFromJsonAsync<List<BuscadoPub>>(cts.Token)) ?? new() : new();
+        }
+        catch { if (cts.IsCancellationRequested) return; resultados = new(); }
+        buscando = false;
+    }
+
+    private void LimpiarBusqueda() { busca = ""; resultados = new(); }
+
+    private async Task VerTodos()
+    {
+        if (todos is not null) { todos = null; return; }
+        try
+        {
+            var r = await Http.SendAsync(Pedido("api/public/estante-racks"));
+            if (r.StatusCode == System.Net.HttpStatusCode.Unauthorized) { await PaseVencido(); return; }
+            todos = r.IsSuccessStatusCode ? (await r.Content.ReadFromJsonAsync<List<GrupoPub>>()) ?? new() : new();
+        }
+        catch { todos = new(); }
+    }
+
+    private static string IrA(string? codigo) => codigo is null ? "" : $"/ver-estante/{Uri.EscapeDataString(codigo)}";
+
+    /// <summary>"C5-F4-R6-A2" → "R6" (lo que va en la flecha).</summary>
+    private static string CortoRack(string? codigo)
+    {
+        if (codigo is null) return "";
+        var m = System.Text.RegularExpressions.Regex.Match(codigo, @"F\d+-(R\d+)");
+        return m.Success ? m.Groups[1].Value : codigo;
+    }
+
     private string EtiquetaAltura(AlturaPub a)
         => (est?.Forma ?? rack?.Forma) == "piso" ? $"P{a.Posicion}"
-           : $"A{a.Nivel}" + ((est?.Posiciones ?? rack?.Posiciones ?? 1) > 1 ? $"·P{a.Posicion}" : "");
+           : $"A{a.Nivel}" + ((rack?.Posiciones ?? est?.Posiciones ?? 1) > 1 ? $"·P{a.Posicion}" : "");
 
     private static string NombreDibujo(string d) => d switch
     {
@@ -186,6 +394,7 @@
     };
 
     private class ErrorResp { public string? Error { get; set; } }
+    private class PaseResp { public string? Pase { get; set; } }
     private class EstPub
     {
         public bool Elegir { get; set; }
@@ -195,6 +404,8 @@
         public string? Planta { get; set; }
         public string? Forma { get; set; }
         public int Posiciones { get; set; } = 1;
+        public string? Anterior { get; set; }
+        public string? Siguiente { get; set; }
         public string? Dibujo { get; set; }
         public int? DibujoCant { get; set; }
         public string? DibujoTexto { get; set; }
@@ -204,4 +415,15 @@
     }
     private class AlturaPub { public int Nivel { get; set; } public int Posicion { get; set; } = 1; public string Codigo { get; set; } = ""; public int Productos { get; set; } }
     private class ProdPub { public string? Nombre { get; set; } public string? Sku { get; set; } public int? Stock { get; set; } public string? Foto { get; set; } }
+    private class BuscadoPub
+    {
+        public string? Nombre { get; set; }
+        public string? Sku { get; set; }
+        public int? Stock { get; set; }
+        public string? Foto { get; set; }
+        public List<LugarPub> Lugares { get; set; } = new();
+    }
+    private class LugarPub { public string Codigo { get; set; } = ""; public string? Desglose { get; set; } }
+    private class GrupoPub { public string Grupo { get; set; } = ""; public List<RackPub> Racks { get; set; } = new(); }
+    private class RackPub { public string Nombre { get; set; } = ""; public string Codigo { get; set; } = ""; }
 }

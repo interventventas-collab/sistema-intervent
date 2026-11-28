@@ -62,13 +62,34 @@ public class EzvizController : ControllerBase
         return Ok(lista);
     }
 
-    public record LiveDto(bool Ok, string? Url, string? AccessToken, string? Error);
+    public record LiveDto(bool Ok, string? Url, string? Error);
 
-    /// <summary>Devuelve el link ezopen:// + el token para reproducir la cámara en vivo (EZUIKit).</summary>
+    /// <summary>Devuelve el link del video en vivo (HLS .m3u8) de una cámara sin encriptar.</summary>
     [HttpGet("live")]
     public async Task<IActionResult> Live([FromQuery] string serial, [FromQuery] int channel = 1)
     {
         var r = await _service.GetLiveAsync(serial, channel);
-        return Ok(new LiveDto(r.Ok, r.Url, r.AccessToken, r.Error));
+        return Ok(new LiveDto(r.Ok, r.Url, r.Error));
+    }
+
+    public record AutorizarRequest(string? Link);
+    public record AutorizarResultDto(bool Ok, string? Error, int Camaras);
+
+    /// <summary>Recibe el link de "Authorization Succeeded" de EZVIZ y guarda el permiso de usuario.</summary>
+    [HttpPost("autorizar")]
+    public async Task<IActionResult> Autorizar([FromBody] AutorizarRequest req)
+    {
+        var (ok, error, n) = await _service.AutorizarDesdeLinkAsync(req.Link);
+        return Ok(new AutorizarResultDto(ok, error, n));
+    }
+
+    public record FotoDto(bool Ok, string? PicUrl, string? Error);
+
+    /// <summary>Saca una foto en el momento de la cámara.</summary>
+    [HttpPost("foto")]
+    public async Task<IActionResult> Foto([FromQuery] string serial, [FromQuery] int channel = 1)
+    {
+        var (ok, error, pic) = await _service.CapturarAsync(serial, channel);
+        return Ok(new FotoDto(ok, pic, error));
     }
 }

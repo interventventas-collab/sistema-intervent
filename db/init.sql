@@ -325,6 +325,17 @@ BEGIN
 END
 GO
 
+-- 2026-11-28: las cámaras están en la cuenta de la APP de Osmar, no en la de desarrollador.
+-- El dueño autoriza por la página de EZVIZ (openauth) y pega el link que le queda: de ahí sale
+-- un token de USUARIO (dura ~7 días) que es el que ve las cámaras.
+IF COL_LENGTH('EzvizAccounts','UserAccessToken') IS NULL
+    ALTER TABLE EzvizAccounts ADD UserAccessToken NVARCHAR(MAX) NULL;
+IF COL_LENGTH('EzvizAccounts','UserTokenExpiresAt') IS NULL
+    ALTER TABLE EzvizAccounts ADD UserTokenExpiresAt DATETIME2 NULL;
+IF COL_LENGTH('EzvizAccounts','UserAreaDomain') IS NULL
+    ALTER TABLE EzvizAccounts ADD UserAreaDomain NVARCHAR(200) NULL;
+GO
+
 -- TelegramAccounts table — bot de Telegram para avisos al celu + consultas. Guarda el token de
 -- @BotFather y el chat del dueño. Pedido de Osmar 2026-07-10 (reemplazo de WhatsApp por Telegram).
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='TelegramAccounts' AND xtype='U')
@@ -9451,4 +9462,19 @@ GO
 -- ⚠ En PROD correr a mano ANTES de la API.
 IF COL_LENGTH('Deposito_PlanoElementos', 'AlturasCm') IS NULL
     ALTER TABLE Deposito_PlanoElementos ADD AlturasCm NVARCHAR(80) NULL;
+GO
+-- 28/11/2026: ajustes sueltos del depósito (PIN del QR del estante para los que no tienen usuario).
+-- ⚠ En PROD correr a mano ANTES de publicar la API. El PIN arranca en 6138 (se cambia desde el plano).
+IF OBJECT_ID('Deposito_Ajustes','U') IS NULL
+BEGIN
+    CREATE TABLE Deposito_Ajustes (
+        Clave NVARCHAR(50) NOT NULL PRIMARY KEY,
+        Valor NVARCHAR(200) NOT NULL,
+        At DATETIME2 NOT NULL CONSTRAINT DF_Deposito_Ajustes_At DEFAULT SYSUTCDATETIME(),
+        Por NVARCHAR(100) NULL
+    );
+END
+GO
+IF NOT EXISTS (SELECT 1 FROM Deposito_Ajustes WHERE Clave = 'PinEstantePublico')
+    INSERT INTO Deposito_Ajustes (Clave, Valor, Por) VALUES ('PinEstantePublico', '6138', 'sistema');
 GO
