@@ -8,10 +8,33 @@
 //                        items: [{ id, sku, n, c, est, planta }], inicio: "D2-3" | null,
 //                        hechos: [ids ya tildados], dotnet: ref con Tildar3D(id),
 //                        etiqueta: "Dónde está", soloVer: true (sin "Lo tengo"; lo usa el planito de Productos),
-//                        buscar: true (2026-11-27: buscador de productos arriba de la lista; vuela al estante elegido) })
+//                        buscar: true (2026-11-27: buscador de productos arriba de la lista; vuela al estante elegido),
+//                        editar: true (2026-11-28: en el panel del estante se pueden agregar y sacar productos) })
+// 2026-11-28: pasando el mouse por una altura muestra lo que hay; tocándola abre el estante en el panel de la
+// derecha (agregar / sacar). "👁 Qué ver" prende y apaga capas (mismo localStorage "plano_capas" que el plano 2D).
 // Elementos = PlanoElementoDto tal cual llega de la API (camelCase).
 (function () {
     const S = 40; // 1 metro = 40 px
+    // 2026-11-28: capas que se pueden prender y apagar (mismas claves que el plano 2D)
+    const CAPAS = [['ambientes', 'Ambientes'], ['estructura', 'Puertas, paredes y escaleras'], ['racks', 'Racks'], ['estanterias', 'Estanterías'],
+        ['piso', 'Lugares en el piso'], ['pcs', 'PCs'], ['muebles', 'Muebles y escritorios'], ['otros', 'Vehículos, pallets, sillas y otros']];
+    const CAPA_TIPO = { pc: 'pcs', escritorio: 'muebles', mesa: 'muebles', mueble: 'muebles', heladera: 'muebles',
+        vehiculo: 'otros', pallet: 'otros', contenedor: 'otros', montacargas: 'otros', sillas: 'otros' };
+    function capasApagadas() {
+        try {
+            const v = localStorage.getItem('plano_capas'); if (v == null) return new Set();
+            const on = new Set(v.split(',').filter(Boolean));
+            return new Set(CAPAS.map(c => c[0]).filter(c => !on.has(c)));
+        } catch { return new Set(); }
+    }
+    function guardarCapas(off) {
+        try {
+            const v = localStorage.getItem('plano_capas');
+            const on = new Set(v == null ? ['estructura', 'ambientes', 'pasillos', 'racks', 'estanterias', 'piso', 'pcs', 'muebles', 'otros'] : v.split(',').filter(Boolean));
+            CAPAS.forEach(c => { if (off.has(c[0])) on.delete(c[0]); else on.add(c[0]); });
+            localStorage.setItem('plano_capas', [...on].join(','));
+        } catch { }
+    }
     const CSS = `
 .p3 { position: fixed; inset: 0; z-index: 4000; display: grid; grid-template-columns: 1fr 380px; background: #0b1220; font-family: Inter, system-ui, -apple-system, Segoe UI, Arial, sans-serif; }
 .p3 * { box-sizing: border-box; }
@@ -106,6 +129,32 @@
 .p3-pie button { flex: 1; border-radius: 12px; padding: 13px; font-size: 15px; font-weight: 800; cursor: pointer; border: 1px solid #cbd5e1; background: #fff; font-family: inherit; color: #0f172a; }
 .p3-pie .lo { background: #16a34a; border-color: #16a34a; color: #fff; }
 .p3-pie button:disabled { opacity: .4; cursor: default; }
+.p3-tip { position: absolute; z-index: 6; pointer-events: none; background: #0f172a; color: #e2e8f0; border: 1px solid #f97316; border-radius: 10px; padding: 8px 11px; font-size: 12.5px; line-height: 1.35; max-width: 320px; box-shadow: 0 10px 24px rgba(0,0,0,.45); }
+.p3-tip b { font-family: ui-monospace, monospace; color: #fdba74; font-size: 13.5px; }
+.p3-tip .v { color: #94a3b8; font-style: italic; }
+.p3-tip .h { color: #94a3b8; font-size: 11px; margin-top: 4px; }
+.p3-tip + .p3-tip { margin-top: 4px; }
+.p3-niv.hov { outline: 3px solid #38bdf8; outline-offset: -2px; }
+.p3-est { border-bottom: 2px solid #fde68a; padding: 12px 14px; max-height: 58vh; overflow: auto; background: #fffbeb; }
+.p3-est .tt { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #92400e; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; }
+.p3-est .tt button { margin-left: auto; border: 1px solid #fcd34d; background: #fff; border-radius: 8px; width: 30px; height: 30px; cursor: pointer; }
+.p3-est .bl { margin-top: 8px; }
+.p3-est .cod { font-family: ui-monospace, monospace; font-weight: 900; color: #78350f; font-size: 20px; }
+.p3-est .ds { color: #78716c; font-size: 12.5px; margin-bottom: 4px; }
+.p3-est .pr { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid #fde68a; font-size: 13.5px; }
+.p3-est .pr > div { flex: 1; min-width: 0; }
+.p3-est .pr .k { color: #78716c; font-size: 12px; }
+.p3-est .x { border: 1px solid #e7e5e4; background: #fff; border-radius: 8px; width: 32px; height: 32px; cursor: pointer; color: #6b7280; flex-shrink: 0; }
+.p3-est .vac { color: #a8a29e; font-style: italic; font-size: 13px; padding: 4px 0; }
+.p3-est input { width: 100%; box-sizing: border-box; border: 1px solid #d6d3d1; border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 14px; margin-top: 8px; background: #fff; }
+.p3-est .rs { margin-top: 4px; }
+.p3-est .rs div { padding: 7px 9px; border: 1px solid #e7e5e4; border-radius: 8px; margin-bottom: 4px; background: #fff; cursor: pointer; font-size: 13px; }
+.p3-est .rs div:hover { border-color: #f97316; }
+.p3-est .rs div span { color: #78716c; font-size: 12px; }
+.p3-capas { position: absolute; left: 18px; bottom: 68px; background: #fff; color: #0f172a; border-radius: 12px; padding: 10px 14px; box-shadow: 0 12px 30px rgba(0,0,0,.45); min-width: 240px; }
+.p3-capas label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; cursor: pointer; }
+.p3-capas .t { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; margin-bottom: 4px; }
+${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !important; }`).join('\n')}
 @media (max-width: 820px) {
   .p3 { grid-template-columns: 1fr; grid-template-rows: 58vh 1fr; }
   .p3-hud .d { font-size: 21px; }
@@ -178,6 +227,7 @@
         for (const z of zonas) {
             const r = R(z);
             const d = div('p3-zona', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', background: z.color || '#f1f5f9' });
+            d.dataset.capa = 'ambientes';
             if (z.puntos) {
                 try {
                     const p = JSON.parse(z.puntos);
@@ -193,9 +243,9 @@
         const altos = { pc: 8, pallet: 6, escritorio: 30, mueble: 70, vehiculo: 60, contenedor: 50, sillas: 40, montacargas: 50, heladera: 72, mesa: 30 };
         for (const c of els) {
             const r = R(c);
-            if (c.tipo === 'puerta' || c.tipo === 'porton') { div('p3-cosa', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', background: '#38bdf8' }); continue; }
-            if (c.tipo === 'escalera') { div('p3-cosa', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', background: 'repeating-linear-gradient(90deg,#cbd5e1 0 10px,#94a3b8 10px 12px)' }); continue; }
-            if (colores[c.tipo]) caja(r.x, r.y, r.w, r.h, altos[c.tipo], c.color || colores[c.tipo]);
+            if (c.tipo === 'puerta' || c.tipo === 'porton') { div('p3-cosa', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', background: '#38bdf8' }).dataset.capa = 'estructura'; continue; }
+            if (c.tipo === 'escalera') { div('p3-cosa', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', background: 'repeating-linear-gradient(90deg,#cbd5e1 0 10px,#94a3b8 10px 12px)' }).dataset.capa = 'estructura'; continue; }
+            if (colores[c.tipo]) caja(r.x, r.y, r.w, r.h, altos[c.tipo], c.color || colores[c.tipo]).dataset.capa = CAPA_TIPO[c.tipo] || 'otros';
         }
 
         const racks = {};
@@ -205,12 +255,13 @@
             // 2026-11-27: lugar en el piso de una calle: rectángulo punteado con cajas apoyadas
             const r = R(e), cod = (e.calle1 != null ? 'C' + e.calle1 + '-' : '') + 'PISO' + (e.nroFila || 1);
             const d = div('p3-rack piso', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
-            d.dataset.cod = e.codigo.toUpperCase();
+            d.dataset.cod = e.codigo.toUpperCase(); d.dataset.capa = 'piso';
             const niveles = [div('p3-niv', { width: r.w + 'px', height: r.h + 'px', transform: 'translateZ(1px)' }, d)];
+            niveles[0].dataset.niv = 1;
             const k = 2 + Math.floor(azar(e.id * 3) * 3), H = Math.max(14, (+e.alto || 0.6) * S);
             for (let j = 0; j < k; j++) {
                 const cw = (r.w - 12) / k - 3, ch = r.h * (0.45 + azar(e.id + j) * 0.3);
-                caja(6 + j * (r.w - 12) / k, (r.h - ch) / 2, cw, ch, H * (0.6 + azar(j + e.id * 5) * 0.4), '#c9a26b', d, 2);
+                caja(6 + j * (r.w - 12) / k, (r.h - ch) / 2, cw, ch, H * (0.6 + azar(j + e.id * 5) * 0.4), '#c9a26b', d, 2).dataset.niv = 1;
             }
             const top = div('p3-rcod', { width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${H + 4}px)` }, d);
             top.textContent = cod;
@@ -224,16 +275,17 @@
             const z0 = e.forma === 'estanteria' ? (+e.elevacion || 0) * S : 0;
             const r = R(e), H = (+e.alto || (e.forma === 'estanteria' ? 1 : 2.6)) * S, N = Math.max(1, e.niveles || 1);
             const d = div('p3-rack', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${z0}px)` });
-            d.dataset.cod = e.codigo.toUpperCase();
+            d.dataset.cod = e.codigo.toUpperCase(); d.dataset.capa = e.forma === 'estanteria' ? 'estanterias' : 'racks';
             for (const [px, py] of [[0, 0], [r.w - 5, 0], [0, r.h], [r.w - 5, r.h]]) div('p3-poste', { left: px + 'px', top: py + 'px', height: H + 'px', transform: 'rotateX(90deg)' }, d);
             const niveles = [];
             for (let i = 0; i < N; i++) {
                 const z = 4 + i * (H - 10) / N; // (relativo al rack; el rack ya está subido z0)
                 niveles.push(div('p3-niv', { width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${z}px)` }, d));
+                niveles[i].dataset.niv = i + 1;
                 const k = Math.floor(azar(e.id * 7 + i) * 3) + 1, hz = Math.min(30, (H - 10) / N - 8);
                 for (let j = 0; j < k; j++) {
                     const ch = r.h * 0.7;
-                    caja(6 + j * (r.w - 12) / k + azar(e.id + j) * 4, (r.h - ch) / 2, Math.min(r.w / 3.4, (r.w - 16) / k), ch, hz * (0.6 + azar(i + j + e.id) * 0.4), '#c9a26b', d, z + 2);
+                    caja(6 + j * (r.w - 12) / k + azar(e.id + j) * 4, (r.h - ch) / 2, Math.min(r.w / 3.4, (r.w - 16) / k), ch, hz * (0.6 + azar(i + j + e.id) * 0.4), '#c9a26b', d, z + 2).dataset.niv = i + 1;
                 }
             }
             const top = div('p3-rcod', { width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${H + 2}px)`, fontSize: Math.max(12, Math.min(26, r.h * 0.5)) + 'px' }, d);
@@ -249,7 +301,7 @@
         // paredes bajitas alrededor de los ambientes con racks (para que se entienda el espacio)
         function pared(x1, y1, x2, y2, alto) {
             const len = Math.hypot(x2 - x1, y2 - y1), ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
-            div('p3-pared', { left: x1 + 'px', top: y1 + 'px', width: len + 'px', height: alto + 'px', transform: `rotateZ(${ang}deg) rotateX(90deg)` });
+            div('p3-pared', { left: x1 + 'px', top: y1 + 'px', width: len + 'px', height: alto + 'px', transform: `rotateZ(${ang}deg) rotateX(90deg)` }).dataset.capa = 'estructura';
         }
         const conRacks = zonas.filter(z => { const zr = R(z); return Object.values(racks).some(k => k.r.x + k.r.w / 2 >= zr.x && k.r.x + k.r.w / 2 <= zr.x + zr.w && k.r.y + k.r.h / 2 >= zr.y && k.r.y + k.r.h / 2 <= zr.y + zr.h); });
         for (const z of conRacks) { const zr = R(z); pared(zr.x, zr.y, zr.x + zr.w, zr.y, 46); pared(zr.x + zr.w, zr.y, zr.x + zr.w, zr.y + zr.h, 46); }
@@ -291,7 +343,10 @@
               <button data-a="lado" hidden>↔ El otro lado</button>
               <button data-a="izq">⟲ Girar</button>
               <button data-a="der">⟳ Girar</button>
+              <button data-a="capas">👁 Qué ver</button>
             </div>
+            <div class="p3-capas" hidden></div>
+            <div class="p3-tip" hidden></div>
           </div>
           <div class="p3-pan">
             <div class="p3-cab"><div class="t">${esc(d.etiqueta || 'Armado de pedido')}</div><h2>${esc(d.titulo)}</h2><div class="s"></div>${d.soloVer ? '' : '<div class="p3-barra"><i></i></div>'}</div>
@@ -331,11 +386,137 @@
         items.forEach((it, idx) => { if (it.id != null && yaTildados.has(it.id)) hechos.add(idx); });
         const pines = [];
 
+        // ───── 2026-11-28: qué hay en cada altura (pasando el mouse / tocando) y capas ─────
+        const rackDatos = {};          // id del rack → promesa con { estantes } (api/deposito/plano/racks/{id})
+        let panelDe = null;            // { k, niv } del estante abierto en el panel de la derecha
+        const capasOff = capasApagadas();
+        const aplicarCapas = (mundo) => CAPAS.forEach(c => mundo.classList.toggle('sin-' + c[0], capasOff.has(c[0])));
+        function datosRack(k, fresco) {
+            const id = k.e.id;
+            if (fresco || !rackDatos[id])
+                rackDatos[id] = fetch('/api/deposito/plano/racks/' + id, { credentials: 'same-origin' })
+                    .then(r => r.ok ? r.json() : null).catch(() => null);
+            return rackDatos[id];
+        }
+        // los estantes de esa altura: del lado que se está mirando de frente, o de todos los lados
+        function estantesDe(dat, k, niv) {
+            if (!dat) return [];
+            const cara = frenteDe && frenteDe.k === k ? frenteDe.cara : null;
+            return (dat.estantes || []).filter(x => x.nivel === niv && (cara == null || x.cara === cara))
+                .sort((a, b) => (a.cara - b.cara) || (a.posicion - b.posicion));
+        }
+        const nombreProd = (p) => esc(p.nombre) + (p.cantidad ? ' · ' + esc(p.cantidad) : '');
+        function pintarCapas() {
+            const c = root.querySelector('.p3-capas');
+            c.innerHTML = '<div class="t">Qué ver</div>' + CAPAS.map(x => `<label><input type="checkbox" data-capa="${x[0]}" ${capasOff.has(x[0]) ? '' : 'checked'} /> ${esc(x[1])}</label>`).join('');
+        }
+        root.addEventListener('change', (ev) => {
+            const cb = ev.target.closest('.p3-capas input[data-capa]'); if (!cb) return;
+            if (cb.checked) capasOff.delete(cb.dataset.capa); else capasOff.add(cb.dataset.capa);
+            guardarCapas(capasOff);
+            Object.values(escenas).forEach(x => aplicarCapas(x.mundo));
+        });
+
+        // globito al pasar el mouse por una altura
+        const tip = root.querySelector('.p3-tip');
+        let hov = null, hovKey = '';
+        function sacarHover() { if (hov) hov.classList.remove('hov'); hov = null; hovKey = ''; tip.hidden = true; }
+        escD.addEventListener('pointermove', async (ev) => {
+            if (arr || ev.pointerType === 'touch') return;
+            const nv = ev.target.closest ? ev.target.closest('[data-niv]') : null;
+            const rk = nv ? nv.closest('.p3-rack') : null;
+            const e = escenas[plantaVista];
+            const k = rk && e ? e.racks[rk.dataset.cod] : null;
+            if (!k) { sacarHover(); return; }
+            const niv = +nv.dataset.niv, key = rk.dataset.cod + '|' + niv + '|' + (frenteDe ? frenteDe.cara : '');
+            const b = escD.getBoundingClientRect();
+            tip.style.left = Math.min(ev.clientX - b.left + 16, b.width - 330) + 'px';
+            tip.style.top = Math.max(8, ev.clientY - b.top + 14) + 'px';
+            if (key === hovKey) return;
+            sacarHover(); hovKey = key;
+            hov = k.niveles[niv - 1] || null; if (hov) hov.classList.add('hov');
+            tip.innerHTML = `<b>${esc(k.cod)}</b> · altura ${niv} <span class="v">cargando…</span>`; tip.hidden = false;
+            const dat = await datosRack(k);
+            if (hovKey !== key) return;
+            const ests = estantesDe(dat, k, niv);
+            tip.innerHTML = (ests.length ? ests.map(x => `<div><b>${esc(x.codigo)}</b>`
+                + (x.productos.length ? x.productos.slice(0, 6).map(p => `<div>• ${nombreProd(p)}</div>`).join('') + (x.productos.length > 6 ? `<div class="v">+${x.productos.length - 6} más</div>` : '')
+                                      : '<div class="v">vacío</div>') + '</div>').join('')
+                : `<b>${esc(k.cod)}</b> · altura ${niv}`) + '<div class="h">Tocá para ver o agregar</div>';
+        });
+        escD.addEventListener('pointerleave', sacarHover);
+
+        // panel del estante (arriba de la lista, a la derecha)
+        async function pintarEstante() {
+            let box = root.querySelector('.p3-est');
+            if (!panelDe) { if (box) box.remove(); return; }
+            if (!box) { box = h('div', 'p3-est'); root.querySelector('.p3-cab').after(box); }
+            const { k, niv } = panelDe;
+            const dat = await datosRack(k);
+            if (!panelDe || panelDe.k !== k) return;
+            const ests = estantesDe(dat, k, niv);
+            box.innerHTML = `<div class="tt">${k.piso ? 'Lugar en el piso' : k.est ? 'Estantería' : 'Rack ' + esc(k.cod)} · altura ${niv}<button data-a="cerrar-est" title="Cerrar">✕</button></div>`
+                + (ests.length ? '' : '<div class="vac">No encontré este estante.</div>')
+                + ests.map(x => `<div class="bl">
+                    <div class="cod">${esc(x.codigo)}</div><div class="ds">${esc(x.desglose || '')}</div>
+                    ${x.productos.length ? x.productos.map(p => `<div class="pr"><div><b>${esc(p.nombre)}</b>${p.cantidad ? ' · ' + esc(p.cantidad) : ''}<div class="k">${esc([p.sku, 'stock ' + (p.stock ?? 0)].filter(Boolean).join(' · '))}</div></div>${d.editar ? `<button class="x" data-sacar="${p.id}" title="Sacar de este estante">✕</button>` : ''}</div>`).join('')
+                                         : '<div class="vac">Vacío</div>'}
+                    ${d.editar ? `<input type="search" data-cod="${esc(x.codigo)}" placeholder="+ Agregar un producto acá (nombre o SKU)" autocomplete="off" /><div class="rs"></div>` : ''}
+                  </div>`).join('');
+            box.scrollTop = 0;
+        }
+        async function recargarEstante(k) {
+            await datosRack(k, true);
+            hovKey = '';
+            await pintarEstante();
+            if (d.dotnet) d.dotnet.invokeMethodAsync('Cambio3D', k.e.id).catch(() => { });
+        }
+        let tmoEst = null, nroEst = 0;
+        root.addEventListener('input', (ev) => {
+            const inp = ev.target.closest('.p3-est input[data-cod]'); if (!inp) return;
+            const rs = inp.nextElementSibling, q = inp.value.trim();
+            clearTimeout(tmoEst);
+            if (q.length < 2) { rs.innerHTML = ''; return; }
+            tmoEst = setTimeout(async () => {
+                const yo = ++nroEst;
+                try {
+                    const r = await fetch('/api/deposito/plano/buscar?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+                    if (yo !== nroEst || !r.ok) return;
+                    const l = await r.json();
+                    rs.innerHTML = l.slice(0, 12).map(p => `<div data-pid="${p.productoId}"><b>${esc(p.nombre)}</b><br /><span>${esc([p.sku, 'stock ' + (p.stock ?? 0), p.lugares.length ? 'ya en ' + p.lugares.map(x => x.codigo).join(', ') : null].filter(Boolean).join(' · '))}</span></div>`).join('')
+                        || '<div style="cursor:default"><span>No encontré nada.</span></div>';
+                } catch { }
+            }, 300);
+        });
+        root.addEventListener('click', async (ev) => {
+            if (!panelDe) return;
+            const k = panelDe.k;
+            const add = ev.target.closest('.p3-est .rs [data-pid]');
+            if (add) {
+                const cod = add.parentElement.previousElementSibling.dataset.cod;
+                add.style.opacity = .5;
+                const r = await fetch('/api/deposito/plano/estante/' + encodeURIComponent(cod) + '/productos', {
+                    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ productoId: +add.dataset.pid })
+                }).catch(() => null);
+                if (!r || !r.ok) { add.style.opacity = 1; add.querySelector('span').textContent = 'No se pudo guardar'; return; }
+                await recargarEstante(k);
+                return;
+            }
+            const x = ev.target.closest('.p3-est [data-sacar]');
+            if (x) {
+                x.disabled = true;
+                const r = await fetch('/api/deposito/plano/asignaciones/' + x.dataset.sacar, { method: 'DELETE', credentials: 'same-origin' }).catch(() => null);
+                if (!r || !r.ok) { x.disabled = false; return; }
+                await recargarEstante(k);
+            }
+        });
+
         function mostrarPlanta(pl) {
             if (plantaVista === pl) return;
             const e = escenaDe(pl); if (!e) return;
             const viejo = escD.querySelector('.p3-mundo'); if (viejo) viejo.remove();
             escD.insertBefore(e.mundo, escD.firstChild);
+            aplicarCapas(e.mundo);
             plantaVista = pl;
         }
         const contra = () => `rotateZ(${-cam.rz}deg) rotateX(${-cam.rx}deg)`;
@@ -509,6 +690,7 @@
             const s = Math.max(0.5, Math.min(3.2, b.width * 0.6 / (L + 60), b.height * 0.5 / (k.H + 30)));
             cam = { rx: k.piso ? 62 : 80, rz: n.rz, s, cx: cx + n.nx * 10, cy: cy + n.ny * 10, cz: k.piso ? 0 : (k.z0 || 0) + k.H * 0.5 };
             botones(); aplicar(); hudFrente();
+            if (panelDe && panelDe.k === k) pintarEstante();
         }
         function hudFrente() {
             if (!frenteDe) return;
@@ -519,14 +701,23 @@
             el.innerHTML = `<div class="t">De frente${frenteDe.cara >= 3 ? ' · la punta' : ''}${calle != null ? ' · desde la calle ' + calle : ''}</div><div class="d">${esc(titulo)}</div>`
                 + (it ? `<div class="s" style="color:#fdba74;font-weight:700">${esc(it.est)} · ${esc(it.n)}</div>` : '<div class="s">Arrastrá para girar · tocá otro rack para ir ahí</div>');
         }
-        function tocarRack(cod) {
+        function tocarRack(cod, niv) {
             const e = escenas[plantaVista]; if (!e) return;
             const k = e.racks[cod]; if (!k) return;
+            // 2026-11-28: tocando una altura se abre ese estante en el panel (y si ya está de frente, no vuela de nuevo)
+            if (niv) {
+                panelDe = { k, niv };
+                k.niveles.forEach(n => n.classList.remove('este'));
+                (k.niveles[niv - 1] || k.niveles[0]).classList.add('este');
+                pintarEstante();
+                if (frenteDe && frenteDe.k === k) { frenteDe.niv = niv; frente(k, frenteDe.cara, niv); return; }
+            }
             Object.values(e.racks).forEach(x => { x.d.classList.remove('meta'); x.d.classList.add('otro'); x.niveles.forEach(n => n.classList.remove('este')); });
             k.d.classList.remove('otro'); k.d.classList.add('meta');
-            act = -1; ultK = { k, cara: carasDe(k)[0], niv: null };
+            if (niv) (k.niveles[niv - 1] || k.niveles[0]).classList.add('este');
+            act = -1; ultK = { k, cara: carasDe(k)[0], niv: niv || null };
             e.ruta(k); pintarPines(); lista();
-            frente(k, ultK.cara, null);
+            frente(k, ultK.cara, niv || null);
         }
 
         function loTengo() {
@@ -547,6 +738,8 @@
                 else if (a === 'izq') { cam.rz -= 25; aplicar(); }
                 else if (a === 'der') { cam.rz += 25; aplicar(); }
                 else if (a === 'lo') loTengo();
+                else if (a === 'capas') { const c = root.querySelector('.p3-capas'); c.hidden = !c.hidden; b.classList.toggle('on', !c.hidden); if (!c.hidden) pintarCapas(); }
+                else if (a === 'cerrar-est') { panelDe = null; pintarEstante(); }
                 else if (a === 'frente') {
                     if (frenteDe) { const f = frenteDe; frenteDe = null; limpiarFrente(); if (act >= 0 && items[act] && items[act].k === f.k) ir(act); else vistaArriba(); }
                     else if (ultK) frente(ultK.k, ultK.cara, ultK.niv);
@@ -607,7 +800,7 @@
 
         // arrastrar con el dedo / mouse para girar
         let arr = null;
-        escD.addEventListener('pointerdown', (ev) => { if (ev.target.closest('button')) return; arr = { x: ev.clientX, y: ev.clientY, rz: cam.rz, t: ev.target }; escD.setPointerCapture(ev.pointerId); });
+        escD.addEventListener('pointerdown', (ev) => { if (ev.target.closest('button, .p3-capas')) return; arr = { x: ev.clientX, y: ev.clientY, rz: cam.rz, t: ev.target }; escD.setPointerCapture(ev.pointerId); });
         escD.addEventListener('pointermove', (ev) => {
             if (!arr) return;
             const e = escenas[plantaVista]; if (!e) return;
@@ -621,7 +814,8 @@
             // 2026-11-27: un toque (sin arrastrar) sobre un rack → lo muestra de frente
             if (ev && ev.type === 'pointerup' && Math.abs(ev.clientX - a0.x) < 6 && Math.abs(ev.clientY - a0.y) < 6) {
                 const rk = a0.t && a0.t.closest ? a0.t.closest('.p3-rack') : null;
-                if (rk && rk.dataset.cod) setTimeout(() => tocarRack(rk.dataset.cod), 0);
+                const nv = a0.t && a0.t.closest ? a0.t.closest('[data-niv]') : null;
+                if (rk && rk.dataset.cod) setTimeout(() => tocarRack(rk.dataset.cod, nv ? +nv.dataset.niv : null), 0);
             }
             const e = escenas[plantaVista]; if (!e) return;
             e.mundo.style.transition = ''; e.mundo.querySelectorAll('.p3-cartel').forEach(c => c.style.transition = '');
