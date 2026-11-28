@@ -9417,3 +9417,8 @@ BEGIN
     CREATE UNIQUE INDEX UX_Deposito_EstanteNotas_Estante ON Deposito_EstanteNotas(ElementoId, Cara, Posicion, Nivel);
 END
 GO
+-- 27/11/2026: lugares que no son racks: "piso" (lugar en el piso de una calle, C3-PISO1) y
+-- "estanteria" (estantería suelta con nombre corto, TOST-A3; Elevacion = a qué altura del piso empieza si está amurada).
+IF COL_LENGTH('Deposito_PlanoElementos', 'Forma') IS NULL
+    ALTER TABLE Deposito_PlanoElementos ADD Forma NVARCHAR(12) NULL, Elevacion DECIMAL(5,2) NULL;
+GO

@@ -38,7 +38,7 @@
                 <option value="">— elegí —</option>
                 @foreach (var r in racks)
                 {
-                    <option value="@r.Id">Rack @ApiClient.NombreRack(r) · @r.Planta</option>
+                    <option value="@r.Id">@ApiClient.TituloLugar(r) · @r.Planta</option>
                 }
             </select>
         </span>

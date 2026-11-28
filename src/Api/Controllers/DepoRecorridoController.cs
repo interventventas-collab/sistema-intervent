@@ -50,10 +50,12 @@ public class DepoRecorridoController : ControllerBase
     private async Task<List<Lado>> LadosAsync()
     {
         var racks = await _db.DepositoPlanoElementos.AsNoTracking()
-            .Where(e => e.Tipo == "rack" && (e.Calle1 != null || e.Calle2 != null)).ToListAsync();
+            .Where(e => e.Tipo == "rack" && (e.Calle1 != null || e.Calle2 != null || e.Forma == "estanteria")).ToListAsync();
         var l = new List<(DepositoPlanoElemento R, int Cara, int Calle)>();
         foreach (var r in racks)
         {
+            // 2026-11-27: las estanterías sueltas (tostadero, escritorio) van juntas como "calle 0"
+            if (DepositoPlanoController.EsEstanteria(r)) { l.Add((r, 1, 0)); continue; }
             if (r.Calle1 is int c1) l.Add((r, 1, c1));
             if (r.Calle2 is int c2) l.Add((r, 2, c2));
         }
