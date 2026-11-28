@@ -142,6 +142,8 @@ public class DepoRecorridoController : ControllerBase
         // alturas del lado (de abajo hacia arriba) y si están revisadas
         var porNivel = await _db.DepositoEstanteProductos.AsNoTracking().Where(a => a.ElementoId == rack.Id)
             .Select(a => new { a.Cara, a.Posicion, a.Nivel }).ToListAsync();
+        var notas = await _db.DepositoEstanteNotas.AsNoTracking().Where(n => n.ElementoId == rack.Id).ToListAsync();
+        var nota = notas.FirstOrDefault(n => n.Cara == cara && n.Posicion == pos && n.Nivel == niv);
         var alturas = new List<object>();
         for (int n = 1; n <= (rack.Niveles ?? 1); n++)
             alturas.Add(new
@@ -150,6 +152,7 @@ public class DepoRecorridoController : ControllerBase
                 codigo = DepositoPlanoController.CodigoEstante(rack, cara, pos, n),
                 revisado = revisados.Contains((rack.Id, cara, pos, n)),
                 productos = porNivel.Count(a => DepositoPlanoController.NormCara(rack, a.Cara) == cara && a.Posicion == pos && a.Nivel == n),
+                nota = notas.Any(x => x.Cara == cara && x.Posicion == pos && x.Nivel == n),
             });
 
         // el que sigue: la altura de arriba; si es la última, el próximo rack de la calle
@@ -173,6 +176,9 @@ public class DepoRecorridoController : ControllerBase
             rack = rack.Codigo,
             calle, nro, fila = rack.Fila, nombreRack = DepositoPlanoController.NombreRack(rack), cara, posicion = pos, nivel = niv, niveles = rack.Niveles ?? 1,
             revisado = revisados.Contains((rack.Id, cara, pos, niv)),
+            nota = nota?.Nota,
+            notaPor = nota?.Por,
+            notaAt = nota?.At,
             alturas,
             siguiente,
             cambiaRack,
@@ -212,9 +218,18 @@ public class DepoRecorridoController : ControllerBase
     // ───────────────────────── Buscar producto ─────────────────────────
 
     [HttpGet("buscar")]
-    public async Task<IActionResult> Buscar([FromQuery] string? q)
+    public async Task<IActionResult> Buscar([FromQuery] string? q, [FromQuery] string? marca = null)
     {
         if (!_clave.PaseValido(Request)) return PaseVencido();
+        // 2026-11-27: "Traer todos los de la marca X"
+        if (!string.IsNullOrWhiteSpace(marca))
+        {
+            var m = marca.Trim();
+            var deMarca = await _db.CafeProductos.AsNoTracking()
+                .Where(p => p.IsActive && ((p.MarcaNav != null && p.MarcaNav.Nombre == m) || (p.MarcaNav == null && p.Marca == m)))
+                .OrderBy(p => p.Nombre).Select(p => new { p.Id, p.Sku, p.Nombre, p.StockUnidades }).Take(300).ToListAsync();
+            return Ok(await ConLugaresAsync(deMarca.Select(p => (p.Id, p.Sku, p.Nombre, p.StockUnidades)).ToList()));
+        }
         var texto = (q ?? "").Trim();
         if (texto.Length < 2) return Ok(Array.Empty<object>());
         // código de barras o SKU exacto primero (lo que manda el escáner)
@@ -229,17 +244,69 @@ public class DepoRecorridoController : ControllerBase
             {
                 var pat = "%" + CafePreventasController.EscaparLike(pal) + "%";
                 qq = qq.Where(p => EF.Functions.Like(EF.Functions.Collate(p.Nombre, COLLATE_SIN_TILDES), pat)
-                    || (p.Sku != null && EF.Functions.Like(p.Sku, pat)) || (p.Barcode != null && EF.Functions.Like(p.Barcode, pat)));
+                    || (p.Sku != null && EF.Functions.Like(p.Sku, pat)) || (p.Barcode != null && EF.Functions.Like(p.Barcode, pat))
+                    || (p.MarcaNav != null && EF.Functions.Like(EF.Functions.Collate(p.MarcaNav.Nombre, COLLATE_SIN_TILDES), pat))
+                    || (p.Marca != null && EF.Functions.Like(EF.Functions.Collate(p.Marca, COLLATE_SIN_TILDES), pat)));
             }
-            lista = await qq.OrderBy(p => p.Nombre).Select(p => new { p.Id, p.Sku, p.Nombre, p.StockUnidades }).Take(25).ToListAsync();
+            lista = await qq.OrderBy(p => p.Nombre).Select(p => new { p.Id, p.Sku, p.Nombre, p.StockUnidades }).Take(40).ToListAsync();
         }
+        return Ok(await ConLugaresAsync(lista.Select(p => (p.Id, p.Sku, p.Nombre, p.StockUnidades)).ToList()));
+    }
+
+    private async Task<List<object>> ConLugaresAsync(List<(int Id, string? Sku, string Nombre, int Stock)> lista)
+    {
         var ids = lista.Select(x => x.Id).ToList();
         var lugares = await OtrosLugaresAsync(ids, new(), await DesdeAsync());
-        return Ok(lista.Select(p => new
+        return lista.Select(p => (object)new
         {
-            productoId = p.Id, sku = p.Sku, nombre = p.Nombre, stock = p.StockUnidades,
+            productoId = p.Id, sku = p.Sku, nombre = p.Nombre, stock = p.Stock,
             lugares = lugares.GetValueOrDefault(p.Id) ?? new(),
-        }));
+        }).ToList();
+    }
+
+    /// <summary>2026-11-27: marcas que coinciden con lo que escriben, con cuántos productos tienen
+    /// (para el botón "Traer todos los de X").</summary>
+    [HttpGet("marcas")]
+    public async Task<IActionResult> Marcas([FromQuery] string? q)
+    {
+        if (!_clave.PaseValido(Request)) return PaseVencido();
+        var texto = (q ?? "").Trim();
+        if (texto.Length < 3) return Ok(Array.Empty<object>());
+        var pat = "%" + CafePreventasController.EscaparLike(texto) + "%";
+        var marcas = await _db.CafeProductos.AsNoTracking().Where(p => p.IsActive)
+            .Select(p => p.MarcaNav != null ? p.MarcaNav.Nombre : p.Marca)
+            .Where(m => m != null && m != "" && EF.Functions.Like(EF.Functions.Collate(m, COLLATE_SIN_TILDES), pat))
+            .GroupBy(m => m).Select(g => new { marca = g.Key, productos = g.Count() })
+            .OrderByDescending(x => x.productos).Take(3).ToListAsync();
+        return Ok(marcas);
+    }
+
+    public class BarcodeRequest
+    {
+        public int OperadorId { get; set; }
+        public string? Barcode { get; set; }
+    }
+
+    /// <summary>2026-11-27: escanearon un código que el sistema no conocía y eligieron el producto
+    /// buscando por nombre: se le guarda el código de barras (solo si no tenía uno y ningún otro
+    /// producto activo lo usa), así la próxima vez lo encuentra solo.</summary>
+    [HttpPost("producto/{id:int}/barcode")]
+    public async Task<IActionResult> GuardarBarcode(int id, [FromBody] BarcodeRequest req)
+    {
+        if (!_clave.PaseValido(Request)) return PaseVencido();
+        var op = await _db.StockOperadores.AsNoTracking().FirstOrDefaultAsync(o => o.Id == req.OperadorId && o.IsActive);
+        if (op is null) return BadRequest(new { error = "Elegí quién sos." });
+        var bc = (req.Barcode ?? "").Trim();
+        if (bc.Length < 6 || bc.Length > 50 || bc.Contains('/')) return BadRequest(new { error = "Ese código no parece de barras." });
+        var prod = await _db.CafeProductos.FirstOrDefaultAsync(p => p.Id == id);
+        if (prod is null) return NotFound(new { error = "Ese producto no existe." });
+        if (!string.IsNullOrWhiteSpace(prod.Barcode)) return Ok(new { ok = false, motivo = "ya tenía" });
+        if (await _db.CafeProductos.AnyAsync(p => p.IsActive && p.Id != id && p.Barcode == bc))
+            return Ok(new { ok = false, motivo = "lo usa otro" });
+        prod.Barcode = bc;
+        prod.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
     }
 
     // ───────────────────────── Contar / ubicar ─────────────────────────
@@ -378,6 +445,25 @@ public class DepoRecorridoController : ControllerBase
     {
         public int OperadorId { get; set; }
         public int Ajustes { get; set; }
+    }
+
+    public class NotaRequest
+    {
+        public int OperadorId { get; set; }
+        public string? Nota { get; set; }
+    }
+
+    /// <summary>2026-11-27: comentario libre del estante (vacío lo borra).</summary>
+    [HttpPost("estante/{codigo}/nota")]
+    public async Task<IActionResult> Nota(string codigo, [FromBody] NotaRequest req)
+    {
+        if (!_clave.PaseValido(Request)) return PaseVencido();
+        var op = await _db.StockOperadores.AsNoTracking().FirstOrDefaultAsync(o => o.Id == req.OperadorId && o.IsActive);
+        if (op is null) return BadRequest(new { error = "Elegí quién sos." });
+        var (rack, cara, pos, niv, error) = await DepositoPlanoController.ResolverEstanteAsync(_db, codigo);
+        if (rack is null) return NotFound(new { error });
+        var n = await DepositoPlanoController.GuardarNotaAsync(_db, rack.Id, cara, pos, niv, req.Nota, op.Nombre);
+        return Ok(new { ok = true, nota = n?.Nota, notaPor = n?.Por, notaAt = n?.At });
     }
 
     /// <summary>"Listo": el estante queda revisado en este recorrido.</summary>

@@ -9398,3 +9398,20 @@ GO
 IF OBJECT_ID('Deposito_PlanoElementos','U') IS NOT NULL AND COL_LENGTH('Deposito_PlanoElementos','Fila') IS NULL
     ALTER TABLE Deposito_PlanoElementos ADD Fila INT NULL, NroFila INT NULL;
 GO
+
+-- 27/11/2026: comentario libre por estante (Recorrer estantes / plano). ⚠ En PROD correr a mano ANTES de publicar la API.
+IF OBJECT_ID('Deposito_EstanteNotas','U') IS NULL
+BEGIN
+    CREATE TABLE Deposito_EstanteNotas (
+        Id INT IDENTITY(1,1) PRIMARY KEY,
+        ElementoId INT NOT NULL,
+        Cara INT NOT NULL CONSTRAINT DF_Deposito_EstanteNotas_Cara DEFAULT 1,
+        Posicion INT NOT NULL CONSTRAINT DF_Deposito_EstanteNotas_Pos DEFAULT 1,
+        Nivel INT NOT NULL,
+        Nota NVARCHAR(500) NOT NULL,
+        At DATETIME2 NOT NULL CONSTRAINT DF_Deposito_EstanteNotas_At DEFAULT SYSUTCDATETIME(),
+        Por NVARCHAR(100) NULL
+    );
+    CREATE UNIQUE INDEX UX_Deposito_EstanteNotas_Estante ON Deposito_EstanteNotas(ElementoId, Cara, Posicion, Nivel);
+END
+GO

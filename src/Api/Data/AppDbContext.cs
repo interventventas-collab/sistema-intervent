@@ -186,6 +186,7 @@ public class AppDbContext : DbContext
     public DbSet<DepositoPlanoElemento> DepositoPlanoElementos => Set<DepositoPlanoElemento>();
     public DbSet<DepositoEstanteProducto> DepositoEstanteProductos => Set<DepositoEstanteProducto>();
     public DbSet<DepositoEstanteRevision> DepositoEstanteRevisiones => Set<DepositoEstanteRevision>();
+    public DbSet<DepositoEstanteNota> DepositoEstanteNotas => Set<DepositoEstanteNota>();
     public DbSet<DepTarea> DepTareas => Set<DepTarea>();
     public DbSet<DepTareaItem> DepTareaItems => Set<DepTareaItem>();
     // 2026-08-05: estado de la foto por producto (aprobada / reportada errónea) — a nivel sistema

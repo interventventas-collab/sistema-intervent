@@ -78,7 +78,33 @@ public class DepositoPlanoController : ControllerBase
         string? Cantidad, string? Nota, DateTime At, string? Por, int? Stock = null);
 
     public record EstanteDto(int Posicion, int Nivel, string Codigo, List<AsignacionDto> Productos,
-        int Cara = 1, string? Desglose = null);
+        int Cara = 1, string? Desglose = null, string? Nota = null, string? NotaPor = null, DateTime? NotaAt = null);
+
+    public class NotaRequest
+    {
+        public string? Nota { get; set; }
+    }
+
+    /// <summary>2026-11-27: guarda (o borra, si viene vacío) el comentario de un estante.</summary>
+    public static async Task<DepositoEstanteNota?> GuardarNotaAsync(AppDbContext db, int rackId, int cara, int pos, int niv, string? texto, string? por)
+    {
+        var t = (texto ?? "").Trim();
+        if (t.Length > 500) t = t[..500];
+        var n = await db.DepositoEstanteNotas.FirstOrDefaultAsync(x => x.ElementoId == rackId && x.Cara == cara && x.Posicion == pos && x.Nivel == niv);
+        if (t.Length == 0)
+        {
+            if (n is not null) { db.DepositoEstanteNotas.Remove(n); await db.SaveChangesAsync(); }
+            return null;
+        }
+        if (n is null)
+        {
+            n = new DepositoEstanteNota { ElementoId = rackId, Cara = cara, Posicion = pos, Nivel = niv };
+            db.DepositoEstanteNotas.Add(n);
+        }
+        n.Nota = t; n.At = DateTime.UtcNow; n.Por = por;
+        await db.SaveChangesAsync();
+        return n;
+    }
 
     /// <summary>2026-11-27: un lado del rack que da a una calle.</summary>
     public record CaraDto(int Cara, int? Calle, int? Nro, string Titulo);
@@ -392,14 +418,18 @@ public class DepositoPlanoController : ControllerBase
             .Select(a => new { a.Id, a.Cara, a.Posicion, a.Nivel }).ToListAsync();
         var celdaDe = crudas.ToDictionary(a => a.Id, a => (Cara: NormCara(e, a.Cara), a.Posicion, a.Nivel));
 
+        var notas = await _db.DepositoEstanteNotas.AsNoTracking().Where(n => n.ElementoId == id).ToListAsync();
         // 2026-11-27: un juego de estantes por cada lado que da a una calle
         var estantes = new List<EstanteDto>();
         foreach (var cara in Caras(e))
             for (int pos = 1; pos <= (e.Posiciones ?? 0); pos++)
                 for (int niv = 1; niv <= (e.Niveles ?? 0); niv++)
+                {
+                    var nt = notas.FirstOrDefault(n => NormCara(e, n.Cara) == cara && n.Posicion == pos && n.Nivel == niv);
                     estantes.Add(new EstanteDto(pos, niv, CodigoEstante(e, cara, pos, niv),
                         asigs.Where(a => celdaDe.TryGetValue(a.Id, out var c) && c.Cara == cara && c.Posicion == pos && c.Nivel == niv).ToList(),
-                        cara, DesgloseEstante(e, cara, pos, niv)));
+                        cara, DesgloseEstante(e, cara, pos, niv), nt?.Nota, nt?.Por, nt?.At));
+                }
 
         return Ok(new { elemento = ADto(e, crudas.Count), estantes, caras = CarasDto(e) });
     }
@@ -479,8 +509,13 @@ public class DepositoPlanoController : ControllerBase
         var (rack, cara, pos, niv, error) = await ResolverEstante(codigo);
         if (rack is null) return NotFound(new { error });
         var (calle, nro) = LadoDe(rack, cara);
+        var nota = await _db.DepositoEstanteNotas.AsNoTracking()
+            .FirstOrDefaultAsync(n => n.ElementoId == rack.Id && n.Cara == cara && n.Posicion == pos && n.Nivel == niv);
         return Ok(new
         {
+            nota = nota?.Nota,
+            notaPor = nota?.Por,
+            notaAt = nota?.At,
             rackId = rack.Id,
             planta = rack.Planta,
             rack = rack.Codigo,
@@ -495,6 +530,16 @@ public class DepositoPlanoController : ControllerBase
             posiciones = rack.Posiciones,
             productos = await AsignacionesDe(rack.Id, pos, niv, cara)
         });
+    }
+
+    /// <summary>2026-11-27: comentario libre del estante (vacío lo borra).</summary>
+    [HttpPut("estante/{codigo}/nota")]
+    public async Task<IActionResult> Nota(string codigo, [FromBody] NotaRequest req)
+    {
+        var (rack, cara, pos, niv, error) = await ResolverEstante(codigo);
+        if (rack is null) return NotFound(new { error });
+        var n = await GuardarNotaAsync(_db, rack.Id, cara, pos, niv, req.Nota, Usuario);
+        return Ok(new { nota = n?.Nota, notaPor = n?.Por, notaAt = n?.At });
     }
 
     /// <summary>Guarda un producto en un estante (lo usa el depósito desde el celu). Si ya estaba
