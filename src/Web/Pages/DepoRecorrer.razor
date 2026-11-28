@@ -68,6 +68,15 @@
     .rc-tog button { flex: 1; border: 1px solid #cbd5e1; background: #fff; border-radius: 10px; padding: .55rem .4rem; font: inherit; font-size: .85rem; font-weight: 700; cursor: pointer; }
     .rc-tog button.on { background: #0f172a; color: #fff; border-color: #0f172a; }
     .rc-res-l { display: flex; justify-content: space-between; font-size: .95rem; padding: .55rem .2rem; border-bottom: 1px solid #f1f5f9; }
+    .rc-nota { background: #fefce8; border: 1px solid #fde68a; border-radius: 12px; padding: .6rem .75rem; margin: .2rem 0 .8rem; font-size: .92rem; white-space: pre-wrap; cursor: pointer; }
+    .rc-nota small { display: block; color: #92400e; font-size: .72rem; margin-top: .25rem; }
+    .rc-nota-ed textarea { width: 100%; min-height: 80px; border: 2px solid #0f172a; border-radius: 12px; padding: .55rem .7rem; font: inherit; font-size: 1rem; box-sizing: border-box; }
+    .rc-fila-res { display: flex; gap: .45rem; align-items: stretch; margin-top: .4rem; }
+    .rc-fila-res .rc-res { margin-top: 0; flex: 1; }
+    .rc-tilde { width: 46px; flex: none; border: 2px solid #cbd5e1; background: #fff; border-radius: 12px; font-size: 1.3rem; cursor: pointer; }
+    .rc-tilde.on { background: #16a34a; border-color: #16a34a; color: #fff; }
+    .rc-marca { display: block; width: 100%; margin-top: .45rem; border: 1px dashed #7c3aed; background: #f5f3ff; color: #5b21b6; border-radius: 12px; padding: .6rem; font: inherit; font-weight: 800; cursor: pointer; }
+    .rc-varios { position: sticky; bottom: 0; background: #fff; padding: .6rem 0 .2rem; margin-top: .5rem; border-top: 1px solid #e2e8f0; }
     .rc-x { position: absolute; right: .8rem; top: .7rem; border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; width: 38px; height: 38px; font-size: 1rem; cursor: pointer; }
 </style>
 
@@ -161,10 +170,30 @@
                     var esta = a.Nivel == est.Nivel;
                     <button class="@(esta ? "ac" : a.Revisado ? "ok" : "")" @onclick="() => AbrirEstante(aa.Codigo)">
                         <span class="a">A@(a.Nivel)</span>
-                        <span class="b">@(esta ? "← estás acá" : a.Revisado ? $"✓ {(a.Productos == 0 ? "vacío" : a.Productos + " productos")}" : a.Productos > 0 ? $"{a.Productos} productos · sin revisar" : "sin revisar")</span>
+                        <span class="b">@(esta ? "← estás acá" : a.Revisado ? $"✓ {(a.Productos == 0 ? "vacío" : a.Productos + " productos")}" : a.Productos > 0 ? $"{a.Productos} productos · sin revisar" : "sin revisar")@(a.Nota ? " · 📝" : "")</span>
                     </button>
                 }
             </div>
+
+            @* 2026-11-27: comentario libre del estante *@
+            @if (editandoNota)
+            {
+                <div class="rc-nota-ed">
+                    <textarea maxlength="500" placeholder="Lo que quieras anotar de este estante" @bind="notaTexto" @bind:event="oninput"></textarea>
+                    <div class="rc-dos" style="margin-top:.4rem">
+                        <button class="rc-btn rc-verde" style="margin:0" disabled="@guardando" @onclick="GuardarNota">Guardar comentario</button>
+                        <button class="rc-btn rc-gris" style="margin:0" @onclick="() => editandoNota = false">Cancelar</button>
+                    </div>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(est.Nota))
+            {
+                <div class="rc-nota" title="Tocá para cambiarlo" @onclick="EditarNota">📝 @est.Nota<small>@(est.NotaPor is null ? "" : "por " + est.NotaPor)@(est.NotaAt is DateTime na ? " · " + na.ToArTime().ToString("dd/MM HH:mm") : "") · tocá para cambiarlo</small></div>
+            }
+            else
+            {
+                <div class="rc-mini" style="margin:.1rem 0 .7rem"><button @onclick="EditarNota">📝 Agregar comentario a este estante</button></div>
+            }
 
             @if (est.Productos.Count == 0)
             {
@@ -230,14 +259,44 @@
         else if (hoja == "buscar")
         {
             <div style="font-weight:800">Buscar producto</div>
-            <input class="rc-busca" placeholder="Nombre, SKU o código de barras" value="@busca" @oninput="Buscando" />
+            @if (codigoNuevo is not null)
+            {
+                <div class="rc-aviso" style="margin:.5rem 2.6rem .3rem 0">No conozco el código <b>@codigoNuevo</b>. Buscá el producto por nombre: cuando lo elijas le guardo ese código, y la próxima vez lo encuentra solo.</div>
+            }
+            <input class="rc-busca" placeholder="Nombre, marca, SKU o código de barras" value="@busca" @oninput="Buscando" />
+            @foreach (var m in marcas)
+            {
+                var mm = m;
+                <button class="rc-marca" @onclick="() => TraerMarca(mm.Marca)">Traer todos los de @mm.Marca (@mm.Productos)</button>
+            }
+            @if (marcaTraida is not null)
+            {
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:.5rem; font-size:.85rem; color:#5b21b6; font-weight:700">
+                    <span>Todos los de @marcaTraida (@resultados.Count)</span>
+                    <button class="rc-mini" style="border:none; background:none; color:#5b21b6; font-weight:800; cursor:pointer" @onclick="TildarTodos">@(resultados.All(r => tildados.Contains(r.ProductoId)) ? "Destildar todos" : "Tildar todos")</button>
+                </div>
+            }
             @foreach (var r in resultados)
             {
                 var rr = r;
-                <button class="rc-res" @onclick="() => Elegir(rr)">
-                    <div style="font-weight:700">@r.Nombre</div>
-                    <div style="font-size:.78rem; color:#64748b">@r.Sku · stock @r.Stock@(r.Lugares.Count > 0 ? " · en " + string.Join(", ", r.Lugares.Select(l => l.Codigo)) : " · sin estante")</div>
-                </button>
+                var on = tildados.Contains(r.ProductoId);
+                <div class="rc-fila-res">
+                    @if (codigoNuevo is null)
+                    {
+                        <button class="rc-tilde @(on ? "on" : "")" title="Tildar para guardar varios juntos" @onclick="() => Tildar(rr)">@(on ? "✓" : "")</button>
+                    }
+                    <button class="rc-res" @onclick="() => Elegir(rr)">
+                        <div style="font-weight:700">@r.Nombre</div>
+                        <div style="font-size:.78rem; color:#64748b">@r.Sku · stock @r.Stock@(r.Lugares.Count > 0 ? " · en " + string.Join(", ", r.Lugares.Select(l => l.Codigo)) : " · sin estante")</div>
+                    </button>
+                </div>
+            }
+            @if (tildados.Count > 0 && est is not null)
+            {
+                <div class="rc-varios">
+                    <button class="rc-btn rc-verde" style="margin:0" disabled="@guardando" @onclick="GuardarVarios">📦 Guardar @(tildados.Count) en @est.Codigo · todo su stock</button>
+                    <div style="font-size:.74rem; color:#64748b; text-align:center; margin-top:.3rem">Quedan ubicados acá sin contar (el stock no se toca). Si estaban en otro estante, pasan a este.</div>
+                </div>
             }
         }
         else if (hoja == "producto" && elegido is not null && est is not null)
@@ -297,6 +356,13 @@
     private bool moverHoja = true;
     private string? errorCamara;
     private CancellationTokenSource? ctsBusca;
+    // 2026-11-27: buscar por marca, tildar varios, código de barras que no conocía, comentario del estante
+    private List<RecorridoMarcaDto> marcas = new();
+    private string? marcaTraida;
+    private readonly HashSet<int> tildados = new();
+    private string? codigoNuevo;
+    private bool editandoNota;
+    private string notaTexto = "";
     private DotNetObjectReference<DepoRecorrer>? refJs;
 
     protected override async Task OnInitializedAsync()
@@ -357,6 +423,7 @@
         if (r.Dato is null) { error = r.Error ?? "No encontré ese estante."; StateHasChanged(); return; }
         error = null;
         est = r.Dato;
+        editandoNota = false;
         valores.Clear();
         ajustesEstante = 0;
         var rk = $"{est.RackId}-{est.Cara}";
@@ -456,6 +523,67 @@
     {
         await PararCamara();
         hoja = "buscar"; busca = ""; resultados = new();
+        marcas = new(); marcaTraida = null; tildados.Clear(); codigoNuevo = null;
+    }
+
+    private void EditarNota()
+    {
+        notaTexto = est?.Nota ?? "";
+        editandoNota = true;
+    }
+
+    private async Task GuardarNota()
+    {
+        if (est is null || operador is null) return;
+        guardando = true;
+        var r = await Api.NotaRecorridoAsync(pase!, est.Codigo, operador.Id, notaTexto);
+        guardando = false;
+        if (Vencido(r)) return;
+        if (!r.Dato) { error = r.Error ?? "No se pudo guardar el comentario."; return; }
+        editandoNota = false;
+        await Recargar();
+    }
+
+    private async Task TraerMarca(string marca)
+    {
+        var r = await Api.BuscarMarcaRecorridoAsync(pase!, marca);
+        if (Vencido(r)) return;
+        resultados = r.Dato ?? new();
+        marcaTraida = marca;
+        marcas = new();
+    }
+
+    private void Tildar(RecorridoProductoDto p)
+    {
+        if (!tildados.Remove(p.ProductoId)) tildados.Add(p.ProductoId);
+    }
+
+    private void TildarTodos()
+    {
+        if (resultados.All(r => tildados.Contains(r.ProductoId))) foreach (var r in resultados) tildados.Remove(r.ProductoId);
+        else foreach (var r in resultados) tildados.Add(r.ProductoId);
+    }
+
+    private async Task GuardarVarios()
+    {
+        if (est is null || operador is null || tildados.Count == 0) return;
+        guardando = true; error = null;
+        var ids = tildados.ToList();
+        int ok = 0;
+        foreach (var id in ids)
+        {
+            var r = await Api.ContarRecorridoAsync(pase!, est.Codigo, operador.Id, id, null, true, true);
+            if (Vencido(r)) { guardando = false; return; }
+            if (r.Dato is null) { error = r.Error ?? "No se pudo guardar alguno."; continue; }
+            ok++;
+            resRack.Contados++;
+            if (r.Dato.Nuevo) resRack.Nuevos++;
+            tildados.Remove(id);
+        }
+        guardando = false;
+        aviso = $"{ok} productos ubicados en {est.Codigo} con todo su stock.";
+        if (tildados.Count == 0) { hoja = null; marcaTraida = null; }
+        await Recargar();
     }
 
     [JSInvokable]
@@ -480,8 +608,14 @@
         var r = await Api.BuscarRecorridoAsync(pase!, text);
         if (Vencido(r)) return;
         var lista = r.Dato ?? new();
-        if (lista.Count == 1) Elegir(lista[0]);
-        else { hoja = "buscar"; busca = text; resultados = lista; if (lista.Count == 0) error = $"No encontré ningún producto con el código {text}."; }
+        if (lista.Count == 1) await Elegir(lista[0]);
+        else if (lista.Count == 0)
+        {
+            // 2026-11-27: código que el sistema no conoce: lo buscan por nombre y se le guarda
+            hoja = "buscar"; busca = ""; resultados = new(); marcas = new(); marcaTraida = null; tildados.Clear();
+            codigoNuevo = text;
+        }
+        else { hoja = "buscar"; busca = text; resultados = lista; codigoNuevo = null; }
         await InvokeAsync(StateHasChanged);
     }
 
@@ -498,14 +632,25 @@
         ctsBusca?.Cancel();
         var cts = ctsBusca = new CancellationTokenSource();
         try { await Task.Delay(300, cts.Token); } catch { return; }
-        if (busca.Trim().Length < 2) { resultados = new(); return; }
+        marcaTraida = null;
+        if (busca.Trim().Length < 2) { resultados = new(); marcas = new(); return; }
         var r = await Api.BuscarRecorridoAsync(pase!, busca.Trim());
         if (cts.IsCancellationRequested || Vencido(r)) return;
         resultados = r.Dato ?? new();
+        var rm = await Api.MarcasRecorridoAsync(pase!, busca.Trim());
+        if (cts.IsCancellationRequested) return;
+        marcas = rm.Dato ?? new();
     }
 
-    private void Elegir(RecorridoProductoDto p)
+    private async Task Elegir(RecorridoProductoDto p)
     {
+        if (codigoNuevo is not null && operador is not null)
+        {
+            var bc = codigoNuevo; codigoNuevo = null;
+            var rb = await Api.BarcodeRecorridoAsync(pase!, p.ProductoId, operador.Id, bc);
+            if (Vencido(rb)) return;
+            aviso = rb.Dato ? $"Le guardé el código {bc} a {p.Nombre}." : null;
+        }
         elegido = p;
         var ya = est?.Productos.FirstOrDefault(x => x.ProductoId == p.ProductoId);
         cantHoja = ya?.Contado ?? (p.Lugares.Count == 0 ? p.Stock : 0);

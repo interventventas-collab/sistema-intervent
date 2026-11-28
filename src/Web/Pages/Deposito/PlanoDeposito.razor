@@ -716,7 +716,7 @@
                                 var cod = est?.Codigo ?? ApiClient.CodigoEstante(el, caraVista, p, n);
                                 var hit = string.Equals(cod, celdaSel, StringComparison.OrdinalIgnoreCase);
                                 <button class="pd-cel @(hit ? "hit" : "")" title="@(est?.Desglose ?? ApiClient.DesgloseEstante(cod))" @onclick="@(() => ElegirCelda(cod))">
-                                    <span class="pd-cod">@cod</span><br />
+                                    <span class="pd-cod">@cod</span>@if (!string.IsNullOrWhiteSpace(est?.Nota)) { <span title="@est!.Nota"> 📝</span> }<br />
                                     @if (est is null || est.Productos.Count == 0)
                                     {
                                         <span class="pd-vac">vacío</span>
@@ -727,6 +727,8 @@
                                         {
                                             var buscado = productoBuscado == pr.ProductoId;
                                             <span>@if (buscado) { <b>@pr.Nombre</b> } else { @pr.Nombre }@if (!string.IsNullOrWhiteSpace(pr.Cantidad)) { <span class="pd-g"> · @pr.Cantidad</span> }</span><br />
+                                            @* 2026-11-27: SKU y stock a la vista *@
+                                            <span class="pd-g pd-skustk">@(string.IsNullOrWhiteSpace(pr.Sku) ? "" : pr.Sku + " · ")stock @(pr.Stock ?? 0)</span><br />
                                         }
                                         @if (est.Productos.Count > 3)
                                         {
@@ -749,6 +751,23 @@
                     <div class="pd-est">
                         <h4><span class="pd-cod" style="font-size:1rem">@celdaSel</span> <span class="pd-g">· @(est?.Desglose ?? ApiClient.DesgloseEstante(celdaSel))</span></h4>
                         <button class="pd-btn" style="margin:0 0 10px" disabled="@imprimiendo" @onclick="@(() => ImprimirEtiquetas(celdaSel))">🖨 Imprimir solo esta etiqueta</button>
+                        @* 2026-11-27: comentario libre del estante *@
+                        @if (notaEditando == celdaSel)
+                        {
+                            <div style="margin-bottom:10px">
+                                <textarea maxlength="500" style="width:100%;min-height:64px;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:6px 8px;font:inherit" placeholder="Lo que quieras anotar de este estante" @bind="notaTexto" @bind:event="oninput"></textarea>
+                                <button class="pd-btn" @onclick="GuardarNotaEstante">Guardar comentario</button>
+                                <button class="pd-btn" @onclick="@(() => notaEditando = null)">Cancelar</button>
+                            </div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(est?.Nota))
+                        {
+                            <div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:6px 8px;margin-bottom:10px;white-space:pre-wrap;cursor:pointer" title="Clic para cambiarlo" @onclick="@(() => EditarNotaEstante(est))">📝 @est!.Nota<div class="pd-g" style="font-size:.75rem">@(est.NotaPor is null ? "" : "por " + est.NotaPor)@(est.NotaAt is DateTime na ? " · " + na.ToArTime().ToString("dd/MM HH:mm") : "") · clic para cambiarlo</div></div>
+                        }
+                        else
+                        {
+                            <button class="pd-btn" style="margin:0 0 10px 6px" @onclick="@(() => EditarNotaEstante(est))">📝 Agregar comentario</button>
+                        }
                         @if (est is null || est.Productos.Count == 0)
                         {
                             <div class="pd-g" style="margin-bottom:8px">Este estante está vacío.</div>
@@ -760,7 +779,7 @@
                                 var prr = pr;
                                 <div class="pd-prod">
                                     <div>
-                                        <b>@pr.Nombre</b> <span class="pd-sku">@pr.Sku</span>
+                                        <b>@pr.Nombre</b> <span class="pd-sku">@pr.Sku</span> <span class="pd-g">· stock @(pr.Stock ?? 0)</span>
                                         @if (!string.IsNullOrWhiteSpace(pr.Cantidad)) { <span> · @pr.Cantidad</span> }
                                         @if (!string.IsNullOrWhiteSpace(pr.Nota)) { <div class="pd-g">@pr.Nota</div> }
                                         @if (pr.At is not null || !string.IsNullOrWhiteSpace(pr.Por))
@@ -1033,6 +1052,28 @@
 
     private void ElegirCelda(string cod)
         => celdaSel = string.Equals(celdaSel, cod, StringComparison.OrdinalIgnoreCase) ? null : cod;
+
+    private string? notaEditando;
+    private string notaTexto = "";
+
+    private void EditarNotaEstante(PlanoEstanteDto? e)
+    {
+        notaEditando = celdaSel;
+        notaTexto = e?.Nota ?? "";
+    }
+
+    private async Task GuardarNotaEstante()
+    {
+        if (notaEditando is null) return;
+        try
+        {
+            await Api.GuardarNotaEstanteAsync(notaEditando, notaTexto);
+            notaEditando = null;
+            ToastService.Success("Comentario guardado");
+            await RecargarRack();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
 
     private async Task SacarProducto(PlanoAsignacionDto pr)
     {
@@ -1560,8 +1601,10 @@
     };
 
     private static string Titulo(PlanoElementoDto e)
-        => !string.IsNullOrWhiteSpace(e.Nombre) ? e.Nombre!
-         : e.Tipo == "rack" ? (e.Fila is not null ? $"Rack {ApiClient.NombreRack(e)}" : $"Rack {e.Codigo}")
+        // 2026-11-27: un rack con fila se llama siempre F4-R1 (el nombre viejo guardado, "Rack D1", ya no va)
+        => e.Tipo == "rack" && e.Fila is not null && e.NroFila is not null ? $"Rack {ApiClient.NombreRack(e)}"
+         : !string.IsNullOrWhiteSpace(e.Nombre) ? e.Nombre!
+         : e.Tipo == "rack" ? $"Rack {e.Codigo}"
          : NombreTipo(e.Tipo);
 
     public async ValueTask DisposeAsync()

@@ -93,6 +93,8 @@ public class PlanoAsignacionDto
     public string? Nota { get; set; }
     public DateTime? At { get; set; }
     public string? Por { get; set; }
+    /// <summary>Stock total del producto (2026-11-27: se ve en la vista de frente del rack).</summary>
+    public int? Stock { get; set; }
 }
 
 public class PlanoEstanteDto
@@ -104,6 +106,10 @@ public class PlanoEstanteDto
     /// <summary>2026-11-27: de qué lado del rack (1 o 2) y escrito ("Calle 3 · Rack 4 · Altura 3").</summary>
     public int Cara { get; set; } = 1;
     public string? Desglose { get; set; }
+    /// <summary>2026-11-27: comentario libre del estante.</summary>
+    public string? Nota { get; set; }
+    public string? NotaPor { get; set; }
+    public DateTime? NotaAt { get; set; }
 }
 
 /// <summary>2026-11-27: un lado del rack que da a una calle.</summary>

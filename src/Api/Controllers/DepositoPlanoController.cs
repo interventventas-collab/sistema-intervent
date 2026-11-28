@@ -75,10 +75,36 @@ public class DepositoPlanoController : ControllerBase
     }
 
     public record AsignacionDto(int Id, int ProductoId, string? Sku, string Nombre,
-        string? Cantidad, string? Nota, DateTime At, string? Por);
+        string? Cantidad, string? Nota, DateTime At, string? Por, int? Stock = null);
 
     public record EstanteDto(int Posicion, int Nivel, string Codigo, List<AsignacionDto> Productos,
-        int Cara = 1, string? Desglose = null);
+        int Cara = 1, string? Desglose = null, string? Nota = null, string? NotaPor = null, DateTime? NotaAt = null);
+
+    public class NotaRequest
+    {
+        public string? Nota { get; set; }
+    }
+
+    /// <summary>2026-11-27: guarda (o borra, si viene vacío) el comentario de un estante.</summary>
+    public static async Task<DepositoEstanteNota?> GuardarNotaAsync(AppDbContext db, int rackId, int cara, int pos, int niv, string? texto, string? por)
+    {
+        var t = (texto ?? "").Trim();
+        if (t.Length > 500) t = t[..500];
+        var n = await db.DepositoEstanteNotas.FirstOrDefaultAsync(x => x.ElementoId == rackId && x.Cara == cara && x.Posicion == pos && x.Nivel == niv);
+        if (t.Length == 0)
+        {
+            if (n is not null) { db.DepositoEstanteNotas.Remove(n); await db.SaveChangesAsync(); }
+            return null;
+        }
+        if (n is null)
+        {
+            n = new DepositoEstanteNota { ElementoId = rackId, Cara = cara, Posicion = pos, Nivel = niv };
+            db.DepositoEstanteNotas.Add(n);
+        }
+        n.Nota = t; n.At = DateTime.UtcNow; n.Por = por;
+        await db.SaveChangesAsync();
+        return n;
+    }
 
     /// <summary>2026-11-27: un lado del rack que da a una calle.</summary>
     public record CaraDto(int Cara, int? Calle, int? Nro, string Titulo);
@@ -176,11 +202,11 @@ public class DepositoPlanoController : ControllerBase
         var lista = await q
             .Join(_db.CafeProductos.AsNoTracking(), a => a.ProductoId, p => p.Id, (a, p) => new
             {
-                a.Id, a.Posicion, a.Nivel, a.ProductoId, p.Sku, p.Nombre, a.Cantidad, a.Nota, a.At, a.Por
+                a.Id, a.Posicion, a.Nivel, a.ProductoId, p.Sku, p.Nombre, a.Cantidad, a.Nota, a.At, a.Por, p.StockUnidades
             })
             .OrderBy(x => x.Nombre)
             .ToListAsync();
-        return lista.Select(x => new AsignacionDto(x.Id, x.ProductoId, x.Sku, x.Nombre, x.Cantidad, x.Nota, x.At, x.Por)).ToList();
+        return lista.Select(x => new AsignacionDto(x.Id, x.ProductoId, x.Sku, x.Nombre, x.Cantidad, x.Nota, x.At, x.Por, x.StockUnidades)).ToList();
     }
 
     // ───────────────────────── Plano ─────────────────────────
@@ -392,14 +418,18 @@ public class DepositoPlanoController : ControllerBase
             .Select(a => new { a.Id, a.Cara, a.Posicion, a.Nivel }).ToListAsync();
         var celdaDe = crudas.ToDictionary(a => a.Id, a => (Cara: NormCara(e, a.Cara), a.Posicion, a.Nivel));
 
+        var notas = await _db.DepositoEstanteNotas.AsNoTracking().Where(n => n.ElementoId == id).ToListAsync();
         // 2026-11-27: un juego de estantes por cada lado que da a una calle
         var estantes = new List<EstanteDto>();
         foreach (var cara in Caras(e))
             for (int pos = 1; pos <= (e.Posiciones ?? 0); pos++)
                 for (int niv = 1; niv <= (e.Niveles ?? 0); niv++)
+                {
+                    var nt = notas.FirstOrDefault(n => NormCara(e, n.Cara) == cara && n.Posicion == pos && n.Nivel == niv);
                     estantes.Add(new EstanteDto(pos, niv, CodigoEstante(e, cara, pos, niv),
                         asigs.Where(a => celdaDe.TryGetValue(a.Id, out var c) && c.Cara == cara && c.Posicion == pos && c.Nivel == niv).ToList(),
-                        cara, DesgloseEstante(e, cara, pos, niv)));
+                        cara, DesgloseEstante(e, cara, pos, niv), nt?.Nota, nt?.Por, nt?.At));
+                }
 
         return Ok(new { elemento = ADto(e, crudas.Count), estantes, caras = CarasDto(e) });
     }
@@ -479,8 +509,13 @@ public class DepositoPlanoController : ControllerBase
         var (rack, cara, pos, niv, error) = await ResolverEstante(codigo);
         if (rack is null) return NotFound(new { error });
         var (calle, nro) = LadoDe(rack, cara);
+        var nota = await _db.DepositoEstanteNotas.AsNoTracking()
+            .FirstOrDefaultAsync(n => n.ElementoId == rack.Id && n.Cara == cara && n.Posicion == pos && n.Nivel == niv);
         return Ok(new
         {
+            nota = nota?.Nota,
+            notaPor = nota?.Por,
+            notaAt = nota?.At,
             rackId = rack.Id,
             planta = rack.Planta,
             rack = rack.Codigo,
@@ -495,6 +530,16 @@ public class DepositoPlanoController : ControllerBase
             posiciones = rack.Posiciones,
             productos = await AsignacionesDe(rack.Id, pos, niv, cara)
         });
+    }
+
+    /// <summary>2026-11-27: comentario libre del estante (vacío lo borra).</summary>
+    [HttpPut("estante/{codigo}/nota")]
+    public async Task<IActionResult> Nota(string codigo, [FromBody] NotaRequest req)
+    {
+        var (rack, cara, pos, niv, error) = await ResolverEstante(codigo);
+        if (rack is null) return NotFound(new { error });
+        var n = await GuardarNotaAsync(_db, rack.Id, cara, pos, niv, req.Nota, Usuario);
+        return Ok(new { nota = n?.Nota, notaPor = n?.Por, notaAt = n?.At });
     }
 
     /// <summary>Guarda un producto en un estante (lo usa el depósito desde el celu). Si ya estaba
@@ -530,7 +575,7 @@ public class DepositoPlanoController : ControllerBase
         prod.UbicacionDudosaPor = null;
 
         await _db.SaveChangesAsync();
-        return Ok(new AsignacionDto(a.Id, prod.Id, prod.Sku, prod.Nombre, a.Cantidad, a.Nota, a.At, a.Por));
+        return Ok(new AsignacionDto(a.Id, prod.Id, prod.Sku, prod.Nombre, a.Cantidad, a.Nota, a.At, a.Por, prod.StockUnidades));
     }
 
     /// <summary>Saca un producto de un estante. Si la ubicación del producto apuntaba a ese estante,
@@ -708,11 +753,17 @@ public class DepositoPlanoController : ControllerBase
                 var url = $"{o}/deposito/estante/{cod}";
                 // 2026-11-27: mismo rollo que las etiquetas de envío de MeLi (10 x 20 cm, troquel arriba).
                 sb.Append("^XA\n^CI28\n^PW812\n^LL1624\n^LH0,0\n");
-                // troquel (talón de arriba, como en MeLi)
+                // troquel (talón de arriba, como en MeLi). 2026-11-27: es el cartel de ALTURA que se pega en
+                // el estante donde va la mercadería (el QR grande de abajo se pega a una altura cómoda para
+                // escanear): A3 grande en negro, el código, y el mismo QR chico (aumento 7, se lee bien).
                 sb.Append("^FO16,16^GB780,268,2^FS\n");
-                sb.Append($"^FO30,36^A0N,96,80^FB750,1,0,L,0^FD{cod}^FS\n");
-                sb.Append($"^FO30,150^A0N,40,36^FB750,1,0,L,0^FD{desglose}^FS\n");
-                sb.Append("^FO30,215^A0N,28,26^FB750,1,0,L,0^FDRecortá esta parte antes de pegar en el estante^FS\n");
+                sb.Append("^FO28,26^GB230,248,248^FS\n");
+                sb.Append($"^FO28,40^A0N,220,{(niv < 10 ? 130 : 88)}^FR^FB230,1,0,C,0^FDA{niv}^FS\n");
+                sb.Append($"^FO282,36^A0N,34,30^FB262,1,0,L,0^FDALTURA {niv}^FS\n");
+                sb.Append("^FO282,76^A0N,24,22^FB262,1,0,L,0^FDcontando desde el piso^FS\n");
+                sb.Append($"^FO282,130^A0N,46,{(cod.Length <= 11 ? 32 : 24)}^FB262,1,0,L,0^FD{cod}^FS\n");
+                sb.Append("^FO282,190^A0N,24,22^FB262,3,0,L,0^FDPegalo en el estante donde va la mercadería^FS\n");
+                sb.Append($"^FO552,14^BQN,2,7^FDLA,{url}^FS\n");
                 // La parte grande de abajo va ACOSTADA (se pega a lo largo del fierro del rack, que es
                 // angosto): campos girados (R), se lee girando la etiqueta. A la izquierda el código
                 // grande y abajo ESCRITO (calle · rack · altura), a la derecha el QR.

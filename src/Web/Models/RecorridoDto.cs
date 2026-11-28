@@ -42,6 +42,10 @@ public class RecorridoEstanteDto
     public int Nivel { get; set; }
     public int Niveles { get; set; }
     public bool Revisado { get; set; }
+    // 2026-11-27: comentario libre del estante
+    public string? Nota { get; set; }
+    public string? NotaPor { get; set; }
+    public DateTime? NotaAt { get; set; }
     public List<RecorridoAlturaDto> Alturas { get; set; } = new();
     public string? Siguiente { get; set; }
     public bool CambiaRack { get; set; }
@@ -53,6 +57,13 @@ public class RecorridoAlturaDto
     public int Nivel { get; set; }
     public string Codigo { get; set; } = "";
     public bool Revisado { get; set; }
+    public int Productos { get; set; }
+    public bool Nota { get; set; }
+}
+
+public class RecorridoMarcaDto
+{
+    public string Marca { get; set; } = "";
     public int Productos { get; set; }
 }
 

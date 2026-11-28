@@ -56,6 +56,14 @@ public partial class ApiClient
         return await resp.Content.ReadFromJsonAsync<PlanoAsignacionDto>();
     }
 
+    /// <summary>2026-11-27: comentario libre del estante (vacío lo borra).</summary>
+    public async Task GuardarNotaEstanteAsync(string codigo, string? nota)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync($"/api/deposito/plano/estante/{Uri.EscapeDataString(codigo)}/nota", new { nota });
+        await ThrowIfErrorAsync(resp);
+    }
+
     public async Task SacarProductoDeEstanteAsync(int asignacionId)
     {
         await SetAuthHeaderAsync();
