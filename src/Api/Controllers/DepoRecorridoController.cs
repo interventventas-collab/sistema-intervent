@@ -125,6 +125,11 @@ public class DepoRecorridoController : ControllerBase
     public async Task<IActionResult> Estante(string codigo)
     {
         if (!_clave.PaseValido(Request)) return PaseVencido();
+        // 2026-11-28: etiqueta única del rack (sin altura): devuelve las alturas para elegir
+        var (rackE, caraE, errorE) = await DepositoPlanoController.ResolverRackAsync(_db, codigo);
+        if (errorE is not null) return NotFound(new { error = errorE });
+        if (rackE is not null)
+            return Ok(await DepositoPlanoController.ElegirAlturaAsync(_db, rackE, caraE, await RevisadosAsync(await DesdeAsync())));
         var (rack, cara, pos, niv, error) = await DepositoPlanoController.ResolverEstanteAsync(_db, codigo);
         if (rack is null) return NotFound(new { error });
         var desde = await DesdeAsync();

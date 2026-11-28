@@ -50,11 +50,16 @@ public class RecorridoEstanteDto
     public string? Siguiente { get; set; }
     public bool CambiaRack { get; set; }
     public List<RecorridoProductoDto> Productos { get; set; } = new();
+    /// <summary>2026-11-28: true = el código era del rack entero (etiqueta única): hay que elegir la altura.</summary>
+    public bool Elegir { get; set; }
+    public string? Forma { get; set; }
+    public int Posiciones { get; set; } = 1;
 }
 
 public class RecorridoAlturaDto
 {
     public int Nivel { get; set; }
+    public int Posicion { get; set; } = 1;
     public string Codigo { get; set; } = "";
     public bool Revisado { get; set; }
     public int Productos { get; set; }

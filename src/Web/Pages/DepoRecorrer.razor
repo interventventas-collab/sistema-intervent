@@ -39,6 +39,10 @@
     .rc-prog i { display: block; height: 100%; background: #16a34a; }
     .rc-ops { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
     .rc-op { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 1rem .6rem; font: inherit; font-weight: 800; font-size: 1.05rem; cursor: pointer; }
+    .rc-eleg button { display: flex; align-items: center; width: 100%; border: 2px solid #1f2937; border-radius: 12px; background: #fff; padding: .9rem 1rem; margin: 0 0 .5rem; font: inherit; cursor: pointer; text-align: left; }
+    .rc-eleg button.ok { border-color: #16a34a; background: #f0fdf4; }
+    .rc-eleg .a { font-family: ui-monospace, monospace; font-weight: 800; font-size: 1.5rem; }
+    .rc-eleg .b { margin-left: auto; color: #64748b; font-size: .9rem; }
     .rc-alt { display: flex; flex-direction: column-reverse; gap: 4px; margin-bottom: .8rem; }
     .rc-alt button { display: flex; align-items: center; gap: .5rem; border: none; background: none; padding: 0; font: inherit; cursor: pointer; text-align: left; }
     .rc-alt .a { width: 34px; font-family: ui-monospace, monospace; font-weight: 800; color: #64748b; font-size: .85rem; }
@@ -151,6 +155,29 @@
                 <div class="rc-vacio">🎉 @(est.Calle is null ? "Listo." : $"Terminaste la calle {est.Calle}.")</div>
             }
             <button class="rc-btn rc-gris" @onclick="VolverACalles">Volver a las calles</button>
+        </div>
+    }
+    else if (vista == "elegir" && est is not null)
+    {
+        @* 2026-11-28: escanearon la etiqueta única del rack: elegir la altura (de arriba hacia abajo) *@
+        <div class="rc-bar">
+            <div class="t"><span>@est.Desglose</span><button @onclick="VolverACalles">calles</button></div>
+            <div class="rc-cod">@est.Codigo</div>
+            <div class="rc-desg">¿Qué altura?</div>
+        </div>
+        <div class="rc-cont">
+            @if (error is not null) { <div class="rc-error">@error</div> }
+            <div class="rc-eleg">
+                @foreach (var a in est.Alturas)
+                {
+                    var aa = a;
+                    <button class="@(a.Revisado ? "ok" : "")" @onclick="() => AbrirEstante(aa.Codigo)">
+                        <span class="a">A@(a.Nivel)@(est.Posiciones > 1 ? $"·P{a.Posicion}" : "")</span>
+                        <span class="b">@(a.Nivel == est.Niveles && a.Nivel > 1 ? "arriba · " : a.Nivel == 1 && est.Fila is not null ? "el piso · " : "")@(a.Revisado ? "✓ " : "")@(a.Productos == 0 ? "vacío" : a.Productos == 1 ? "1 producto" : a.Productos + " productos")@(a.Nota ? " · 📝" : "")</span>
+                    </button>
+                }
+            </div>
+            <button class="rc-btn rc-negro" @onclick="EscanearEstante">📷 Escanear otro rack</button>
         </div>
     }
     else if (est is not null)
@@ -423,6 +450,13 @@
         if (r.Dato is null) { error = r.Error ?? "No encontré ese estante."; StateHasChanged(); return; }
         error = null;
         est = r.Dato;
+        if (est.Elegir)
+        {
+            vista = "elegir";
+            StateHasChanged();
+            try { await JS.InvokeVoidAsync("window.scrollTo", 0, 0); } catch { }
+            return;
+        }
         editandoNota = false;
         valores.Clear();
         ajustesEstante = 0;
