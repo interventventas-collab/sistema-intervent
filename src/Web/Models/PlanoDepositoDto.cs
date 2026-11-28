@@ -116,6 +116,8 @@ public class PlanoAsignacionDto
     public string? Por { get; set; }
     /// <summary>Stock total del producto (2026-11-27: se ve en la vista de frente del rack).</summary>
     public int? Stock { get; set; }
+    /// <summary>2026-11-28: foto del producto (la propia del sistema o la de MeLi). Null = sin foto.</summary>
+    public string? Foto { get; set; }
 }
 
 public class PlanoEstanteDto

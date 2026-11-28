@@ -18,6 +18,8 @@
     .ed-prod > div { flex: 1; min-width: 0; }
     .ed-sku { font-family: monospace; color: #6b7280; font-size: 0.82rem; }
     .ed-gris { color: #6b7280; font-size: 0.88rem; }
+    .ed-foto { width: 56px; height: 56px; object-fit: contain; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; display: block; flex-shrink: 0; }
+    .ed-foto0 { width: 56px; height: 56px; border-radius: 8px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; flex-shrink: 0; }
     .ed-x { border: 1px solid #e5e7eb; background: #fff; border-radius: 10px; width: 44px; height: 44px; font-size: 1.1rem; color: #6b7280; cursor: pointer; flex-shrink: 0; }
     .ed-alt { display: flex; align-items: center; width: 100%; border: 2px solid #1f2937; border-radius: 12px; background: #fff; padding: 1rem 1rem; margin: 0.5rem 0; cursor: pointer; text-align: left; }
     .ed-alt b { font-size: 1.6rem; font-family: monospace; }
@@ -66,8 +68,17 @@
         {
             var pp = p;
             <div class="ed-prod">
+                @* 2026-11-28: foto del producto y stock *@
+                @if (p.Foto is not null)
+                {
+                    <a href="@p.Foto" target="_blank"><img class="ed-foto" src="@p.Foto" loading="lazy" alt="" /></a>
+                }
+                else
+                {
+                    <span class="ed-foto0">📦</span>
+                }
                 <div>
-                    <b>@p.Nombre</b> <span class="ed-sku">@p.Sku</span>
+                    <b>@p.Nombre</b> <span class="ed-sku">@p.Sku</span> <span class="ed-gris">· stock @(p.Stock ?? 0)</span>
                     @if (!string.IsNullOrWhiteSpace(p.Cantidad)) { <div>@p.Cantidad</div> }
                     @if (!string.IsNullOrWhiteSpace(p.Nota)) { <div class="ed-gris">@p.Nota</div> }
                 </div>

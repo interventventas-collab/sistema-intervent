@@ -181,6 +181,8 @@
 .p3-est .pr { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid #fde68a; font-size: 13.5px; }
 .p3-est .pr > div { flex: 1; min-width: 0; }
 .p3-est .pr .k { color: #78716c; font-size: 12px; }
+.p3-est .pr img.fp, .p3-est .pr .fp0 { width: 40px; height: 40px; border-radius: 6px; flex: none; background: #fff; border: 1px solid #fde68a; object-fit: contain; cursor: zoom-in; }
+.p3-est .pr .fp0 { display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: default; background: #fef3c7; }
 .p3-est .x { border: 1px solid #e7e5e4; background: #fff; border-radius: 8px; width: 32px; height: 32px; cursor: pointer; color: #6b7280; flex-shrink: 0; }
 .p3-est .vac { color: #a8a29e; font-style: italic; font-size: 13px; padding: 4px 0; }
 .p3-est input { width: 100%; box-sizing: border-box; border: 1px solid #d6d3d1; border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 14px; margin-top: 8px; background: #fff; }
@@ -732,7 +734,7 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
                         ${x.dibujo ? `<input data-dtexto="${esc(x.codigo)}" placeholder="texto, ej. Café crudo de importación" value="${esc(x.dibujoTexto || '')}" style="margin-top:0" />` : ''}` : ''}
                     <div class="ft">${x.foto ? `<img src="${esc(x.foto)}" data-grande="${esc(x.foto)}" title="Ver grande" />` : ''}
                       ${d.editar ? `<label>${x.foto ? '📷 Cambiar foto' : '📷 Agregar foto'}<input type="file" accept="image/*" data-foto="${esc(x.codigo)}" hidden /></label>${x.foto ? `<label data-sinfoto="${esc(x.codigo)}">Sacar foto</label>` : ''}` : ''}</div>
-                    ${x.productos.length ? x.productos.map(p => `<div class="pr"><div><b>${esc(p.nombre)}</b>${p.cantidad ? ' · ' + esc(p.cantidad) : ''}<div class="k">${esc([p.sku, 'stock ' + (p.stock ?? 0)].filter(Boolean).join(' · '))}</div></div>${d.editar ? `<button class="x" data-sacar="${p.id}" title="Sacar de este estante">✕</button>` : ''}</div>`).join('')
+                    ${x.productos.length ? x.productos.map(p => `<div class="pr">${p.foto ? `<img class="fp" src="${esc(p.foto)}" data-grande="${esc(p.foto)}" loading="lazy" title="Ver grande" alt="" />` : '<span class="fp0" title="Sin foto">📦</span>'}<div><b>${esc(p.nombre)}</b>${p.cantidad ? ' · ' + esc(p.cantidad) : ''}<div class="k">${esc([p.sku, 'stock ' + (p.stock ?? 0)].filter(Boolean).join(' · '))}</div></div>${d.editar ? `<button class="x" data-sacar="${p.id}" title="Sacar de este estante">✕</button>` : ''}</div>`).join('')
                                          : '<div class="vac">Vacío</div>'}
                     ${d.editar ? `<input type="search" data-cod="${esc(x.codigo)}" placeholder="+ Agregar un producto acá (nombre o SKU)" autocomplete="off" /><div class="rs"></div>` : ''}
                   </div>`).join('');
