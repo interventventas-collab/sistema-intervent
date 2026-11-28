@@ -1,0 +1,13 @@
+# Camaras que se leen a traves del tunel. Cada local corre su propio go2rtc en la PC, que
+# lee las camaras de su red y las ofrece en el puerto 8554 (RTSP) de su IP del tunel,
+# con usuario "camaras" y la clave CAM_RTSP_PASS del .env.
+# Acá solo se piden cuando alguien mira (go2rtc no tira de la camara si nadie la ve).
+api:
+  listen: ":1984"        # solo se publica en 127.0.0.1 del servidor (ver docker-compose)
+rtsp:
+  listen: ""             # el servidor no ofrece RTSP afuera
+webrtc:
+  listen: ""
+streams:
+  # Tostadero (PC 10.13.13.2)
+  frikaf: rtsp://camaras:${CAM_RTSP_PASS}@10.13.13.2:8554/frikaf

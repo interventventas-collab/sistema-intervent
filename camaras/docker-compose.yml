@@ -1,0 +1,27 @@
+# Tunel de camaras (WireGuard + go2rtc). Va aparte: no toca ni dev ni prod.
+# Levantar:  docker compose -f camaras/docker-compose.yml --env-file .env up --build -d
+# Config de un local para su PC:  docker exec aiml-camaras-tunel cat /data/locales/tostadero.conf
+# OJO: el firewall de DonWeb tiene que dejar pasar UDP 51820.
+name: aiml-camaras
+services:
+  tunel:
+    build: .
+    container_name: aiml-camaras-tunel
+    cap_add: [NET_ADMIN]
+    environment:
+      - LOCALES=tostadero:2
+      - IP_PUBLICA=179.43.123.134
+      - CAM_RTSP_PASS=${CAM_RTSP_PASS}   # clave con la que el servidor le pide video a cada PC
+    ports:
+      - "51820:51820/udp"          # las PCs de los locales entran por aca
+      - "127.0.0.1:1984:1984"      # go2rtc: SOLO desde el propio servidor
+    volumes:
+      - camaras_data:/data
+      - ./conf:/conf:ro
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
+
+volumes:
+  camaras_data:
