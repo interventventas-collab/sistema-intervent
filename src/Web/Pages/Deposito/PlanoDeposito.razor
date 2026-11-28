@@ -185,6 +185,22 @@
             {
                 @if (!editar)
                 {
+                    @* 2026-11-28: el PIN que pide el QR del estante a los que no tienen usuario *@
+                    <div class="pd-capas-w">
+                        <button class="pd-btn @(verPin ? "prim" : "")" @onclick="AbrirPin">🔒 PIN del QR</button>
+                        @if (verPin)
+                        {
+                            <div class="pd-capas" style="width:280px">
+                                <h4>PIN del QR de los estantes</h4>
+                                <div class="pd-g" style="margin-bottom:8px">Lo pide el celu del que escanea una etiqueta sin usuario, una sola vez. Si lo cambiás, todos los celus lo tienen que volver a poner.</div>
+                                <div style="display:flex;gap:6px;align-items:center">
+                                    <input style="width:110px;font-family:monospace;font-size:1.3rem;font-weight:800;letter-spacing:.15em;text-align:center;border:1px solid #d1d5db;border-radius:8px;padding:4px" inputmode="numeric" maxlength="8" value="@pinNuevo" @oninput="@(e => pinNuevo = e.Value?.ToString() ?? "")" />
+                                    <button class="pd-btn prim" disabled="@(guardandoPin || pinNuevo.Trim() == pinActual)" @onclick="GuardarPin">@(guardandoPin ? "Guardando…" : "Guardar")</button>
+                                </div>
+                                <div class="pd-g" style="margin-top:6px">De 4 a 8 números.@(pinActual is null ? "" : $" Hoy es {pinActual}.")</div>
+                            </div>
+                        }
+                    </div>
                     <button class="pd-btn" @onclick="EntrarEditar">✏ Editar plano</button>
                 }
                 else
@@ -1097,6 +1113,33 @@
     };
     private HashSet<string> capasOn = new(CapasTodo);
     private bool verCapas;
+    private bool verPin, guardandoPin;
+    private string? pinActual;
+    private string pinNuevo = "";
+
+    private async Task AbrirPin()
+    {
+        verPin = !verPin;
+        if (!verPin) return;
+        try { pinActual = await Api.GetPinPublicoAsync(); } catch { pinActual = null; }
+        pinNuevo = pinActual ?? "";
+    }
+
+    private async Task GuardarPin()
+    {
+        var p = pinNuevo.Trim();
+        if (!System.Text.RegularExpressions.Regex.IsMatch(p, @"^\d{4,8}$")) { ToastService.Error("El PIN tiene que ser de 4 a 8 números."); return; }
+        guardandoPin = true;
+        try
+        {
+            await Api.GuardarPinPublicoAsync(p);
+            pinActual = p;
+            ToastService.Success($"Listo, el PIN ahora es {p}. Los celus lo van a tener que poner de nuevo.");
+            verPin = false;
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { guardandoPin = false; }
+    }
 
     private static string CapaDe(PlanoElementoDto e) => e.Tipo switch
     {

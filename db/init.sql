@@ -9461,3 +9461,18 @@ GO
 IF COL_LENGTH('Deposito_PlanoElementos', 'AlturasCm') IS NULL
     ALTER TABLE Deposito_PlanoElementos ADD AlturasCm NVARCHAR(80) NULL;
 GO
+-- 28/11/2026: ajustes sueltos del depósito (PIN del QR del estante para los que no tienen usuario).
+-- ⚠ En PROD correr a mano ANTES de publicar la API. El PIN arranca en 6138 (se cambia desde el plano).
+IF OBJECT_ID('Deposito_Ajustes','U') IS NULL
+BEGIN
+    CREATE TABLE Deposito_Ajustes (
+        Clave NVARCHAR(50) NOT NULL PRIMARY KEY,
+        Valor NVARCHAR(200) NOT NULL,
+        At DATETIME2 NOT NULL CONSTRAINT DF_Deposito_Ajustes_At DEFAULT SYSUTCDATETIME(),
+        Por NVARCHAR(100) NULL
+    );
+END
+GO
+IF NOT EXISTS (SELECT 1 FROM Deposito_Ajustes WHERE Clave = 'PinEstantePublico')
+    INSERT INTO Deposito_Ajustes (Clave, Valor, Por) VALUES ('PinEstantePublico', '6138', 'sistema');
+GO
