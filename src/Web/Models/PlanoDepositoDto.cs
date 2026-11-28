@@ -158,6 +158,9 @@ public class PlanoEstanteDetalleDto
     public string? Forma { get; set; }
     public int? Fila { get; set; }
     public List<PlanoAsignacionDto> Productos { get; set; } = new();
+    /// <summary>2026-11-28: true = el QR era la etiqueta única del rack: elegir la altura (Alturas, de arriba a abajo).</summary>
+    public bool Elegir { get; set; }
+    public List<RecorridoAlturaDto> Alturas { get; set; } = new();
 }
 
 public class PlanoBuscarDto

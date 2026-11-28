@@ -579,9 +579,97 @@ public class DepositoPlanoController : ControllerBase
         return (rack, Caras(rack)[0], pos, niv, null);
     }
 
+    // ───────────── 2026-11-28: UNA etiqueta por rack (por lado): el QR trae el rack sin altura ─────────────
+
+    /// <summary>Código del rack entero (sin altura), el de la etiqueta única: "C3-F4-R2" (sin calle "F4-R2"),
+    /// estantería "TOST", lugar en el piso "C3-PISO1" (ese ya es un solo estante), rack viejo sin fila: su código.</summary>
+    public static string CodigoRack(DepositoPlanoElemento e, int cara)
+    {
+        if (EsPiso(e)) return CodigoPiso(e);
+        if (EsEstanteria(e)) return e.Codigo ?? "?";
+        var calle = CalleDe(e, cara);
+        if (e.Fila is int f && e.NroFila is int r) return (calle is int c ? $"C{c}-" : "") + $"F{f}-R{r}";
+        return e.Codigo ?? "?";
+    }
+
+    /// <summary>"Calle 3 · Fila 4 · Rack 2" (el lado del rack, sin altura).</summary>
+    public static string DesgloseRack(DepositoPlanoElemento e, int cara)
+        => CarasDto(e).FirstOrDefault(x => x.Cara == NormCara(e, cara))?.Titulo ?? NombreRack(e);
+
+    /// <summary>Si el código es de un rack ENTERO (C3-F4-R2, F4-R2, TOST, código viejo de rack) lo busca.
+    /// rack null y error null = no es un código de rack (probar como estante).</summary>
+    public static async Task<(DepositoPlanoElemento? rack, int cara, string? error)> ResolverRackAsync(AppDbContext _db, string codigo)
+    {
+        var c = (codigo ?? "").Trim().ToUpperInvariant();
+        var m = Regex.Match(c, @"^(?:C(\d{1,2})-)?F(\d{1,2})-R(\d{1,2})$");
+        if (m.Success)
+        {
+            int? calle = m.Groups[1].Success ? int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture) : null;
+            var fila = int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture);
+            var nro = int.Parse(m.Groups[3].Value, CultureInfo.InvariantCulture);
+            var r = await _db.DepositoPlanoElementos.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Tipo == "rack" && x.Fila == fila && x.NroFila == nro);
+            if (r is null) return (null, 0, $"No hay ningún rack {nro} en la fila {fila}.");
+            var cara = calle is null ? Caras(r)[0] : r.Calle1 == calle ? 1 : r.Calle2 == calle ? 2 : 0;
+            if (cara == 0) return (null, 0, $"El rack {nro} de la fila {fila} no da a la calle {calle}.");
+            return (r, cara, null);
+        }
+        // nombre solo: estantería (TOST) o rack viejo sin fila (D2)
+        if (Regex.IsMatch(c, @"^[A-Z][A-Z0-9]{0,11}$") && !Regex.IsMatch(c, @"^(?:C?\d|PISO\d)"))
+        {
+            var l = await _db.DepositoPlanoElementos.AsNoTracking()
+                .Where(x => x.Tipo == "rack" && x.Codigo == c && x.Forma != "piso").ToListAsync();
+            var r = l.FirstOrDefault(EsEstanteria) ?? l.FirstOrDefault(x => x.Fila is null);
+            if (r is not null) return (r, Caras(r)[0], null);
+        }
+        return (null, 0, null);
+    }
+
+    /// <summary>Los estantes de ese lado del rack, de ARRIBA hacia abajo (como se ve el rack), para elegir la altura.</summary>
+    public static async Task<object> ElegirAlturaAsync(AppDbContext _db, DepositoPlanoElemento rack, int cara, HashSet<(int, int, int, int)>? revisados = null)
+    {
+        var asigs = await _db.DepositoEstanteProductos.AsNoTracking().Where(a => a.ElementoId == rack.Id)
+            .Select(a => new { a.Cara, a.Posicion, a.Nivel }).ToListAsync();
+        var notas = await _db.DepositoEstanteNotas.AsNoTracking().Where(n => n.ElementoId == rack.Id)
+            .Select(n => new { n.Cara, n.Posicion, n.Nivel }).ToListAsync();
+        var alturas = new List<object>();
+        for (int n = rack.Niveles ?? 1; n >= 1; n--)
+            for (int p = 1; p <= (rack.Posiciones ?? 1); p++)
+                alturas.Add(new
+                {
+                    nivel = n,
+                    posicion = p,
+                    codigo = CodigoEstante(rack, cara, p, n),
+                    productos = asigs.Count(a => NormCara(rack, a.Cara) == cara && a.Posicion == p && a.Nivel == n),
+                    nota = notas.Any(x => NormCara(rack, x.Cara) == cara && x.Posicion == p && x.Nivel == n),
+                    revisado = revisados?.Contains((rack.Id, cara, p, n)) ?? false,
+                });
+        var (calle, nro) = LadoDe(rack, cara);
+        return new
+        {
+            elegir = true,
+            codigo = CodigoRack(rack, cara),
+            desglose = DesgloseRack(rack, cara),
+            planta = rack.Planta,
+            rackId = rack.Id,
+            rack = rack.Codigo,
+            forma = rack.Forma,
+            nombreRack = NombreRack(rack),
+            cara, calle, nro, fila = rack.Fila,
+            niveles = rack.Niveles ?? 1,
+            posiciones = rack.Posiciones ?? 1,
+            alturas,
+        };
+    }
+
     [HttpGet("estante/{codigo}")]
     public async Task<IActionResult> Estante(string codigo)
     {
+        // 2026-11-28: el QR de la etiqueta única del rack trae el rack sin altura: se elige en el celu
+        var (rackE, caraE, errorE) = await ResolverRackAsync(_db, codigo);
+        if (errorE is not null) return NotFound(new { error = errorE });
+        if (rackE is not null) return Ok(await ElegirAlturaAsync(_db, rackE, caraE));
+
         var (rack, cara, pos, niv, error) = await ResolverEstante(codigo);
         if (rack is null) return NotFound(new { error });
         var (calle, nro) = LadoDe(rack, cara);
@@ -806,7 +894,7 @@ public class DepositoPlanoController : ControllerBase
     /// (812×1624 puntos a 203 dpi, troquel arriba): el código grande (C3-R4-A3), escrito "Calle 3 · Rack 4 ·
     /// Altura 3" y un QR que abre la página del estante. Se la pasa a window.zebraImprimir(url).</summary>
     [HttpGet("racks/{id:int}/etiquetas.zpl")]
-    public async Task<IActionResult> Etiquetas(int id, [FromQuery] string? origen, [FromQuery] string? estante = null)
+    public async Task<IActionResult> Etiquetas(int id, [FromQuery] string? origen, [FromQuery] string? estante = null, [FromQuery] bool porRack = false)
     {
         // 2026-11-27: ?estante=C3-F4-R1-A3 imprime solo la etiqueta de ese estante
         var solo = string.IsNullOrWhiteSpace(estante) ? null : estante.Trim();
@@ -820,6 +908,36 @@ public class DepositoPlanoController : ControllerBase
         if ((e.Posiciones ?? 0) < 1 || (e.Niveles ?? 0) < 1) return ErrorZpl(400, "El rack no tiene posiciones ni niveles.");
 
         var sb = new StringBuilder();
+        // 2026-11-28: ?porRack=true → UNA etiqueta por lado del rack; el QR abre el rack y en el celu se elige
+        // la altura. Los lugares en el piso ya son un solo estante: siguen con la suya de siempre.
+        if (porRack && !EsPiso(e))
+        {
+            foreach (var cara in Caras(e))
+            {
+                var cod = CodigoRack(e, cara);
+                var url = $"{o}/deposito/estante/{cod}";
+                var desg = DesgloseRack(e, cara);
+                var alturas = (e.Niveles ?? 1) == 1 ? "1 altura" : $"alturas A1 a A{e.Niveles}";
+                sb.Append("^XA\n^CI28\n^PW812\n^LL1624\n^LH0,0\n");
+                // troquel: el código del rack en negro, por si quieren pegar otro en el otro parante
+                sb.Append("^FO16,16^GB780,268,2^FS\n");
+                sb.Append("^FO28,26^GB510,248,248^FS\n");
+                sb.Append($"^FO28,60^A0N,{(cod.Length <= 6 ? 150 : 110)},{(cod.Length <= 6 ? 90 : cod.Length <= 8 ? 62 : 50)}^FR^FB510,1,0,C,0^FD{cod}^FS\n");
+                sb.Append($"^FO28,200^A0N,30,26^FR^FB510,1,0,C,0^FDElegí la altura en el celu^FS\n");
+                sb.Append($"^FO552,14^BQN,2,7^FDLA,{url}^FS\n");
+                const int T0 = 300;
+                string Acostado(int u, int v, int alto, int ancho, string s)
+                    => $"^FO{812 - (v + alto)},{T0 + u}^A0R,{alto},{ancho}^FB860,1,0,C,0^FD{s}^FS\n";
+                var grande = cod.Length <= 5 ? (300, 200) : cod.Length <= 8 ? (230, 125) : (200, 105);
+                sb.Append(Acostado(20, 80, grande.Item1, grande.Item2, cod));
+                sb.Append(Acostado(20, 420, 66, 56, desg));
+                sb.Append(Acostado(20, 505, 42, 38, $"Escaneá y elegí la altura ({alturas})"));
+                sb.Append(Acostado(20, 600, 40, 36, "Una sola etiqueta para todo el rack"));
+                sb.Append($"^FO226,{T0 + 920}^BQN,2,11^FDLA,{url}^FS\n");
+                sb.Append("^XZ\n");
+            }
+            return Content(sb.ToString(), "text/plain; charset=utf-8");
+        }
         // 2026-11-27: una etiqueta por estante de CADA lado que da a una calle (los racks del medio, dos juegos)
         foreach (var cara in Caras(e))
         for (int pos = 1; pos <= e.Posiciones; pos++)

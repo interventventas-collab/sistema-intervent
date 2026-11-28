@@ -3,6 +3,7 @@
 @inject ApiClient Api
 @inject ToastService ToastService
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
 @* 2026-11-26: lo que abre el QR pegado en cada estante (etiquetas del "Plano del depósito").
    Pensado para el celu: arriba el código grande, abajo lo que hay guardado en ese estante
@@ -18,6 +19,9 @@
     .ed-sku { font-family: monospace; color: #6b7280; font-size: 0.82rem; }
     .ed-gris { color: #6b7280; font-size: 0.88rem; }
     .ed-x { border: 1px solid #e5e7eb; background: #fff; border-radius: 10px; width: 44px; height: 44px; font-size: 1.1rem; color: #6b7280; cursor: pointer; flex-shrink: 0; }
+    .ed-alt { display: flex; align-items: center; width: 100%; border: 2px solid #1f2937; border-radius: 12px; background: #fff; padding: 1rem 1rem; margin: 0.5rem 0; cursor: pointer; text-align: left; }
+    .ed-alt b { font-size: 1.6rem; font-family: monospace; }
+    .ed-alt span { margin-left: auto; color: #6b7280; font-size: 0.95rem; }
     .ed-link { display: inline-block; margin-top: 1.6rem; font-weight: 700; color: #1d4ed8; text-decoration: none; font-size: 1rem; }
 </style>
 
@@ -31,6 +35,22 @@
         <div class="ed-cod">@Codigo</div>
         <div class="ed-sub">No encontré este estante en el plano. Puede que el rack se haya borrado o cambiado de código.</div>
         <a class="ed-link" href="/deposito/plano">Ver el plano del depósito</a>
+    }
+    else if (est.Elegir)
+    {
+        @* 2026-11-28: etiqueta única del rack: elegir la altura (de arriba hacia abajo, como el rack) *@
+        <div class="ed-cod">@est.Codigo</div>
+        <div class="ed-sub">@est.Desglose@(PlantaTexto(est.Planta))</div>
+        <div class="ed-lbl">¿Qué altura?</div>
+        @foreach (var a in est.Alturas)
+        {
+            var aa = a;
+            <button class="ed-alt" @onclick="@(() => Nav.NavigateTo($"/deposito/estante/{Uri.EscapeDataString(aa.Codigo)}"))">
+                <b>@(est.Forma == "piso" ? $"P{a.Posicion}" : $"A{a.Nivel}")@(est.Posiciones > 1 && est.Forma != "piso" ? $" · P{a.Posicion}" : "")</b>
+                <span>@AlturaTexto(a)</span>
+            </button>
+        }
+        <a class="ed-link" href="@($"/deposito/plano?estante={Uri.EscapeDataString(est.Alturas.LastOrDefault()?.Codigo ?? est.Codigo)}")">🗺 Ver en el plano</a>
     }
     else
     {
@@ -75,6 +95,14 @@
         try { est = await Api.GetEstantePlanoAsync(Codigo.Trim().ToUpperInvariant()); }
         catch (Exception ex) { ToastService.Error(ex.Message); }
         finally { cargando = false; }
+    }
+
+    private string AlturaTexto(RecorridoAlturaDto a)
+    {
+        var arriba = est is not null && a.Nivel == (est.Alturas.Max(x => x.Nivel)) && a.Nivel > 1 ? "arriba · " : "";
+        var piso = a.Nivel == 1 && est?.Forma is null && est?.Alturas.Max(x => x.Nivel) > 1 ? "el piso · " : "";
+        var prods = a.Productos == 0 ? "vacío" : a.Productos == 1 ? "1 producto" : $"{a.Productos} productos";
+        return arriba + piso + prods + (a.Nota ? " · 📝" : "");
     }
 
     private async Task Sacar(PlanoAsignacionDto p)

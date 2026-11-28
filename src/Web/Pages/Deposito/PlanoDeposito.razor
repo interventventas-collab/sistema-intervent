@@ -836,7 +836,16 @@
                     <div class="pd-nota">Tocás un estante y ves qué hay y cuánto, y podés guardar o sacar productos. Desde el celu: escaneás el QR del estante.</div>
                 }
                 <div class="pd-acc">
-                    <button class="pd-btn" disabled="@imprimiendo" @onclick="@(() => ImprimirEtiquetas(null))">🖨 Etiquetas QR de este rack (@rack.Estantes.Count)</button>
+                    @if (rack.Elemento.EsPiso)
+                    {
+                        <button class="pd-btn" disabled="@imprimiendo" @onclick="@(() => ImprimirEtiquetas(null))">🖨 Etiqueta QR de este lugar</button>
+                    }
+                    else
+                    {
+                        @* 2026-11-28: UNA etiqueta por lado del rack; al escanearla se elige la altura en el celu *@
+                        <button class="pd-btn" disabled="@imprimiendo" @onclick="@(() => ImprimirEtiquetas(null, true))">🖨 Etiqueta QR del rack (@EtiquetasRack())</button>
+                        <button class="pd-btn" style="font-size:.8rem;opacity:.8" disabled="@imprimiendo" @onclick="@(() => ImprimirEtiquetas(null))">Una por altura (@rack.Estantes.Count)</button>
+                    }
                 </div>
             }
             else if (infoSel is not null)
@@ -1158,16 +1167,19 @@
         catch (Exception ex) { ToastService.Error(ex.Message); }
     }
 
-    private async Task ImprimirEtiquetas(string? estante)
+    /// <summary>2026-11-28: cuántas etiquetas únicas lleva el rack (una por lado que da a una calle).</summary>
+    private string EtiquetasRack() => rack is null ? "" : rack.Caras.Count <= 1 ? "1" : $"{rack.Caras.Count}, una por lado";
+
+    private async Task ImprimirEtiquetas(string? estante, bool porRack = false)
     {
         if (rack is null) return;
         imprimiendo = true;
         try
         {
-            var url = ApiClient.UrlEtiquetasRackPlano(rack.Elemento.Id, Nav.BaseUri.TrimEnd('/'), estante);
+            var url = ApiClient.UrlEtiquetasRackPlano(rack.Elemento.Id, Nav.BaseUri.TrimEnd('/'), estante, porRack);
             string r;
             try { r = await JS.InvokeAsync<string>("zebraImprimir", url); } catch { r = "sin-zebra"; }
-            if (r == "ok") { ToastService.Success(estante is null ? $"Etiquetas enviadas a la impresora ({rack.Estantes.Count})" : $"Etiqueta {estante} enviada a la impresora"); return; }
+            if (r == "ok") { ToastService.Success(porRack ? "Etiqueta del rack enviada a la impresora" : estante is null ? $"Etiquetas enviadas a la impresora ({rack.Estantes.Count})" : $"Etiqueta {estante} enviada a la impresora"); return; }
             if (r.StartsWith("error:")) { ToastService.Error(r[6..]); return; }
             ToastService.Warning("No encontré el programa de la impresora (Zebra Browser Print o QZ Tray) en esta compu: te bajo el archivo .txt");
             try { await JS.InvokeVoidAsync("zebraBajar", url); } catch { }
