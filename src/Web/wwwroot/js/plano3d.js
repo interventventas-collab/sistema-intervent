@@ -19,7 +19,9 @@
     const CAPAS = [['ambientes', 'Ambientes'], ['estructura', 'Puertas, paredes y escaleras'], ['racks', 'Racks'], ['estanterias', 'Estanterías'],
         ['piso', 'Lugares en el piso'], ['pcs', 'PCs'], ['muebles', 'Muebles y escritorios'], ['otros', 'Vehículos, pallets, sillas y otros']];
     const CAPA_TIPO = { pc: 'pcs', escritorio: 'muebles', mesa: 'muebles', mueble: 'muebles', heladera: 'muebles',
-        vehiculo: 'otros', pallet: 'otros', contenedor: 'otros', montacargas: 'otros', sillas: 'otros' };
+        vehiculo: 'otros', pallet: 'otros', contenedor: 'otros', montacargas: 'otros', sillas: 'otros',
+        tostadora: 'muebles', zaranda: 'muebles', campana: 'muebles', tolva: 'muebles', dispensador: 'muebles',
+        molino: 'muebles', balanza: 'muebles', selladora: 'muebles', tacho: 'muebles', mesada: 'muebles' };
     // 2026-11-28: lo que se puede dibujar en un estante aunque no tenga stock
     const DIBUJOS = [['bolsas', 'Bolsas de café'], ['cajas', 'Cajas'], ['bidones', 'Bidones'], ['sillas', 'Sillas apiladas'],
         ['pallet', 'Pallet vacío'], ['rollos', 'Rollos'], ['bultos', 'Bultos'], ['foto', 'Con una foto']];
@@ -167,6 +169,8 @@
 .p3-est .ft img { height: 70px; border-radius: 6px; border: 1px solid #e7e5e4; cursor: zoom-in; }
 .p3-est .ft label { border: 1px solid #d6d3d1; background: #fff; border-radius: 99px; padding: 4px 10px; font-weight: 700; cursor: pointer; }
 .p3-est .ve { color: #92400e; font-size: 13px; margin: 2px 0; }
+.p3-mundo .fuera { display: none !important; }
+.p3-eqtxt { position: absolute; display: flex; align-items: center; justify-content: center; font-weight: 900; letter-spacing: .08em; white-space: nowrap; pointer-events: none; }
 .p3-niv.hov { outline: 3px solid #38bdf8; outline-offset: -2px; }
 .p3-est { border-bottom: 2px solid #fde68a; padding: 12px 14px; max-height: 58vh; overflow: auto; background: #fffbeb; }
 .p3-est .tt { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #92400e; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; }
@@ -324,12 +328,139 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
                 n.textContent = z.nombre;
             }
         }
+        // ───── 2026-11-28: equipos del tostadero dibujados con su forma (Royal, zaranda, campana, tolvas…) ─────
+        // Cada equipo se arma en coordenadas "a lo largo" (L) y "de fondo" (A); si en el plano es más largo
+        // hacia arriba, el grupo se gira 90°. y = 0 es el frente (el lado que mira al ambiente cuando está girado).
+        function grupoL(r, z) {
+            const alongX = r.w >= r.h, L = alongX ? r.w : r.h, A = alongX ? r.h : r.w;
+            const g = div('p3-eq', alongX
+                ? { position: 'absolute', left: r.x + 'px', top: r.y + 'px', width: L + 'px', height: A + 'px', transform: `translateZ(${z || 0}px)` }
+                : { position: 'absolute', left: (r.x + r.w) + 'px', top: r.y + 'px', width: L + 'px', height: A + 'px', transformOrigin: '0 0', transform: `translateZ(${z || 0}px) rotateZ(90deg)` });
+            return { g, L, A };
+        }
+        const pieza = (padre, css) => h('i', '', Object.assign({ position: 'absolute', display: 'block' }, css), padre);
+        // cilindro parado (tachos, chimenea, molino)
+        function cilV(padre, cx, cy, z, rad, alto, color, tapa, n) {
+            n = n || 14;
+            const g = h('div', '', { position: 'absolute', left: cx + 'px', top: cy + 'px', width: 0, height: 0, transform: `translateZ(${z}px)` }, padre);
+            const w = 2 * rad * Math.tan(Math.PI / n) + 0.8;
+            for (let i = 0; i < n; i++) {
+                const a = 360 * i / n, luz = Math.round(70 + 30 * Math.cos((a - 210) * Math.PI / 180));
+                pieza(g, { left: (-w / 2) + 'px', top: 0, width: w + 'px', height: alto + 'px', background: `color-mix(in srgb, ${color} ${luz}%, black)`, transformOrigin: '50% 0', transform: `rotateZ(${a}deg) translateY(${rad}px) rotateX(90deg)` });
+            }
+            if (tapa !== false) pieza(g, { left: -rad + 'px', top: -rad + 'px', width: 2 * rad + 'px', height: 2 * rad + 'px', borderRadius: '50%', background: tapa || color, transform: `translateZ(${alto}px)` });
+            return g;
+        }
+        // cilindro acostado a lo largo (el tambor de la tostadora)
+        function cilX(padre, x0, cy, zc, rad, largo, color, n) {
+            n = n || 18;
+            const g = h('div', '', { position: 'absolute', left: x0 + 'px', top: cy + 'px', width: 0, height: 0, transform: `translateZ(${zc}px)` }, padre);
+            const w = 2 * rad * Math.tan(Math.PI / n) + 0.8;
+            for (let i = 0; i < n; i++) {
+                const a = 360 * i / n, luz = Math.round(66 + 34 * Math.cos(a * Math.PI / 180));
+                pieza(g, { left: 0, top: (-w / 2) + 'px', width: largo + 'px', height: w + 'px', background: `linear-gradient(90deg, color-mix(in srgb, ${color} ${luz - 10}%, black), color-mix(in srgb, ${color} ${luz}%, white 6%) 50%, color-mix(in srgb, ${color} ${luz - 14}%, black))`, transformOrigin: '0 50%', transform: `rotateX(${a}deg) translateZ(${rad}px)` });
+            }
+            for (const xx of [0, largo]) pieza(g, { left: -rad + 'px', top: -rad + 'px', width: 2 * rad + 'px', height: 2 * rad + 'px', borderRadius: '50%', background: `radial-gradient(circle, color-mix(in srgb, ${color} 55%, black), color-mix(in srgb, ${color} 80%, black))`, transform: `translateX(${xx}px) rotateY(90deg)` });
+            return g;
+        }
+        // plano parado en el frente (y = 0) para dibujar puertas, carteles, botones
+        const frente = (padre, x, z, w, alto, css, txt) => {
+            const p = pieza(padre, Object.assign({ left: x + 'px', top: 0, width: w + 'px', height: alto + 'px', transformOrigin: '0 0', transform: `translateZ(${z + alto}px) rotateX(-90deg)` }, css));
+            if (txt) { p.className = 'p3-eqtxt'; p.textContent = txt; }
+            return p;
+        };
+        const GRANO = 'radial-gradient(circle at 30% 30%, #6b3f1f 0 1.4px, transparent 1.6px) 0 0 / 5px 5px, radial-gradient(circle at 70% 70%, #4a2a14 0 1.4px, transparent 1.6px) 0 0 / 5px 5px, #5a3519';
+        const GRANITO = 'radial-gradient(circle, #6b7280 0 1px, transparent 1.3px) 0 0 / 6px 6px, radial-gradient(circle, #f5f5f4 0 .8px, transparent 1px) 3px 2px / 7px 7px, #a8a29e';
+        const EQUIPOS = {
+            tostadora: (c, r) => {
+                const { g, L, A } = grupoL(r, 0), base = 0.32 * S, rad = Math.min(A * 0.42, 0.34 * S), zc = base + rad;
+                caja(L * 0.08, A * 0.18, L * 0.7, A * 0.64, base, '#3f3f46', g);                         // bastidor
+                cilX(g, L * 0.05, A * 0.5, zc, rad, L * 0.72, c.color || '#8a8178');                       // tambor
+                caja(L * 0.77, A * 0.08, L * 0.1, A * 0.84, base + 2 * rad + 4, '#292524', g);             // frente / quemador
+                caja(L * 0.36, A * 0.32, 0.26 * S, A * 0.36, 0.22 * S, '#a8a29e', g, base + 2 * rad - 2);  // tolva de carga
+                cilV(g, L * 0.58, A * 0.5, base + 2 * rad - 2, 0.07 * S, 1.0 * S, '#9ca3af', false);       // chimenea
+                caja(0, A * 0.02, 0.3 * S, 0.14 * S, 0.3 * S, '#f1f5f9', g, 0.78 * S);                    // tablero
+                caja(0.06 * S, -1, 0.06 * S, 1.5, 0.06 * S, '#dc2626', g, 0.98 * S);                      // botón rojo
+                caja(0.06 * S, -1, 0.06 * S, 1.5, 0.06 * S, '#16a34a', g, 0.86 * S);                      // botón verde
+                frente(g, L * 0.2, zc - 8, L * 0.4, 16, { color: '#fff7ed', fontSize: '12px', textShadow: '0 1px 2px #000' }, c.nombre && /royal/i.test(c.nombre) ? 'ROYAL' : 'TOSTADORA');
+                return g;
+            },
+            zaranda: (c, r) => {
+                const { g, L, A } = grupoL(r, 0), h0 = 0.55 * S;
+                for (const [x, y] of [[2, 2], [L - 5, 2], [2, A - 5], [L - 5, A - 5]]) caja(x, y, 3, 3, h0, '#52525b', g);
+                caja(0, 0, L, A, 0.14 * S, '#a1a1aa', g, h0);
+                pieza(g, { left: '3px', top: '3px', width: (L - 6) + 'px', height: (A - 6) + 'px', background: GRANO, transform: `translateZ(${h0 + 0.12 * S}px)` });
+                caja(L * 0.4, A * 0.4, 0.2 * S, 0.2 * S, 0.25 * S, '#3f3f46', g, h0 + 0.14 * S);           // motor del removedor
+                return g;
+            },
+            campana: (c, r) => {
+                const { g, L, A } = grupoL(r, 0), z = 1.95 * S;
+                caja(0, 0, L, A, 0.12 * S, c.color || '#78716c', g, z);
+                caja(L * 0.12, A * 0.12, L * 0.76, A * 0.76, 0.28 * S, c.color || '#8b8178', g, z + 0.12 * S);
+                caja(L * 0.38, A * 0.3, L * 0.24, A * 0.4, 0.5 * S, '#9ca3af', g, z + 0.4 * S);            // conducto
+                for (const x of [L * 0.15, L * 0.85]) caja(x, A / 2, 1.2, 1.2, 0.9 * S, '#d4d4d8', g, z + 0.4 * S);  // cadenas
+                return g;
+            },
+            tolva: (c, r) => {
+                const { g, L, A } = grupoL(r, 0), alto = (+c.alto || 1.9) * S, col = c.color || '#c97a26';
+                caja(0, 0, L, A, alto, col, g);
+                frente(g, L * 0.06, alto * 0.08, L * 0.88, alto * 0.84, { background: `linear-gradient(${col}, ${col}) padding-box`, border: '2px solid color-mix(in srgb, ' + col + ' 70%, black)', boxShadow: 'inset 0 0 0 3px color-mix(in srgb, ' + col + ' 85%, black)' });
+                frente(g, L * 0.52, alto * 0.62, L * 0.38, alto * 0.25, { background: '#1c1917', borderRadius: '2px' });
+                frente(g, L * 0.2, alto * 0.7, 0.18 * S, 0.18 * S, { background: '#0c0a09', borderRadius: '50%', border: '2px solid #e7e5e4' });
+                return g;
+            },
+            dispensador: (c, r) => {
+                const { g, L, A } = grupoL(r, 0), z = 1.12 * S, alto = 0.6 * S;
+                for (let i = 0; i < 3; i++) {
+                    caja(i * L / 3 + 1, 1, L / 3 - 2, A - 2, alto * 0.75, '#4a2c17', g, z + 2);
+                    pieza(g, { left: (i * L / 3 + 1) + 'px', top: '1px', width: (L / 3 - 2) + 'px', height: (A - 2) + 'px', background: GRANO, transform: `translateZ(${z + 2 + alto * 0.75}px)` });
+                    cilV(g, i * L / 3 + L / 6, A * 0.3, z - 0.14 * S, 0.05 * S, 0.14 * S, '#d4d4d8');
+                }
+                caja(0, 0, L, A, alto, 'rgba(226,232,240,.28)', g, z);
+                return g;
+            },
+            molino: (c, r) => {
+                const { g, L, A } = grupoL(r, 0), z = 0.9 * S, m = Math.min(L, A);
+                caja(L * 0.1, A * 0.1, L * 0.8, A * 0.8, 0.12 * S, '#3b2416', g, z);
+                cilV(g, L / 2, A / 2, z + 0.12 * S, m * 0.28, 0.28 * S, '#4a3122', null);
+                cilV(g, L / 2, A / 2, z + 0.4 * S, m * 0.45, 0.22 * S, 'rgba(231,229,228,.55)', 'rgba(120,80,40,.6)');  // tolva transparente
+                return g;
+            },
+            balanza: (c, r) => {
+                const { g, L, A } = grupoL(r, 0), z = 0.9 * S;
+                caja(0, 0, L, A, 0.07 * S, '#e5e7eb', g, z);
+                caja(L * 0.08, A * 0.2, L * 0.84, A * 0.7, 0.02 * S, '#d4d4d8', g, z + 0.07 * S);
+                frente(g, L * 0.1, z + 0.01 * S, L * 0.8, 0.05 * S, { background: '#1e3a8a', color: '#86efac', fontSize: '6px' }, '0,000 kg');
+                return g;
+            },
+            selladora: (c, r) => {
+                const { g, L, A } = grupoL(r, 0), z = 0.9 * S;
+                caja(0, 0, L, A, 0.04 * S, '#f1f5f9', g, z);
+                caja(0, A * 0.1, L, A * 0.5, 0.05 * S, '#2563eb', g, z + 0.04 * S);
+                return g;
+            },
+            tacho: (c, r) => {
+                const { g, L, A } = grupoL(r, 0), m = Math.min(L, A);
+                cilV(g, L / 2, A / 2, 0, m / 2, (+c.alto || 0.75) * S, c.color || '#1f2937', '#f8fafc', 16);
+                return g;
+            },
+            mesada: (c, r) => {
+                const { g, L, A } = grupoL(r, 0), alto = (+c.alto || 0.9) * S;
+                caja(0, 0, L, A, 0.25 * S, '#78716c', g);                                                // zócalo / estante de abajo
+                for (const x of [1, L - 4]) caja(x, 1, 3, A - 2, alto, '#44403c', g);                     // patas
+                caja(0, 0, L, A, 0.05 * S, '#a8a29e', g, alto - 0.05 * S);
+                pieza(g, { left: 0, top: 0, width: L + 'px', height: A + 'px', background: GRANITO, transform: `translateZ(${alto + 0.3}px)` });
+                return g;
+            },
+        };
+
         const colores = { pc: '#1f2937', pallet: '#b45309', escritorio: '#a8a29e', mueble: '#334155', vehiculo: '#94a3b8', contenedor: '#3b6d11', sillas: '#d6d3d1', montacargas: '#a8a29e', heladera: '#e2e8f0', mesa: '#d6d3d1' };
         const altos = { pc: 8, pallet: 6, escritorio: 30, mueble: 70, vehiculo: 60, contenedor: 50, sillas: 40, montacargas: 50, heladera: 72, mesa: 30 };
         for (const c of els) {
             const r = R(c);
             if (c.tipo === 'puerta' || c.tipo === 'porton') { div('p3-cosa', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', background: '#38bdf8' }).dataset.capa = 'estructura'; continue; }
             if (c.tipo === 'escalera') { div('p3-cosa', { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px', background: 'repeating-linear-gradient(90deg,#cbd5e1 0 10px,#94a3b8 10px 12px)' }).dataset.capa = 'estructura'; continue; }
+            if (EQUIPOS[c.tipo]) { const g = EQUIPOS[c.tipo](c, r); if (g) g.dataset.capa = 'muebles'; continue; }
             if (colores[c.tipo]) caja(r.x, r.y, r.w, r.h, altos[c.tipo], c.color || colores[c.tipo]).dataset.capa = CAPA_TIPO[c.tipo] || 'otros';
         }
 
@@ -390,7 +521,17 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             // 2026-11-27: el rack se llama fila-rack ("F4-R2"); sin fila, el código de siempre
             top.textContent = (e.fila != null && e.nroFila != null) ? 'F' + e.fila + '-R' + e.nroFila : e.codigo;
             top.style.fontSize = Math.max(10, Math.min(22, r.h * 0.42, r.w / 3.2)) + 'px';
-            racks[e.codigo.toUpperCase()] = { e, r, H, N, d, niveles, z0, cod: top.textContent, est: e.forma === 'estanteria',
+            // 2026-11-28: la estantería se mira desde el lado del ambiente (no desde la pared)
+            let dir = null;
+            if (e.forma === 'estanteria') {
+                const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+                const zz = zonas.map(z => ({ z, q: R(z) })).filter(o => cx >= o.q.x && cx <= o.q.x + o.q.w && cy >= o.q.y && cy <= o.q.y + o.q.h).sort((a, b) => a.q.w * a.q.h - b.q.w * b.q.h)[0];
+                if (zz) {
+                    const zx = zz.q.x + zz.q.w / 2, zy = zz.q.y + zz.q.h / 2;
+                    dir = r.w >= r.h ? (zy < cy ? { nx: 0, ny: -1, rz: 180 } : { nx: 0, ny: 1, rz: 0 }) : (zx < cx ? { nx: -1, ny: 0, rz: -90 } : { nx: 1, ny: 0, rz: 90 });
+                }
+            }
+            racks[e.codigo.toUpperCase()] = { e, r, H, N, d, niveles, z0, cod: top.textContent, est: e.forma === 'estanteria', dir,
                 zNiv, gapNiv,
                 llenar: (niv, t) => llenar(d, r, zNiv[niv - 1] + 2, t && t !== 'cajas' && t !== 'foto' ? Math.max(Math.min(30, gapNiv[niv - 1] - 8), gapNiv[niv - 1] - 4) : Math.min(30, gapNiv[niv - 1] - 8), niv, t, e.id) };
             if (e.calle1 != null && e.nro1 != null) porCalle[e.calle1 + '-' + e.nro1] = e.codigo.toUpperCase();
@@ -425,7 +566,7 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             const x0 = zona.r.x + 12, xR = k.r.x + k.r.w / 2;
             camino.setAttribute('d', `M ${x0.toFixed(0)} ${yP.toFixed(0)} L ${xR.toFixed(0)} ${yP.toFixed(0)}`);
         }
-        return { mundo, racks, porCalle, WT, LT, ruta };
+        return { mundo, racks, porCalle, WT, LT, ruta, zonas: zonas.filter(z => z.nombre).map(z => ({ nombre: z.nombre, r: R(z) })) };
     }
 
     // ───────────── pantalla ─────────────
@@ -444,7 +585,9 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
               <button data-a="izq">⟲ Girar</button>
               <button data-a="der">⟳ Girar</button>
               <button data-a="capas">👁 Qué ver</button>
+              <button data-a="entrar">🚪 Entrar a…</button>
             </div>
+            <div class="p3-capas p3-amb" hidden></div>
             <div class="p3-capas" hidden></div>
             <div class="p3-tip" hidden></div>
           </div>
@@ -743,6 +886,7 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             arriba = true;
             mostrarPlanta(pl || plantaVista || (conLugar[0] ? conLugar[0].pl : 'PB'));
             const e = escenas[plantaVista]; if (!e) return;
+            marcarFuera(e, null);
             const b = escD.getBoundingClientRect();
             // encuadre: los racks del pedido (o todo el terreno si no hay)
             const ks = conLugar.filter(x => x.pl === plantaVista).map(x => x.k);
@@ -762,6 +906,7 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             const it = items[i]; if (!it || !it.ok) return;
             act = i; arriba = false;
             mostrarPlanta(it.pl);
+            if (escenas[it.pl]) marcarFuera(escenas[it.pl], null);
             const e = escenas[it.pl], k = it.k;
             const seguirDeFrente = !!frenteDe;
             frenteDe = null; limpiarFrente();
@@ -795,6 +940,7 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
         }
         // hacia dónde mira esa cara en la escena + el giro de cámara para tenerla de frente
         function normal(k, cara) {
+            if (k.dir) return k.dir;
             if (cara >= 3) {
                 // punta 1 = lado entrada (x chica en la escena) o, girado, pared izq. (y grande)
                 const gir = k.e.rotacion === 90 || k.e.rotacion === 270;
@@ -864,6 +1010,34 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             el.innerHTML = `<div class="t">De frente${frenteDe.cara >= 3 ? ' · la punta' : ''}${calle != null ? ' · desde la calle ' + calle : ''}</div><div class="d">${esc(titulo)}</div>`
                 + (it ? `<div class="s" style="color:#fdba74;font-weight:700">${esc(it.est)} · ${esc(it.n)}</div>` : '<div class="s">Arrastrá para girar · tocá otro rack para ir ahí</div>');
         }
+        // 2026-11-28: "entrar" a un ambiente: la cámara se para adentro, a la altura de los ojos,
+        // mirando a lo largo del ambiente (arrastrando se mira para los costados)
+        // lo que no está adentro del ambiente se esconde (racks, equipos, muebles, puertas, paredes)
+        function marcarFuera(e, r) {
+            e.mundo.querySelectorAll(':scope > .p3-rack, :scope > .p3-eq, :scope > .p3-caja, :scope > .p3-cosa, :scope > .p3-pared').forEach(el => {
+                if (!r) { el.classList.remove('fuera'); return; }
+                const x = parseFloat(el.style.left) || 0, y = parseFloat(el.style.top) || 0, w = parseFloat(el.style.width) || 0, hh = parseFloat(el.style.height) || 0;
+                let cx = x + w / 2, cy = y + hh / 2;
+                if (el.classList.contains('p3-eq') && (el.style.transform || '').includes('rotateZ(90deg)')) { cx = x - hh / 2; cy = y + w / 2; }
+                if (el.classList.contains('p3-pared')) { el.classList.add('fuera'); return; }
+                el.classList.toggle('fuera', !(cx >= r.x - 4 && cx <= r.x + r.w + 4 && cy >= r.y - 4 && cy <= r.y + r.h + 4));
+            });
+        }
+        function entrar(i) {
+            const e = escenas[plantaVista]; if (!e) return;
+            const z = e.zonas[i]; if (!z) return;
+            marcarFuera(e, z.r);
+            frenteDe = null; limpiarFrente(); act = -1; arriba = false; ultK = null;
+            Object.values(e.racks).forEach(x => { x.d.classList.remove('meta', 'otro', 'tapa'); x.niveles.forEach(n => n.classList.remove('este')); });
+            e.ruta(null); pintarPines(); lista(); botones();
+            const r = z.r, largoY = r.h >= r.w, b = escD.getBoundingClientRect();
+            const ancho = largoY ? r.w : r.h;
+            const s = Math.max(1, Math.min(4.2, b.width * 0.95 / (ancho + 40)));
+            cam = largoY ? { rx: 74, rz: 0, s, cx: r.x + r.w / 2, cy: r.y + r.h * 0.6, cz: 1.35 * S }
+                         : { rx: 74, rz: -90, s, cx: r.x + r.w * 0.4, cy: r.y + r.h / 2, cz: 1.35 * S };
+            aplicar();
+            root.querySelector('.p3-hud').innerHTML = `<div class="t">Adentro</div><div class="d">${esc(z.nombre)}</div><div class="s">Arrastrá para mirar a los costados · tocá una estantería para ver qué hay</div>`;
+        }
         function tocarRack(cod, niv) {
             const e = escenas[plantaVista]; if (!e) return;
             const k = e.racks[cod]; if (!k) return;
@@ -901,6 +1075,11 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
                 else if (a === 'izq') { cam.rz -= 25; aplicar(); }
                 else if (a === 'der') { cam.rz += 25; aplicar(); }
                 else if (a === 'lo') loTengo();
+                else if (a === 'entrar') {
+                    const m = root.querySelector('.p3-amb'); m.hidden = !m.hidden; b.classList.toggle('on', !m.hidden);
+                    const e = escenas[plantaVista];
+                    if (!m.hidden && e) m.innerHTML = '<div class="t">Entrar a un ambiente</div>' + e.zonas.map((z, i) => `<label data-amb="${i}" style="cursor:pointer">🚪 ${esc(z.nombre)}</label>`).join('');
+                }
                 else if (a === 'capas') { const c = root.querySelector('.p3-capas'); c.hidden = !c.hidden; b.classList.toggle('on', !c.hidden); if (!c.hidden) pintarCapas(); }
                 else if (a === 'cerrar-est') { panelDe = null; pintarEstante(); }
                 else if (a === 'frente') {
@@ -913,6 +1092,8 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
                 }
                 return;
             }
+            const am = ev.target.closest('[data-amb]');
+            if (am) { const m = root.querySelector('.p3-amb'); m.hidden = true; root.querySelector('[data-a="entrar"]').classList.remove('on'); entrar(+am.dataset.amb); return; }
             const it = ev.target.closest('.p3-it');
             if (it) ir(+it.dataset.i);
         });
