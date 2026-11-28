@@ -46,6 +46,11 @@ public class RecorridoEstanteDto
     public string? Nota { get; set; }
     public string? NotaPor { get; set; }
     public DateTime? NotaAt { get; set; }
+    // 2026-11-28: dibujo y foto del estante
+    public string? Dibujo { get; set; }
+    public string? DibujoTexto { get; set; }
+    public int? DibujoCant { get; set; }
+    public string? Foto { get; set; }
     public List<RecorridoAlturaDto> Alturas { get; set; } = new();
     public string? Siguiente { get; set; }
     public bool CambiaRack { get; set; }

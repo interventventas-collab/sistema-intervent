@@ -221,6 +221,21 @@
             {
                 <div class="rc-mini" style="margin:.1rem 0 .7rem"><button @onclick="EditarNota">📝 Agregar comentario a este estante</button></div>
             }
+            @* 2026-11-28: foto del estante (sacada con el celu) y lo que se ve acá aunque no tenga stock *@
+            @if (!string.IsNullOrWhiteSpace(est.DibujoTexto) || est.Dibujo is not null)
+            {
+                <div class="rc-vacio" style="text-align:left;padding:.1rem 0 .4rem;color:#92400e">Acá se ve: <b>@(est.DibujoTexto ?? est.Dibujo)</b>@(est.DibujoCant is int dc ? $" · {dc}" : "")</div>
+            }
+            <div class="rc-mini" style="margin:0 0 .7rem;align-items:center">
+                @if (est.Foto is not null)
+                {
+                    <a href="@est.Foto" target="_blank"><img src="@est.Foto" style="height:64px;border-radius:8px;border:1px solid #cbd5e1;display:block" /></a>
+                }
+                <label style="border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:.3rem .7rem;font-size:.8rem;font-weight:700;cursor:pointer;color:#334155">
+                    @(subiendoFoto ? "Subiendo…" : est.Foto is null ? "📷 Sacar foto del estante" : "📷 Cambiar foto")
+                    <InputFile accept="image/*" capture="environment" style="display:none" OnChange="FotoEstante" />
+                </label>
+            </div>
 
             @if (est.Productos.Count == 0)
             {
@@ -389,6 +404,21 @@
     private readonly HashSet<int> tildados = new();
     private string? codigoNuevo;
     private bool editandoNota;
+    private bool subiendoFoto;
+
+    /// <summary>2026-11-28: foto del estante desde el celu.</summary>
+    private async Task FotoEstante(InputFileChangeEventArgs ev)
+    {
+        if (est is null || operador is null) return;
+        subiendoFoto = true; StateHasChanged();
+        var (vencido, err) = await Api.FotoRecorridoAsync(pase!, est.Codigo, operador.Id, ev.File);
+        subiendoFoto = false;
+        if (vencido) { try { _ = JS.InvokeVoidAsync("localStorage.removeItem", CLAVE_PASE); } catch { } Nav.NavigateTo("/depo"); return; }
+        if (err is not null) { error = err; return; }
+        aviso = "📷 Foto guardada";
+        var r = await Api.GetRecorridoEstanteAsync(pase!, est.Codigo);
+        if (r.Dato is not null) est = r.Dato;
+    }
     private string notaTexto = "";
     private DotNetObjectReference<DepoRecorrer>? refJs;
 

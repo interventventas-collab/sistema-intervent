@@ -20,4 +20,15 @@ public class DepositoEstanteNota
     public DateTime At { get; set; } = DateTime.UtcNow;
     [MaxLength(100)]
     public string? Por { get; set; }
+
+    /// <summary>2026-11-28: qué se ve en el estante aunque no tenga stock cargado (en el 3D se dibuja eso):
+    /// "bolsas" (de café crudo), "cajas", "bidones", "sillas", "pallet", "rollos", "bultos", "foto". Null = nada.</summary>
+    [MaxLength(20)]
+    public string? Dibujo { get; set; }
+    public int? DibujoCant { get; set; }
+    [MaxLength(100)]
+    public string? DibujoTexto { get; set; }
+    /// <summary>2026-11-28: foto del estante (archivo en /data/files/estante-fotos).</summary>
+    [MaxLength(100)]
+    public string? Foto { get; set; }
 }

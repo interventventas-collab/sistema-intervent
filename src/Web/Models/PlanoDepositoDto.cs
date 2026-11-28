@@ -41,6 +41,8 @@ public class PlanoElementoDto
     /// <summary>2026-11-28: calles de las puntas (cara 3 = lado entrada / pared izq., cara 4 = la otra).</summary>
     public int? CallePunta1 { get; set; }
     public int? CallePunta2 { get; set; }
+    /// <summary>2026-11-28: lo que se dibuja en sus estantes (bolsas de café, cajas…) y si tienen foto. Solo lectura.</summary>
+    public List<PlanoDibujoDto>? Dibujos { get; set; }
     /// <summary>2026-11-27: fila (línea de estanterías) y número de rack en la fila → "F4-R2".</summary>
     public int? Fila { get; set; }
     public int? NroFila { get; set; }
@@ -126,6 +128,23 @@ public class PlanoEstanteDto
     public string? Nota { get; set; }
     public string? NotaPor { get; set; }
     public DateTime? NotaAt { get; set; }
+    /// <summary>2026-11-28: qué se ve en el estante aunque no tenga stock, y su foto.</summary>
+    public string? Dibujo { get; set; }
+    public int? DibujoCant { get; set; }
+    public string? DibujoTexto { get; set; }
+    public string? Foto { get; set; }
+}
+
+/// <summary>2026-11-28: dibujo de un estante (para el 3D).</summary>
+public class PlanoDibujoDto
+{
+    public int Cara { get; set; }
+    public int Posicion { get; set; }
+    public int Nivel { get; set; }
+    public string? Dibujo { get; set; }
+    public int? Cant { get; set; }
+    public string? Texto { get; set; }
+    public string? Foto { get; set; }
 }
 
 /// <summary>2026-11-27: un lado del rack que da a una calle.</summary>

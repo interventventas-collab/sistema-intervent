@@ -64,6 +64,33 @@ public partial class ApiClient
         await ThrowIfErrorAsync(resp);
     }
 
+    /// <summary>2026-11-28: qué se ve en el estante aunque no tenga stock (null = nada).</summary>
+    public async Task GuardarDibujoEstanteAsync(string codigo, string? dibujo, int? cantidad, string? texto)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.PutAsJsonAsync($"/api/deposito/plano/estante/{Uri.EscapeDataString(codigo)}/dibujo", new { dibujo, cantidad, texto });
+        await ThrowIfErrorAsync(resp);
+    }
+
+    /// <summary>2026-11-28: foto del estante.</summary>
+    public async Task SubirFotoEstanteAsync(string codigo, Microsoft.AspNetCore.Components.Forms.IBrowserFile archivo)
+    {
+        await SetAuthHeaderAsync();
+        using var form = new MultipartFormDataContent();
+        var sc = new StreamContent(archivo.OpenReadStream(16 * 1024 * 1024));
+        sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrWhiteSpace(archivo.ContentType) ? "image/jpeg" : archivo.ContentType);
+        form.Add(sc, "file", archivo.Name);
+        var resp = await _http.PostAsync($"/api/deposito/plano/estante/{Uri.EscapeDataString(codigo)}/foto", form);
+        await ThrowIfErrorAsync(resp);
+    }
+
+    public async Task SacarFotoEstanteAsync(string codigo)
+    {
+        await SetAuthHeaderAsync();
+        var resp = await _http.DeleteAsync($"/api/deposito/plano/estante/{Uri.EscapeDataString(codigo)}/foto");
+        await ThrowIfErrorAsync(resp);
+    }
+
     public async Task SacarProductoDeEstanteAsync(int asignacionId)
     {
         await SetAuthHeaderAsync();
