@@ -2236,6 +2236,14 @@
                     @if (formClienteId > 0)
                     {
                         <div style="margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center;">
+                            @if (saldoAnteriorNoCargado)
+                            {
+                                <span style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.25rem 0.6rem; background: #fee2e2; border: 1px solid #dc2626; border-radius: 999px; color: #7f1d1d; font-size: 0.78rem;">
+                                    <b>⚠ No pude ver si debe algo</b>
+                                    <button type="button" tabindex="-1" class="btn btn-secondary" style="font-size: 0.72rem; padding: 0.05rem 0.45rem;"
+                                            disabled="@reintentandoSaldo" @onclick="ReintentarSaldoAnteriorAsync">@(reintentandoSaldo ? "Buscando…" : "Reintentar")</button>
+                                </span>
+                            }
                             @if (unpaidPrevSales.Count > 0)
                             {
                             <div @onclick="@(() => saldoAnteriorExpandido = !saldoAnteriorExpandido)"
@@ -10249,6 +10257,11 @@
             envioEmailAuto = false; envioWaAuto = false;
             ventanaWaAbierta = null; ventanaWaUltimoEntrante = null;
         }
+        // 2026-11-28: editando una venta y se le CAMBIA el cliente (ej. CAFE-2026-2705, cargada a FABIAN
+        // y corregida a CARABOBO 489) → abajo se saca el saldo del cliente equivocado y al guardar se pone
+        // el del cliente nuevo, como en una venta nueva. Si se vuelve al cliente original, no se agrega nada.
+        if (editingVentaId.HasValue)
+            includePrevBalanceInNotes = formClienteId > 0 && formClienteId != editClienteOriginalId;
         // FIX 2026-05-28: si el usuario cambia el cliente, sacar de Observaciones cualquier línea
         // "Saldo anterior: $X (comprobantes: Y)" que haya quedado del cliente ANTERIOR. Si no
         // limpiamos, se arrastra la deuda de otro cliente a este comprobante (bug que causó
@@ -10549,17 +10562,43 @@
     {
         // 2026-10-06: las máquinas del cliente se refrescan junto con el saldo anterior.
         await CargarMaquinasClienteAsync();
-        if (formClienteId <= 0)
-        {
-            unpaidPrevSales = new();
-            return;
-        }
+        saldoExcluidos.Clear();
+        await CargarImpagasClienteAsync();
+    }
+
+    // 2026-11-28: true = NO se pudo saber lo que debe el cliente (servidor reiniciándose, sin red...).
+    // Antes el error se tragaba y la venta salía como si no debiera nada (pasó en CAFE-2026-3144,
+    // emitida mientras se publicaba una actualización). Ahora se avisa y se reintenta al emitir.
+    private bool saldoAnteriorNoCargado;
+    private bool reintentandoSaldo;
+    private int editClienteOriginalId;   // cliente que tenía la venta al abrirla para editar
+
+    /// <summary>Trae los comprobantes impagos del cliente. Si falla, deja saldoAnteriorNoCargado = true.</summary>
+    private async Task CargarImpagasClienteAsync()
+    {
+        saldoAnteriorNoCargado = false;
+        if (formClienteId <= 0) { unpaidPrevSales = new(); return; }
         try
         {
-            saldoExcluidos.Clear();
-            unpaidPrevSales = await Api.GetCafeVentasImpagasClienteAsync(formClienteId, editingVentaId) ?? new();
+            var lista = await Api.GetCafeVentasImpagasClienteAsync(formClienteId, editingVentaId);
+            unpaidPrevSales = lista ?? new();
+            saldoAnteriorNoCargado = lista is null;
         }
-        catch { unpaidPrevSales = new(); }
+        catch { unpaidPrevSales = new(); saldoAnteriorNoCargado = true; }
+    }
+
+    /// <summary>Botón "Reintentar" del aviso rojo: vuelve a pedir la deuda (y las máquinas si tampoco se pudieron leer).</summary>
+    private async Task ReintentarSaldoAnteriorAsync()
+    {
+        if (reintentandoSaldo) return;
+        reintentandoSaldo = true;
+        try
+        {
+            if (!maquinasCargadas) await CargarMaquinasClienteAsync();
+            await CargarImpagasClienteAsync();
+            if (saldoAnteriorNoCargado) ToastService.Error("Sigo sin poder ver lo que debe el cliente. Probá de nuevo en unos segundos.");
+        }
+        finally { reintentandoSaldo = false; StateHasChanged(); }
     }
 
     private async Task LoadTopProductsForClient()
@@ -12051,6 +12090,17 @@
             return;
         }
         if (resubirDecision is bool decision) envioDriveEdit = decision;
+        // 2026-11-28: no se pudo ver lo que debe el cliente → se reintenta una vez antes de emitir.
+        // Si sigue sin poder, NO se emite: saldría sin "Saldo anterior" sin que nadie se dé cuenta.
+        if (formClienteId > 0 && includePrevBalanceInNotes && saldoAnteriorNoCargado)
+        {
+            await ReintentarSaldoAnteriorAsync();
+            if (saldoAnteriorNoCargado)
+            {
+                formError = "No pude ver lo que debe el cliente (el sistema puede estar actualizándose). Esperá unos segundos y apretá Reintentar en el aviso rojo de arriba, al lado del cliente.";
+                return;
+            }
+        }
         saving = true;
         try
         {
@@ -12741,6 +12791,7 @@
         editHeaderExpanded = false; // arranca colapsada
         duplicadoDeNumero = null;
         formClienteId = v.ClienteId ?? 0;
+        editClienteOriginalId = formClienteId;   // 2026-11-28: para saber si al editar se cambió el cliente
         formClienteTipo = string.IsNullOrWhiteSpace(v.ClienteTipo) ? "OTRO" : v.ClienteTipo!;
         clienteSearch = ""; clienteSearchOpen = false;
         // 21/10/2026: venta a CONSUMIDOR FINAL → quién compró viene en la venta (se manda de nuevo al guardar).
