@@ -9426,3 +9426,9 @@ GO
 IF COL_LENGTH('Deposito_PlanoElementos', 'CallePunta1') IS NULL
     ALTER TABLE Deposito_PlanoElementos ADD CallePunta1 INT NULL, CallePunta2 INT NULL;
 GO
+
+-- 28/11/2026: dibujo de lo que hay en el estante aunque no tenga stock (bolsas de café crudo, cajas, bidones…)
+-- y una foto del estante. ⚠ En PROD correr a mano ANTES de la API.
+IF COL_LENGTH('Deposito_EstanteNotas', 'Dibujo') IS NULL
+    ALTER TABLE Deposito_EstanteNotas ADD Dibujo NVARCHAR(20) NULL, DibujoCant INT NULL, DibujoTexto NVARCHAR(100) NULL, Foto NVARCHAR(100) NULL;
+GO

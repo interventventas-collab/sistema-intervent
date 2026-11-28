@@ -168,7 +168,7 @@ public class DepoRecorridoController : ControllerBase
                 codigo = DepositoPlanoController.CodigoEstante(rack, cara, pos, n),
                 revisado = revisados.Contains((rack.Id, cara, pos, n)),
                 productos = porNivel.Count(a => DepositoPlanoController.NormCara(rack, a.Cara) == cara && a.Posicion == pos && a.Nivel == n),
-                nota = notas.Any(x => x.Cara == cara && x.Posicion == pos && x.Nivel == n),
+                nota = notas.Any(x => x.Cara == cara && x.Posicion == pos && x.Nivel == n && x.Nota != ""),
             });
 
         // el que sigue: la altura de arriba; si es la última, el próximo rack de la calle
@@ -192,9 +192,14 @@ public class DepoRecorridoController : ControllerBase
             rack = rack.Codigo,
             calle, nro, fila = rack.Fila, nombreRack = DepositoPlanoController.NombreRack(rack), cara, posicion = pos, nivel = niv, niveles = rack.Niveles ?? 1,
             revisado = revisados.Contains((rack.Id, cara, pos, niv)),
-            nota = nota?.Nota,
+            nota = DepositoPlanoController.NotaTexto(nota),
             notaPor = nota?.Por,
             notaAt = nota?.At,
+            // 2026-11-28: dibujo y foto del estante
+            dibujo = nota?.Dibujo,
+            dibujoTexto = nota?.DibujoTexto,
+            dibujoCant = nota?.DibujoCant,
+            foto = DepositoPlanoController.UrlFoto(nota?.Foto),
             alturas,
             siguiente,
             cambiaRack,
@@ -480,6 +485,20 @@ public class DepoRecorridoController : ControllerBase
         if (rack is null) return NotFound(new { error });
         var n = await DepositoPlanoController.GuardarNotaAsync(_db, rack.Id, cara, pos, niv, req.Nota, op.Nombre);
         return Ok(new { ok = true, nota = n?.Nota, notaPor = n?.Por, notaAt = n?.At });
+    }
+
+    /// <summary>2026-11-28: foto del estante sacada con el celu (multipart: file + operadorId).</summary>
+    [HttpPost("estante/{codigo}/foto")]
+    [RequestSizeLimit(16 * 1024 * 1024)]
+    public async Task<IActionResult> Foto(string codigo, [FromForm] int operadorId, IFormFile? file)
+    {
+        if (!_clave.PaseValido(Request)) return PaseVencido();
+        var op = await _db.StockOperadores.AsNoTracking().FirstOrDefaultAsync(o => o.Id == operadorId && o.IsActive);
+        if (op is null) return BadRequest(new { error = "Elegí quién sos." });
+        var (rack, cara, pos, niv, error) = await DepositoPlanoController.ResolverEstanteAsync(_db, codigo);
+        if (rack is null) return NotFound(new { error });
+        var (url, err) = await DepositoPlanoController.GuardarFotoEstanteAsync(_db, rack.Id, cara, pos, niv, file, op.Nombre);
+        return err is null ? Ok(new { foto = url }) : BadRequest(new { error = err });
     }
 
     /// <summary>"Listo": el estante queda revisado en este recorrido.</summary>

@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Web.Models;
 
 namespace Web.Services;
@@ -6,6 +7,28 @@ namespace Web.Services;
 public partial class ApiClient
 {
     private const string URL_RECORRIDO = "/api/public/depo-recorrido";
+
+    /// <summary>2026-11-28: foto del estante sacada con el celu. Devuelve el error o null.</summary>
+    public async Task<(bool Vencido, string? Error)> FotoRecorridoAsync(string pase, string codigo, int operadorId, Microsoft.AspNetCore.Components.Forms.IBrowserFile archivo)
+    {
+        try
+        {
+            using var form = new MultipartFormDataContent();
+            var sc = new StreamContent(archivo.OpenReadStream(16 * 1024 * 1024));
+            sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrWhiteSpace(archivo.ContentType) ? "image/jpeg" : archivo.ContentType);
+            form.Add(sc, "file", archivo.Name);
+            form.Add(new StringContent(operadorId.ToString()), "operadorId");
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{URL_RECORRIDO}/estante/{Uri.EscapeDataString(codigo)}/foto") { Content = form };
+            req.Headers.Add("X-Pase-Celu", pase);
+            var resp = await _http.SendAsync(req);
+            if ((int)resp.StatusCode == 403) return (true, null);
+            if (resp.IsSuccessStatusCode) return (false, null);
+            string? err = null;
+            try { err = (await resp.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("error").GetString(); } catch { }
+            return (false, err ?? "No se pudo subir la foto.");
+        }
+        catch { return (false, "No se pudo subir la foto (¿muy grande o sin conexión?)."); }
+    }
 
     public Task<RespuestaCelu<RecorridoInicioDto>> GetRecorridoInicioAsync(string pase)
         => MandarCeluAsync<RecorridoInicioDto>(HttpMethod.Get, $"{URL_RECORRIDO}/inicio", pase);

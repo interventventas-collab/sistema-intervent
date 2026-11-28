@@ -20,6 +20,10 @@
         ['piso', 'Lugares en el piso'], ['pcs', 'PCs'], ['muebles', 'Muebles y escritorios'], ['otros', 'Vehículos, pallets, sillas y otros']];
     const CAPA_TIPO = { pc: 'pcs', escritorio: 'muebles', mesa: 'muebles', mueble: 'muebles', heladera: 'muebles',
         vehiculo: 'otros', pallet: 'otros', contenedor: 'otros', montacargas: 'otros', sillas: 'otros' };
+    // 2026-11-28: lo que se puede dibujar en un estante aunque no tenga stock
+    const DIBUJOS = [['bolsas', 'Bolsas de café'], ['cajas', 'Cajas'], ['bidones', 'Bidones'], ['sillas', 'Sillas apiladas'],
+        ['pallet', 'Pallet vacío'], ['rollos', 'Rollos'], ['bultos', 'Bultos'], ['foto', 'Con una foto']];
+    const nombreDibujo = (t) => (DIBUJOS.find(x => x[0] === t) || [t, t])[1];
     function capasApagadas() {
         try {
             const v = localStorage.getItem('plano_capas'); if (v == null) return new Set();
@@ -134,6 +138,17 @@
 .p3-tip .v { color: #94a3b8; font-style: italic; }
 .p3-tip .h { color: #94a3b8; font-size: 11px; margin-top: 4px; }
 .p3-tip + .p3-tip { margin-top: 4px; }
+.p3-caja.saco > i { border-radius: 45% / 40%; }
+.p3-caja.rollo > i { border-radius: 50%; }
+.p3-alt img { display: inline-block; vertical-align: middle; height: 2.4em; border-radius: 3px; margin-left: 4px; }
+.p3-tip img { display: block; max-height: 110px; max-width: 220px; border-radius: 6px; margin-top: 4px; }
+.p3-est .dib { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 6px 0; }
+.p3-est .dib button { border: 1px solid #e7e5e4; background: #fff; border-radius: 7px; padding: 4px 2px; font: inherit; font-size: 11px; cursor: pointer; }
+.p3-est .dib button.on { border: 2px solid #ea580c; background: #fff7ed; font-weight: 700; }
+.p3-est .ft { display: flex; gap: 8px; align-items: center; margin: 4px 0 6px; flex-wrap: wrap; font-size: 12.5px; }
+.p3-est .ft img { height: 70px; border-radius: 6px; border: 1px solid #e7e5e4; cursor: zoom-in; }
+.p3-est .ft label { border: 1px solid #d6d3d1; background: #fff; border-radius: 99px; padding: 4px 10px; font-weight: 700; cursor: pointer; }
+.p3-est .ve { color: #92400e; font-size: 13px; margin: 2px 0; }
 .p3-niv.hov { outline: 3px solid #38bdf8; outline-offset: -2px; }
 .p3-est { border-bottom: 2px solid #fde68a; padding: 12px 14px; max-height: 58vh; overflow: auto; background: #fffbeb; }
 .p3-est .tt { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #92400e; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; }
@@ -222,6 +237,46 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             return c;
         }
 
+        // 2026-11-28: llena una altura con el dibujo elegido (o las cajitas de siempre). Devuelve nada; marca data-niv.
+        function llenar(d, r, z, hz, niv, tipo, seed) {
+            d.querySelectorAll(':scope > .p3-caja[data-niv="' + niv + '"]').forEach(x => x.remove());
+            const put = (x, y, w, hh, alto, color, z2, cls) => { const c = caja(x, y, w, hh, alto, color, d, z2); c.dataset.niv = niv; if (cls) c.classList.add(cls); return c; };
+            const ch = r.h * 0.72, y0 = (r.h - ch) / 2;
+            if (!tipo || tipo === 'cajas' || tipo === 'foto') {
+                const k = Math.floor(azar(seed * 7 + niv) * 3) + 1;
+                for (let j = 0; j < k; j++)
+                    put(6 + j * (r.w - 12) / k + azar(seed + j) * 4, (r.h - ch) / 2, Math.min(r.w / 3.4, (r.w - 16) / k), ch, hz * (0.6 + azar(niv + j + seed) * 0.4), '#c9a26b', z);
+                return;
+            }
+            const n = Math.max(1, Math.floor((r.w - 8) / 46)), w = (r.w - 8) / n;
+            if (tipo === 'bolsas' || tipo === 'pallet') {
+                for (let j = 0; j < n; j++) put(4 + j * w + 2, y0, w - 4, ch, 4, '#8a6a40', z);   // pallet
+                if (tipo === 'pallet') return;
+                const capas = Math.max(2, Math.min(5, Math.floor((hz - 4) / 6))), ac = (hz - 4) / capas;
+                for (let c = 0; c < capas; c++)
+                    for (let j = 0; j < n; j++) put(4 + j * w + 1 + (c % 2) * 2, y0 + 1, w - 4, ch - 2, ac - 0.5, c % 2 ? '#d2bf94' : '#dccb9f', z + 4 + c * ac, 'saco');
+                return;
+            }
+            if (tipo === 'bidones') {
+                const m = Math.max(2, Math.floor((r.w - 8) / 16));
+                for (let j = 0; j < m; j++) put(5 + j * (r.w - 10) / m, y0 + ch * 0.15, (r.w - 10) / m - 3, ch * 0.7, hz * 0.9, '#60a5fa', z, 'rollo');
+                return;
+            }
+            if (tipo === 'sillas') {
+                const capas = Math.max(4, Math.floor(hz / 2.2));
+                for (let c = 0; c < capas; c++) for (let j = 0; j < n; j++) put(4 + j * w + 3, y0 + 2, w - 6, ch - 4, 1.6, c % 2 ? '#f1f5f9' : '#e2e8f0', z + c * 2.2);
+                return;
+            }
+            if (tipo === 'rollos') {
+                const m = Math.max(2, Math.floor((r.w - 8) / 22));
+                for (let j = 0; j < m; j++) put(5 + j * (r.w - 10) / m, y0, (r.w - 10) / m - 2, ch, hz * 0.7, '#cbd5e1', z, 'rollo');
+                return;
+            }
+            // bultos
+            for (let j = 0; j < n; j++) put(4 + j * w + 2, y0, w - 4, ch, hz * 0.85, '#e9d8a6', z);
+        }
+        const dibujoDe = (e, niv, cara) => (e.dibujos || []).filter(x => x.nivel === niv && (cara == null || x.cara === cara)).sort((a, b) => !!b.dibujo - !!a.dibujo)[0] || null;
+
         div('p3-piso', { width: LT * S + 'px', height: WT * S + 'px' });
         const zonas = els.filter(e => e.tipo === 'zona');
         for (const z of zonas) {
@@ -259,14 +314,16 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             const niveles = [div('p3-niv', { width: r.w + 'px', height: r.h + 'px', transform: 'translateZ(1px)' }, d)];
             niveles[0].dataset.niv = 1;
             const k = 2 + Math.floor(azar(e.id * 3) * 3), H = Math.max(14, (+e.alto || 0.6) * S);
-            for (let j = 0; j < k; j++) {
+            const dbp = dibujoDe(e, 1, null);
+            if (dbp && dbp.dibujo && dbp.dibujo !== 'cajas' && dbp.dibujo !== 'foto') llenar(d, r, 2, H, 1, dbp.dibujo, e.id);
+            else for (let j = 0; j < k; j++) {
                 const cw = (r.w - 12) / k - 3, ch = r.h * (0.45 + azar(e.id + j) * 0.3);
                 caja(6 + j * (r.w - 12) / k, (r.h - ch) / 2, cw, ch, H * (0.6 + azar(j + e.id * 5) * 0.4), '#c9a26b', d, 2).dataset.niv = 1;
             }
             const top = div('p3-rcod', { width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${H + 4}px)` }, d);
             top.textContent = cod;
             top.style.fontSize = Math.max(9, Math.min(18, r.h * 0.3, r.w / (cod.length * 0.62))) + 'px';
-            racks[e.codigo.toUpperCase()] = { e, r, H, N: 1, d, niveles, z0: 0, cod, piso: true };
+            racks[e.codigo.toUpperCase()] = { e, r, H, N: 1, d, niveles, z0: 0, cod, piso: true, llenar: (niv, t) => llenar(d, r, 2, H, 1, t, e.id) };
             porCalle['P' + (e.calle1 != null ? e.calle1 : '') + '-' + (e.nroFila || 1)] = e.codigo.toUpperCase();
             porCalle['P-' + (e.nroFila || 1)] = porCalle['P-' + (e.nroFila || 1)] || e.codigo.toUpperCase();
         }
@@ -283,6 +340,8 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
                 niveles.push(div('p3-niv', { width: r.w + 'px', height: r.h + 'px', transform: `translateZ(${z}px)` }, d));
                 niveles[i].dataset.niv = i + 1;
                 const k = Math.floor(azar(e.id * 7 + i) * 3) + 1, hz = Math.min(30, (H - 10) / N - 8);
+                const db = dibujoDe(e, i + 1, null);
+                if (db && db.dibujo && db.dibujo !== 'cajas' && db.dibujo !== 'foto') { llenar(d, r, z + 2, hz, i + 1, db.dibujo, e.id); continue; }
                 for (let j = 0; j < k; j++) {
                     const ch = r.h * 0.7;
                     caja(6 + j * (r.w - 12) / k + azar(e.id + j) * 4, (r.h - ch) / 2, Math.min(r.w / 3.4, (r.w - 16) / k), ch, hz * (0.6 + azar(i + j + e.id) * 0.4), '#c9a26b', d, z + 2).dataset.niv = i + 1;
@@ -292,7 +351,8 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             // 2026-11-27: el rack se llama fila-rack ("F4-R2"); sin fila, el código de siempre
             top.textContent = (e.fila != null && e.nroFila != null) ? 'F' + e.fila + '-R' + e.nroFila : e.codigo;
             top.style.fontSize = Math.max(10, Math.min(22, r.h * 0.42, r.w / 3.2)) + 'px';
-            racks[e.codigo.toUpperCase()] = { e, r, H, N, d, niveles, z0, cod: top.textContent, est: e.forma === 'estanteria' };
+            racks[e.codigo.toUpperCase()] = { e, r, H, N, d, niveles, z0, cod: top.textContent, est: e.forma === 'estanteria',
+                llenar: (niv, t) => llenar(d, r, 4 + (niv - 1) * (H - 10) / N + 2, Math.min(30, (H - 10) / N - 8), niv, t, e.id) };
             if (e.calle1 != null && e.nro1 != null) porCalle[e.calle1 + '-' + e.nro1] = e.codigo.toUpperCase();
             if (e.calle2 != null && e.nro2 != null) porCalle[e.calle2 + '-' + e.nro2] = e.codigo.toUpperCase();
             if (e.fila != null && e.nroFila != null) porCalle['F' + e.fila + '-' + e.nroFila] = e.codigo.toUpperCase();
@@ -410,7 +470,27 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             const c = root.querySelector('.p3-capas');
             c.innerHTML = '<div class="t">Qué ver</div>' + CAPAS.map(x => `<label><input type="checkbox" data-capa="${x[0]}" ${capasOff.has(x[0]) ? '' : 'checked'} /> ${esc(x[1])}</label>`).join('');
         }
-        root.addEventListener('change', (ev) => {
+        root.addEventListener('change', async (ev) => {
+            const fi = ev.target.closest('.p3-est input[data-foto]');
+            if (fi && fi.files && fi.files[0] && panelDe) {
+                const k = panelDe.k, fd = new FormData(); fd.append('file', fi.files[0]);
+                fi.parentElement.firstChild.textContent = 'Subiendo… ';
+                const r = await fetch('/api/deposito/plano/estante/' + encodeURIComponent(fi.dataset.foto) + '/foto', { method: 'POST', credentials: 'same-origin', body: fd }).catch(() => null);
+                if (!r || !r.ok) { fi.parentElement.firstChild.textContent = 'No se pudo subir '; return; }
+                await recargarEstante(k);
+                return;
+            }
+            const dt = ev.target.closest('.p3-est input[data-dtexto]');
+            if (dt && panelDe) {
+                const k = panelDe.k, dat = await datosRack(k);
+                const est = (dat && dat.estantes || []).find(e => e.codigo === dt.dataset.dtexto) || {};
+                const r = await fetch('/api/deposito/plano/estante/' + encodeURIComponent(dt.dataset.dtexto) + '/dibujo', {
+                    method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dibujo: est.dibujo, cantidad: est.dibujoCant, texto: dt.value })
+                }).catch(() => null);
+                if (r && r.ok) await recargarEstante(k);
+                return;
+            }
             const cb = ev.target.closest('.p3-capas input[data-capa]'); if (!cb) return;
             if (cb.checked) capasOff.delete(cb.dataset.capa); else capasOff.add(cb.dataset.capa);
             guardarCapas(capasOff);
@@ -440,8 +520,11 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             if (hovKey !== key) return;
             const ests = estantesDe(dat, k, niv);
             tip.innerHTML = (ests.length ? ests.map(x => `<div><b>${esc(x.codigo)}</b>`
+                + (x.dibujo ? `<div style="color:#fdba74">${esc(nombreDibujo(x.dibujo))}${x.dibujoCant != null ? ' · ' + x.dibujoCant : ''}${x.dibujoTexto ? ' · ' + esc(x.dibujoTexto) : ''}</div>` : '')
                 + (x.productos.length ? x.productos.slice(0, 6).map(p => `<div>• ${nombreProd(p)}</div>`).join('') + (x.productos.length > 6 ? `<div class="v">+${x.productos.length - 6} más</div>` : '')
-                                      : '<div class="v">vacío</div>') + '</div>').join('')
+                                      : x.dibujo ? '' : '<div class="v">vacío</div>')
+                + (x.nota ? `<div class="v">📝 ${esc(x.nota)}</div>` : '')
+                + (x.foto ? `<img src="${esc(x.foto)}" />` : '') + '</div>').join('')
                 : `<b>${esc(k.cod)}</b> · altura ${niv}`) + '<div class="h">Tocá para ver o agregar</div>';
         });
         escD.addEventListener('pointerleave', sacarHover);
@@ -459,6 +542,13 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
                 + (ests.length ? '' : '<div class="vac">No encontré este estante.</div>')
                 + ests.map(x => `<div class="bl">
                     <div class="cod">${esc(x.codigo)}</div><div class="ds">${esc(x.desglose || '')}</div>
+                    ${x.nota ? `<div class="ve">📝 ${esc(x.nota)}</div>` : ''}
+                    ${x.dibujo ? `<div class="ve">Acá se ve: <b>${esc(nombreDibujo(x.dibujo))}</b>${x.dibujoCant != null ? ' · ' + x.dibujoCant : ''}${x.dibujoTexto ? ' · ' + esc(x.dibujoTexto) : ''}</div>` : ''}
+                    ${d.editar ? `<div class="ds" style="margin-top:6px">Qué se ve acá (aunque no tenga stock):</div>
+                        <div class="dib">${DIBUJOS.map(t => `<button data-dib="${t[0]}" data-cod="${esc(x.codigo)}" class="${x.dibujo === t[0] ? 'on' : ''}">${esc(t[1])}</button>`).join('')}</div>
+                        ${x.dibujo ? `<input data-dtexto="${esc(x.codigo)}" placeholder="texto, ej. Café crudo de importación" value="${esc(x.dibujoTexto || '')}" style="margin-top:0" />` : ''}` : ''}
+                    <div class="ft">${x.foto ? `<img src="${esc(x.foto)}" data-grande="${esc(x.foto)}" title="Ver grande" />` : ''}
+                      ${d.editar ? `<label>${x.foto ? '📷 Cambiar foto' : '📷 Agregar foto'}<input type="file" accept="image/*" data-foto="${esc(x.codigo)}" hidden /></label>${x.foto ? `<label data-sinfoto="${esc(x.codigo)}">Sacar foto</label>` : ''}` : ''}</div>
                     ${x.productos.length ? x.productos.map(p => `<div class="pr"><div><b>${esc(p.nombre)}</b>${p.cantidad ? ' · ' + esc(p.cantidad) : ''}<div class="k">${esc([p.sku, 'stock ' + (p.stock ?? 0)].filter(Boolean).join(' · '))}</div></div>${d.editar ? `<button class="x" data-sacar="${p.id}" title="Sacar de este estante">✕</button>` : ''}</div>`).join('')
                                          : '<div class="vac">Vacío</div>'}
                     ${d.editar ? `<input type="search" data-cod="${esc(x.codigo)}" placeholder="+ Agregar un producto acá (nombre o SKU)" autocomplete="off" /><div class="rs"></div>` : ''}
@@ -466,8 +556,18 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
             box.scrollTop = 0;
         }
         async function recargarEstante(k) {
-            await datosRack(k, true);
+            const dat = await datosRack(k, true);
             hovKey = '';
+            // 2026-11-28: el dibujo nuevo se ve enseguida en el 3D
+            if (dat) {
+                k.e.dibujos = (dat.estantes || []).filter(x => x.dibujo || x.foto)
+                    .map(x => ({ cara: x.cara, posicion: x.posicion, nivel: x.nivel, dibujo: x.dibujo, cant: x.dibujoCant, texto: x.dibujoTexto, foto: x.foto }));
+                if (panelDe && panelDe.k === k && k.llenar) {
+                    const cara = frenteDe && frenteDe.k === k ? frenteDe.cara : null;
+                    const db = (k.e.dibujos || []).filter(x => x.nivel === panelDe.niv && (cara == null || x.cara === cara)).find(x => x.dibujo) || null;
+                    k.llenar(panelDe.niv, db ? db.dibujo : null);
+                }
+            }
             await pintarEstante();
             if (d.dotnet) d.dotnet.invokeMethodAsync('Cambio3D', k.e.id).catch(() => { });
         }
@@ -500,6 +600,26 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
                 }).catch(() => null);
                 if (!r || !r.ok) { add.style.opacity = 1; add.querySelector('span').textContent = 'No se pudo guardar'; return; }
                 await recargarEstante(k);
+                return;
+            }
+            const bd = ev.target.closest('.p3-est [data-dib]');
+            if (bd) {
+                const cod = bd.dataset.cod, dat = await datosRack(k);
+                const est = (dat && dat.estantes || []).find(e => e.codigo === cod) || {};
+                const nuevo = est.dibujo === bd.dataset.dib ? null : bd.dataset.dib;
+                const r = await fetch('/api/deposito/plano/estante/' + encodeURIComponent(cod) + '/dibujo', {
+                    method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dibujo: nuevo, cantidad: nuevo ? est.dibujoCant : null, texto: nuevo ? est.dibujoTexto : null })
+                }).catch(() => null);
+                if (r && r.ok) await recargarEstante(k);
+                return;
+            }
+            const gr = ev.target.closest('.p3-est [data-grande]');
+            if (gr) { window.open(gr.dataset.grande, '_blank'); return; }
+            const sf = ev.target.closest('.p3-est [data-sinfoto]');
+            if (sf) {
+                const r = await fetch('/api/deposito/plano/estante/' + encodeURIComponent(sf.dataset.sinfoto) + '/foto', { method: 'DELETE', credentials: 'same-origin' }).catch(() => null);
+                if (r && r.ok) await recargarEstante(k);
                 return;
             }
             const x = ev.target.closest('.p3-est [data-sacar]');
@@ -684,6 +804,9 @@ ${CAPAS.map(c => `.p3-mundo.sin-${c[0]} [data-capa="${c[0]}"] { display: none !i
                 const c = h('div', 'p3-cartel', null, m); c.dataset.z = z;
                 const t = h('div', 'p3-alt' + (niv === i + 1 ? ' este' : ''), { fontSize: fz + 'px' }, c);
                 t.textContent = k.piso ? 'PISO' : 'A' + (i + 1);
+                // 2026-11-28: si esa altura tiene foto, chiquita al lado del cartel
+                const fo = (k.e.dibujos || []).find(x => x.nivel === i + 1 && x.cara === cara && x.foto);
+                if (fo) { const im = document.createElement('img'); im.src = fo.foto; t.appendChild(im); }
                 altTags.push(m);
             });
             const b = escD.getBoundingClientRect();

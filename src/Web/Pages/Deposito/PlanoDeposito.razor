@@ -77,6 +77,12 @@
     .pd-acc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
     .pd-est { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px 12px; margin-top: 14px; }
     .pd-est h4 { margin: 0 0 6px; font-size: 1rem; }
+    /* 2026-11-28: dibujo y foto del estante */
+    .pd-dib { border-top: 1px dashed #e5e7eb; border-bottom: 1px dashed #e5e7eb; padding: 8px 0; margin-bottom: 10px; }
+    .pd-dibs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-top: 5px; }
+    .pd-dibs button { border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; padding: 4px 2px; font: inherit; font-size: .7rem; cursor: pointer; color: #374151; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .pd-dibs button.on { border: 2px solid #ea580c; background: #fff7ed; font-weight: 700; padding: 3px 1px; }
+    .pd-dib .pd-dos input { border: 1px solid #d1d5db; border-radius: 6px; padding: 5px 8px; font: inherit; font-size: .85rem; width: 100%; box-sizing: border-box; }
     .pd-prod { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f3f4f6; font-size: .9rem; }
     .pd-prod > div { flex: 1; }
     .pd-x { border: none; background: none; cursor: pointer; color: #6b7280; font-size: 1rem; padding: 0 4px; }
@@ -808,7 +814,13 @@
                                 var hit = string.Equals(cod, celdaSel, StringComparison.OrdinalIgnoreCase);
                                 <button class="pd-cel @(hit ? "hit" : "")" title="@(est?.Desglose ?? ApiClient.DesgloseEstante(cod))" @onclick="@(() => ElegirCelda(cod))">
                                     <span class="pd-cod">@cod</span>@if (!string.IsNullOrWhiteSpace(est?.Nota)) { <span title="@est!.Nota"> 📝</span> }<br />
-                                    @if (est is null || est.Productos.Count == 0)
+                                    @if (est?.Dibujo is not null)
+                                    {
+                                        @* 2026-11-28: lo que se ve acá aunque no tenga stock *@
+                                        <span style="color:#92400e">@(DibujosEstante.FirstOrDefault(x => x.Item1 == est.Dibujo).Item2)@(est.DibujoCant is int dc ? $" · {dc}" : "")@(string.IsNullOrWhiteSpace(est.DibujoTexto) ? "" : " · " + est.DibujoTexto)</span><br />
+                                    }
+                                    @if (est?.Foto is not null) { <span title="Tiene foto">📷</span><br /> }
+                                    @if ((est is null || est.Productos.Count == 0) && est?.Dibujo is null)
                                     {
                                         <span class="pd-vac">vacío</span>
                                     }
@@ -859,6 +871,34 @@
                         {
                             <button class="pd-btn" style="margin:0 0 10px 6px" @onclick="@(() => EditarNotaEstante(est))">📝 Agregar comentario</button>
                         }
+                        @* 2026-11-28: qué se ve acá aunque no tenga stock (en el 3D se dibuja eso) + foto del estante *@
+                        <div class="pd-dib">
+                            <div class="pd-g" style="font-weight:700">Qué se ve acá <span style="font-weight:400">(aunque no tenga stock cargado)</span></div>
+                            <div class="pd-dibs">
+                                @foreach (var (k, t) in DibujosEstante)
+                                {
+                                    var kk = k;
+                                    <button class="@(est?.Dibujo == kk ? "on" : "")" title="@t" @onclick="@(() => ElegirDibujo(est, kk))">@IconoDibujo(kk)<span>@t</span></button>
+                                }
+                            </div>
+                            @if (est?.Dibujo is not null)
+                            {
+                                <div class="pd-dos" style="grid-template-columns:90px 1fr;margin-top:6px">
+                                    <input inputmode="numeric" placeholder="cuántos" value="@est.DibujoCant" @onchange="@(ev => CambiarDibujoDato(est, ev, true))" />
+                                    <input maxlength="100" placeholder="texto, ej. Café crudo de importación" value="@est.DibujoTexto" @onchange="@(ev => CambiarDibujoDato(est, ev, false))" />
+                                </div>
+                            }
+                            <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+                                @if (est?.Foto is not null)
+                                {
+                                    <a href="@est.Foto" target="_blank" title="Ver grande"><img src="@est.Foto" style="height:72px;border-radius:6px;border:1px solid #e5e7eb;display:block" /></a>
+                                    <button class="pd-chico" @onclick="@(() => SacarFotoEstante(est))">Sacar foto</button>
+                                }
+                                <label class="pd-chico" style="cursor:pointer">@(subiendoFoto ? "Subiendo…" : est?.Foto is null ? "📷 Agregar foto" : "📷 Cambiar foto")
+                                    <InputFile accept="image/*" style="display:none" OnChange="SubirFotoEstante" />
+                                </label>
+                            </div>
+                        </div>
                         @if (est is null || est.Productos.Count == 0)
                         {
                             <div class="pd-g" style="margin-bottom:8px">Este estante está vacío.</div>
@@ -1242,8 +1282,9 @@
             var plantas = new Dictionary<string, List<PlanoElementoDto>>();
             foreach (var pl in new[] { "PB", "P1" })
             {
-                if (pl == planta) { plantas[pl] = elementos; continue; }
-                try { plantas[pl] = (await Api.GetPlanoDepositoAsync(pl))?.Elementos ?? new(); } catch { }
+                // 2026-11-28: siempre lo último (dibujos y fotos de los estantes pueden haber cambiado)
+                try { plantas[pl] = (await Api.GetPlanoDepositoAsync(pl))?.Elementos ?? (pl == planta ? elementos : new()); }
+                catch { if (pl == planta) plantas[pl] = elementos; }
             }
             var items = new List<object>();
             string? inicio = null;
@@ -1275,6 +1316,71 @@
 
     private string? notaEditando;
     private string notaTexto = "";
+
+    // ───────────── 2026-11-28: dibujo y foto del estante ─────────────
+    private static readonly (string, string)[] DibujosEstante =
+    {
+        ("bolsas", "Bolsas de café"), ("cajas", "Cajas"), ("bidones", "Bidones"), ("sillas", "Sillas apiladas"),
+        ("pallet", "Pallet vacío"), ("rollos", "Rollos"), ("bultos", "Bultos"), ("foto", "Con una foto"),
+    };
+    private bool subiendoFoto;
+
+    private static RenderFragment IconoDibujo(string t) => t switch
+    {
+        "bolsas" => @<svg width="40" height="24"><path d="M2 12 Q3 3 12 4 L28 4 Q37 3 38 12 Q38 21 28 21 L12 21 Q2 21 2 12Z" fill="#d8c69e" stroke="#8b7650" /><line x1="19" y1="4" x2="18" y2="21" stroke="#4d9a3a" stroke-width="2" /><line x1="22" y1="4" x2="21" y2="21" stroke="#d6b11c" stroke-width="2" /></svg>,
+        "cajas" => @<svg width="40" height="24"><rect x="5" y="7" width="14" height="15" fill="#b08d5c" stroke="#6b5434" /><rect x="21" y="3" width="14" height="19" fill="#c9a26b" stroke="#6b5434" /></svg>,
+        "bidones" => @<svg width="40" height="24"><rect x="7" y="4" width="11" height="18" rx="4" fill="#60a5fa" stroke="#1d4ed8" /><rect x="22" y="4" width="11" height="18" rx="4" fill="#60a5fa" stroke="#1d4ed8" /></svg>,
+        "sillas" => @<svg width="40" height="24"><rect x="7" y="3" width="26" height="4" fill="#fff" stroke="#555" /><rect x="7" y="8" width="26" height="4" fill="#fff" stroke="#555" /><rect x="7" y="13" width="26" height="4" fill="#fff" stroke="#555" /><rect x="7" y="18" width="26" height="4" fill="#fff" stroke="#555" /></svg>,
+        "pallet" => @<svg width="40" height="24"><rect x="5" y="14" width="30" height="7" fill="#8a6a40" /><line x1="5" y1="17.5" x2="35" y2="17.5" stroke="#5b4426" /></svg>,
+        "rollos" => @<svg width="40" height="24"><ellipse cx="20" cy="12" rx="13" ry="9" fill="#e5e7eb" stroke="#555" /><ellipse cx="20" cy="12" rx="4" ry="3" fill="#fff" stroke="#555" /></svg>,
+        "bultos" => @<svg width="40" height="24"><rect x="5" y="4" width="30" height="17" fill="#fef3c7" stroke="#a16207" stroke-dasharray="3 2" /></svg>,
+        _ => @<svg width="40" height="24"><rect x="7" y="3" width="26" height="18" rx="3" fill="#e5e7eb" stroke="#6b7280" /><circle cx="15" cy="10" r="3" fill="#9ca3af" /><path d="M7 21 L17 12 L24 17 L33 10 L33 21Z" fill="#9ca3af" /></svg>,
+    };
+
+    private async Task ElegirDibujo(PlanoEstanteDto? e, string d)
+    {
+        if (celdaSel is null) return;
+        try
+        {
+            // tocar el que ya está elegido lo saca
+            var nuevo = e?.Dibujo == d ? null : d;
+            await Api.GuardarDibujoEstanteAsync(celdaSel, nuevo, nuevo is null ? null : e?.DibujoCant, nuevo is null ? null : e?.DibujoTexto);
+            await RecargarRack();
+        }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task CambiarDibujoDato(PlanoEstanteDto e, ChangeEventArgs ev, bool esCant)
+    {
+        if (celdaSel is null) return;
+        var t = Txt(ev);
+        int? cant = e.DibujoCant; var texto = e.DibujoTexto;
+        if (esCant)
+        {
+            if (t is null) cant = null;
+            else if (int.TryParse(t, out var n) && n >= 0) cant = n;
+            else { ToastService.Warning("Poné un número, por ejemplo 6"); return; }
+        }
+        else texto = t;
+        try { await Api.GuardarDibujoEstanteAsync(celdaSel, e.Dibujo, cant, texto); await RecargarRack(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
+
+    private async Task SubirFotoEstante(InputFileChangeEventArgs ev)
+    {
+        if (celdaSel is null) return;
+        subiendoFoto = true;
+        try { await Api.SubirFotoEstanteAsync(celdaSel, ev.File); ToastService.Success("Foto guardada"); await RecargarRack(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+        finally { subiendoFoto = false; }
+    }
+
+    private async Task SacarFotoEstante(PlanoEstanteDto e)
+    {
+        if (celdaSel is null) return;
+        try { await Api.SacarFotoEstanteAsync(celdaSel); await RecargarRack(); }
+        catch (Exception ex) { ToastService.Error(ex.Message); }
+    }
 
     private void EditarNotaEstante(PlanoEstanteDto? e)
     {

@@ -44,7 +44,11 @@ public class DepositoPlanoController : ControllerBase
         int Rotacion, int? Posiciones, int? Niveles, string? Color, string? Puntos,
         string? Notas, int Orden, int Productos, string? Estilo,
         int? Calle1, int? Nro1, int? Calle2, int? Nro2, int? Fila, int? NroFila,
-        string? Forma = null, decimal? Elevacion = null, int? CallePunta1 = null, int? CallePunta2 = null);
+        string? Forma = null, decimal? Elevacion = null, int? CallePunta1 = null, int? CallePunta2 = null,
+        List<DibujoDto>? Dibujos = null);
+
+    /// <summary>2026-11-28: lo que se dibuja en un estante del rack (ver DepositoEstanteNota.Dibujo).</summary>
+    public record DibujoDto(int Cara, int Posicion, int Nivel, string? Dibujo, int? Cant, string? Texto, string? Foto);
 
     public class ElementoRequest
     {
@@ -85,7 +89,63 @@ public class DepositoPlanoController : ControllerBase
         string? Cantidad, string? Nota, DateTime At, string? Por, int? Stock = null);
 
     public record EstanteDto(int Posicion, int Nivel, string Codigo, List<AsignacionDto> Productos,
-        int Cara = 1, string? Desglose = null, string? Nota = null, string? NotaPor = null, DateTime? NotaAt = null);
+        int Cara = 1, string? Desglose = null, string? Nota = null, string? NotaPor = null, DateTime? NotaAt = null,
+        string? Dibujo = null, int? DibujoCant = null, string? DibujoTexto = null, string? Foto = null);
+
+    // ───────────── 2026-11-28: dibujo y foto del estante ─────────────
+    public static readonly string[] Dibujos = { "bolsas", "cajas", "bidones", "sillas", "pallet", "rollos", "bultos", "foto" };
+    public const string FotosEstanteDir = "/data/files/estante-fotos";
+    public static string? UrlFoto(string? archivo) => string.IsNullOrWhiteSpace(archivo) ? null : $"api/deposito/plano/foto/{archivo}";
+    public static string? NotaTexto(DepositoEstanteNota? n) => string.IsNullOrWhiteSpace(n?.Nota) ? null : n!.Nota;
+
+    private static async Task<DepositoEstanteNota> FilaNotaAsync(AppDbContext db, int rackId, int cara, int pos, int niv)
+    {
+        var n = await db.DepositoEstanteNotas.FirstOrDefaultAsync(x => x.ElementoId == rackId && x.Cara == cara && x.Posicion == pos && x.Nivel == niv);
+        if (n is null)
+        {
+            n = new DepositoEstanteNota { ElementoId = rackId, Cara = cara, Posicion = pos, Nivel = niv, Nota = "" };
+            db.DepositoEstanteNotas.Add(n);
+        }
+        return n;
+    }
+
+    /// <summary>La fila se borra cuando no le queda ni comentario, ni dibujo, ni foto.</summary>
+    private static void SacarSiVacia(AppDbContext db, DepositoEstanteNota n)
+    {
+        if (string.IsNullOrWhiteSpace(n.Nota) && n.Dibujo is null && n.Foto is null) db.DepositoEstanteNotas.Remove(n);
+    }
+
+    /// <summary>Guarda (o cambia) la foto del estante. La usan el plano y Recorrer estantes (celu).</summary>
+    public static async Task<(string? Url, string? Error)> GuardarFotoEstanteAsync(AppDbContext db, int rackId, int cara, int pos, int niv, IFormFile? file, string? por)
+    {
+        if (file is null || file.Length == 0) return (null, "No llegó ninguna foto.");
+        if (file.Length > 15 * 1024 * 1024) return (null, "La foto es muy grande (máximo 15 MB).");
+        if (!(file.ContentType ?? "").StartsWith("image/")) return (null, "El archivo tiene que ser una foto.");
+        var ext = Path.GetExtension(file.FileName ?? "").ToLowerInvariant();
+        if (ext is not (".jpg" or ".jpeg" or ".png" or ".webp" or ".gif")) ext = ".jpg";
+        Directory.CreateDirectory(FotosEstanteDir);
+        var nombre = $"est-{rackId}-{cara}-{pos}-{niv}-{Guid.NewGuid():N}{ext}";
+        await using (var fs = System.IO.File.Create(Path.Combine(FotosEstanteDir, nombre))) await file.CopyToAsync(fs);
+        var n = await FilaNotaAsync(db, rackId, cara, pos, niv);
+        var viejo = n.Foto;
+        n.Foto = nombre; n.At = DateTime.UtcNow; n.Por = por;
+        await db.SaveChangesAsync();
+        BorrarArchivo(viejo);
+        return (UrlFoto(nombre), null);
+    }
+
+    private static void BorrarArchivo(string? nombre)
+    {
+        if (string.IsNullOrWhiteSpace(nombre)) return;
+        try { System.IO.File.Delete(Path.Combine(FotosEstanteDir, Path.GetFileName(nombre))); } catch { }
+    }
+
+    public class DibujoRequest
+    {
+        public string? Dibujo { get; set; }
+        public int? Cantidad { get; set; }
+        public string? Texto { get; set; }
+    }
 
     public class NotaRequest
     {
@@ -100,7 +160,8 @@ public class DepositoPlanoController : ControllerBase
         var n = await db.DepositoEstanteNotas.FirstOrDefaultAsync(x => x.ElementoId == rackId && x.Cara == cara && x.Posicion == pos && x.Nivel == niv);
         if (t.Length == 0)
         {
-            if (n is not null) { db.DepositoEstanteNotas.Remove(n); await db.SaveChangesAsync(); }
+            // 2026-11-28: si tiene dibujo o foto, la fila queda (solo sin comentario)
+            if (n is not null) { n.Nota = ""; SacarSiVacia(db, n); await db.SaveChangesAsync(); }
             return null;
         }
         if (n is null)
@@ -266,10 +327,15 @@ public class DepositoPlanoController : ControllerBase
             .GroupBy(a => a.ElementoId)
             .Select(g => new { g.Key, N = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.N);
+        // 2026-11-28: lo que se dibuja en cada estante (para el 3D)
+        var dibs = (await _db.DepositoEstanteNotas.AsNoTracking()
+                .Where(n => ids.Contains(n.ElementoId) && (n.Dibujo != null || n.Foto != null)).ToListAsync())
+            .GroupBy(n => n.ElementoId)
+            .ToDictionary(g => g.Key, g => g.Select(n => new DibujoDto(n.Cara, n.Posicion, n.Nivel, n.Dibujo, n.DibujoCant, n.DibujoTexto, UrlFoto(n.Foto))).ToList());
         return Ok(new
         {
             planta = pl,
-            elementos = elementos.Select(e => ADto(e, conteos.GetValueOrDefault(e.Id))).ToList()
+            elementos = elementos.Select(e => ADto(e, conteos.GetValueOrDefault(e.Id)) with { Dibujos = dibs.GetValueOrDefault(e.Id) }).ToList()
         });
     }
 
@@ -500,7 +566,8 @@ public class DepositoPlanoController : ControllerBase
                     var nt = notas.FirstOrDefault(n => NormCara(e, n.Cara) == cara && n.Posicion == pos && n.Nivel == niv);
                     estantes.Add(new EstanteDto(pos, niv, CodigoEstante(e, cara, pos, niv),
                         asigs.Where(a => celdaDe.TryGetValue(a.Id, out var c) && c.Cara == cara && c.Posicion == pos && c.Nivel == niv).ToList(),
-                        cara, DesgloseEstante(e, cara, pos, niv), nt?.Nota, nt?.Por, nt?.At));
+                        cara, DesgloseEstante(e, cara, pos, niv), NotaTexto(nt), nt?.Por, nt?.At,
+                        nt?.Dibujo, nt?.DibujoCant, nt?.DibujoTexto, UrlFoto(nt?.Foto)));
                 }
 
         return Ok(new { elemento = ADto(e, crudas.Count), estantes, caras = CarasDto(e) });
@@ -653,7 +720,7 @@ public class DepositoPlanoController : ControllerBase
     {
         var asigs = await _db.DepositoEstanteProductos.AsNoTracking().Where(a => a.ElementoId == rack.Id)
             .Select(a => new { a.Cara, a.Posicion, a.Nivel }).ToListAsync();
-        var notas = await _db.DepositoEstanteNotas.AsNoTracking().Where(n => n.ElementoId == rack.Id)
+        var notas = await _db.DepositoEstanteNotas.AsNoTracking().Where(n => n.ElementoId == rack.Id && n.Nota != "")
             .Select(n => new { n.Cara, n.Posicion, n.Nivel }).ToListAsync();
         var alturas = new List<object>();
         for (int n = rack.Niveles ?? 1; n >= 1; n--)
@@ -700,9 +767,13 @@ public class DepositoPlanoController : ControllerBase
             .FirstOrDefaultAsync(n => n.ElementoId == rack.Id && n.Cara == cara && n.Posicion == pos && n.Nivel == niv);
         return Ok(new
         {
-            nota = nota?.Nota,
+            nota = NotaTexto(nota),
             notaPor = nota?.Por,
             notaAt = nota?.At,
+            dibujo = nota?.Dibujo,
+            dibujoCant = nota?.DibujoCant,
+            dibujoTexto = nota?.DibujoTexto,
+            foto = UrlFoto(nota?.Foto),
             rackId = rack.Id,
             planta = rack.Planta,
             rack = rack.Codigo,
@@ -718,6 +789,65 @@ public class DepositoPlanoController : ControllerBase
             posiciones = PosicionesDe(rack, cara),
             productos = await AsignacionesDe(rack.Id, pos, niv, cara)
         });
+    }
+
+    /// <summary>2026-11-28: qué se ve en el estante aunque no tenga stock (dibujo null = nada).</summary>
+    [HttpPut("estante/{codigo}/dibujo")]
+    public async Task<IActionResult> Dibujo(string codigo, [FromBody] DibujoRequest req)
+    {
+        var (rack, cara, pos, niv, error) = await ResolverEstante(codigo);
+        if (rack is null) return NotFound(new { error });
+        var d = string.IsNullOrWhiteSpace(req.Dibujo) ? null : req.Dibujo.Trim().ToLowerInvariant();
+        if (d is not null && !Dibujos.Contains(d)) return BadRequest(new { error = "Ese dibujo no existe." });
+        if (req.Cantidad is < 0 or > 9999) return BadRequest(new { error = "La cantidad va de 0 a 9999." });
+        var n = await FilaNotaAsync(_db, rack.Id, cara, pos, niv);
+        n.Dibujo = d;
+        n.DibujoCant = d is null ? null : req.Cantidad;
+        n.DibujoTexto = d is null ? null : Recortar(req.Texto, 100);
+        n.At = DateTime.UtcNow; n.Por = Usuario;
+        SacarSiVacia(_db, n);
+        await _db.SaveChangesAsync();
+        return Ok(new { dibujo = n.Dibujo, dibujoCant = n.DibujoCant, dibujoTexto = n.DibujoTexto });
+    }
+
+    /// <summary>2026-11-28: foto del estante (la cambia si ya tenía).</summary>
+    [HttpPost("estante/{codigo}/foto")]
+    [RequestSizeLimit(16 * 1024 * 1024)]
+    public async Task<IActionResult> SubirFoto(string codigo, IFormFile? file)
+    {
+        var (rack, cara, pos, niv, error) = await ResolverEstante(codigo);
+        if (rack is null) return NotFound(new { error });
+        var (url, err) = await GuardarFotoEstanteAsync(_db, rack.Id, cara, pos, niv, file, Usuario);
+        return err is null ? Ok(new { foto = url }) : BadRequest(new { error = err });
+    }
+
+    [HttpDelete("estante/{codigo}/foto")]
+    public async Task<IActionResult> SacarFoto(string codigo)
+    {
+        var (rack, cara, pos, niv, error) = await ResolverEstante(codigo);
+        if (rack is null) return NotFound(new { error });
+        var n = await _db.DepositoEstanteNotas.FirstOrDefaultAsync(x => x.ElementoId == rack.Id && x.Cara == cara && x.Posicion == pos && x.Nivel == niv);
+        if (n?.Foto is null) return NoContent();
+        var viejo = n.Foto;
+        n.Foto = null;
+        SacarSiVacia(_db, n);
+        await _db.SaveChangesAsync();
+        BorrarArchivo(viejo);
+        return NoContent();
+    }
+
+    /// <summary>2026-11-28: la foto del estante (nombre con GUID: no se puede adivinar). Sin login porque
+    /// también la ve el celu del depósito en Recorrer estantes (que entra con la clave del día).</summary>
+    [HttpGet("foto/{nombre}")]
+    [AllowAnonymous]
+    public IActionResult Foto(string nombre)
+    {
+        if (!Regex.IsMatch(nombre ?? "", @"^est-[\d-]+-[0-9a-f]{32}\.(jpg|jpeg|png|webp|gif)$")) return NotFound();
+        var ruta = Path.Combine(FotosEstanteDir, nombre!);
+        if (!System.IO.File.Exists(ruta)) return NotFound();
+        var tipo = Path.GetExtension(ruta) switch { ".png" => "image/png", ".webp" => "image/webp", ".gif" => "image/gif", _ => "image/jpeg" };
+        Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        return PhysicalFile(ruta, tipo);
     }
 
     /// <summary>2026-11-27: comentario libre del estante (vacío lo borra).</summary>
