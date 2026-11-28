@@ -708,11 +708,17 @@ public class DepositoPlanoController : ControllerBase
                 var url = $"{o}/deposito/estante/{cod}";
                 // 2026-11-27: mismo rollo que las etiquetas de envío de MeLi (10 x 20 cm, troquel arriba).
                 sb.Append("^XA\n^CI28\n^PW812\n^LL1624\n^LH0,0\n");
-                // troquel (talón de arriba, como en MeLi)
+                // troquel (talón de arriba, como en MeLi). 2026-11-27: es el cartel de ALTURA que se pega en
+                // el estante donde va la mercadería (el QR grande de abajo se pega a una altura cómoda para
+                // escanear): A3 grande en negro, el código, y el mismo QR chico (aumento 7, se lee bien).
                 sb.Append("^FO16,16^GB780,268,2^FS\n");
-                sb.Append($"^FO30,36^A0N,96,80^FB750,1,0,L,0^FD{cod}^FS\n");
-                sb.Append($"^FO30,150^A0N,40,36^FB750,1,0,L,0^FD{desglose}^FS\n");
-                sb.Append("^FO30,215^A0N,28,26^FB750,1,0,L,0^FDRecortá esta parte antes de pegar en el estante^FS\n");
+                sb.Append("^FO28,26^GB230,248,248^FS\n");
+                sb.Append($"^FO28,40^A0N,220,{(niv < 10 ? 130 : 88)}^FR^FB230,1,0,C,0^FDA{niv}^FS\n");
+                sb.Append($"^FO282,36^A0N,34,30^FB262,1,0,L,0^FDALTURA {niv}^FS\n");
+                sb.Append("^FO282,76^A0N,24,22^FB262,1,0,L,0^FDcontando desde el piso^FS\n");
+                sb.Append($"^FO282,130^A0N,46,{(cod.Length <= 11 ? 32 : 24)}^FB262,1,0,L,0^FD{cod}^FS\n");
+                sb.Append("^FO282,190^A0N,24,22^FB262,3,0,L,0^FDPegalo en el estante donde va la mercadería^FS\n");
+                sb.Append($"^FO552,14^BQN,2,7^FDLA,{url}^FS\n");
                 // La parte grande de abajo va ACOSTADA (se pega a lo largo del fierro del rack, que es
                 // angosto): campos girados (R), se lee girando la etiqueta. A la izquierda el código
                 // grande y abajo ESCRITO (calle · rack · altura), a la derecha el QR.
